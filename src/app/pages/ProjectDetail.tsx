@@ -1,8 +1,9 @@
-import { motion } from "motion/react";
 import { useParams } from "react-router";
 import { useState, useEffect } from "react";
+import { motion } from "motion/react";
 import { GlassCard } from "../components/shared/GlassCard";
 import { NeonButton } from "../components/shared/NeonButton";
+import { SeoHead } from "../components/shared/SeoHead";
 import { ArrowLeft, Play } from "lucide-react";
 import { api } from "../utils/api";
 
@@ -111,6 +112,14 @@ export function ProjectDetail() {
 
   return (
     <div className="min-h-screen py-24 px-6">
+      <SeoHead
+        pageKey={`project--${id}`}
+        fallback={{
+          title: project?.title ? `${project.title} — Fastoosh Projects` : 'Project — Fastoosh',
+          description: project?.goal || project?.description || 'A premium motion design project by Fastoosh.',
+          ogImage: project?.thumbnail || project?.imageUrl || undefined,
+        }}
+      />
       <div className="max-w-5xl mx-auto">
         {/* Error banner (shown but allows fallback content to display) */}
         {error && (
@@ -295,7 +304,7 @@ export function ProjectDetail() {
           viewport={{ once: true }}
           className="mt-24 text-center"
         >
-          <GlassCard className="p-12">
+          <GlassCard className="p-12 w-full">
             <h3 className="text-3xl mb-4">Ready to start your project?</h3>
             <p className="text-white/60 mb-6">Let's create something extraordinary together</p>
             <NeonButton href="/work-with-us">Work with us</NeonButton>

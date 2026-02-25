@@ -1,7 +1,8 @@
-import { motion } from "motion/react";
 import { useState, useEffect } from "react";
+import { motion } from "motion/react";
 import { GlassCard } from "../components/shared/GlassCard";
 import { NeonButton } from "../components/shared/NeonButton";
+import { SeoHead } from "../components/shared/SeoHead";
 import { api } from "../utils/api";
 
 // Fallback projects (used if API fails or returns no data)
@@ -92,6 +93,13 @@ export function Projects() {
 
   return (
     <div className="min-h-screen py-24 px-6">
+      <SeoHead
+        pageKey="projects"
+        fallback={{
+          title: "Projects — Fastoosh Motion Design Portfolio",
+          description: "Explore Fastoosh's portfolio of premium motion design projects — brand films, product explainers, VFX, and UI animation for global clients.",
+        }}
+      />
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <motion.div

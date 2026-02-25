@@ -11,8 +11,9 @@ import {
   ArrowLeft, User, Calendar, CheckCircle, Clock, XCircle,
   Eye, EyeOff, Copy, Check, RefreshCw, Sparkles, ChevronDown,
   ChevronUp, Zap, ArrowUpRight, Package, Mail, Lock, AlertCircle,
-  Loader2, Shield, KeyRound, Bell, Star, Gift, Info, Send,
+  Loader2, Shield, KeyRound, Bell, Star, Gift, Info, Send, MessageSquarePlus,
 } from 'lucide-react';
+import { ReviewModal, type ReviewData } from '../components/shared/ReviewModal';
 
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-e07959ec`;
 
@@ -149,9 +150,33 @@ function ActivationGuide({ versionType, activationSteps }: { versionType?: strin
 }
 
 /* -------------------------------------------------------------------------- */
+/* StarDisplay — read-only inline stars                                        */
+/* -------------------------------------------------------------------------- */
+function StarDisplay({ rating, size = 'sm' }: { rating: number; size?: 'sm' | 'xs' }) {
+  const sz = size === 'xs' ? 'w-3 h-3' : 'w-3.5 h-3.5';
+  return (
+    <div className="flex gap-0.5">
+      {[1, 2, 3, 4, 5].map(n => (
+        <Star key={n} className={`${sz} ${n <= rating ? 'text-yellow-400 fill-yellow-400' : 'text-white/15'}`} />
+      ))}
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
 /* PurchaseCard                                                                */
 /* -------------------------------------------------------------------------- */
-function PurchaseCard({ purchase, index }: { purchase: Purchase; index: number }) {
+function PurchaseCard({
+  purchase,
+  index,
+  existingReview,
+  onOpenReview,
+}: {
+  purchase: Purchase;
+  index: number;
+  existingReview: ReviewData | null;
+  onOpenReview: (toolId: string, toolName: string, toolImageUrl: string, review: ReviewData | null) => void;
+}) {
   const status      = STATUS_CONFIG[purchase.status] ?? STATUS_CONFIG.active;
   const isActive    = purchase.status === 'active';
   const tool        = purchase.toolVersions?.tools ?? null;
@@ -256,6 +281,29 @@ function PurchaseCard({ purchase, index }: { purchase: Purchase; index: number }
               <Link to={`/tools/${tool.slug}`} className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 border border-purple-500/25 transition-all">
                 <Sparkles className="w-3.5 h-3.5" />Open Tool Page
               </Link>
+            )}
+            {/* Review button — only when tool is known */}
+            {tool?.id && isActive && (
+              <button
+                onClick={() => onOpenReview(tool.id, tool.name, tool.imageUrl, existingReview)}
+                className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                  existingReview
+                    ? 'bg-yellow-400/10 hover:bg-yellow-400/20 text-yellow-300 border border-yellow-400/25'
+                    : 'bg-white/6 hover:bg-white/10 text-white/50 hover:text-white/80 border border-white/10'
+                }`}
+              >
+                {existingReview ? (
+                  <>
+                    <StarDisplay rating={existingReview.rating} size="xs" />
+                    Edit review
+                  </>
+                ) : (
+                  <>
+                    <MessageSquarePlus className="w-3.5 h-3.5" />
+                    Write a review
+                  </>
+                )}
+              </button>
             )}
           </div>
           <ActivationGuide versionType={purchase.toolVersions?.versionType} activationSteps={purchase.toolVersions?.activationSteps} />
@@ -466,6 +514,12 @@ export function Account() {
   const [purchasesError,   setPurchasesError]   = useState('');
   const [supportOpen,      setSupportOpen]      = useState(false);
 
+  // Review state
+  const [userReviews, setUserReviews] = useState<Record<string, ReviewData | null>>({});
+  const [reviewTarget, setReviewTarget] = useState<{
+    toolId: string; toolName: string; toolImageUrl: string; review: ReviewData | null;
+  } | null>(null);
+
   /* ── Auth gate state ── */
   const [authTab,     setAuthTab]     = useState<'signin' | 'signup' | 'forgot'>('signin');
   const [authEmail,   setAuthEmail]   = useState('');
@@ -511,7 +565,28 @@ export function Account() {
     } catch (err) {
       console.error('Sync error (non-fatal):', err);
     }
-    await fetchPurchases(token);
+    await Promise.all([fetchPurchases(token), fetchUserReviews(token)]);
+  };
+
+  const fetchUserReviews = async (token: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/user/reviews`, {
+        headers: {
+          Authorization: `Bearer ${publicAnonKey}`,
+          'X-User-Token': token,
+        },
+      });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.data)) {
+        const map: Record<string, ReviewData | null> = {};
+        for (const item of data.data) {
+          map[item.toolId] = item.review || null;
+        }
+        setUserReviews(map);
+      }
+    } catch (err) {
+      console.error('Error fetching user reviews (non-fatal):', err);
+    }
   };
 
   const fetchPurchases = async (token: string) => {
@@ -907,7 +982,17 @@ export function Account() {
 
           {!purchasesLoading && purchases.length > 0 && (
             <div className="space-y-4">
-              {purchases.map((p, i) => <PurchaseCard key={p.id} purchase={p} index={i} />)}
+              {purchases.map((p, i) => (
+                <PurchaseCard
+                  key={p.id}
+                  purchase={p}
+                  index={i}
+                  existingReview={p.toolVersions?.tools?.id ? (userReviews[p.toolVersions.tools.id] ?? null) : null}
+                  onOpenReview={(toolId, toolName, toolImageUrl, review) =>
+                    setReviewTarget({ toolId, toolName, toolImageUrl, review })
+                  }
+                />
+              ))}
             </div>
           )}
 
@@ -944,6 +1029,26 @@ export function Account() {
 
       {supportOpen && (
         <ToolSupportModal toolName="License & Activation" onClose={() => setSupportOpen(false)} />
+      )}
+
+      {/* ── Review modal ── */}
+      {reviewTarget && session?.access_token && (
+        <ReviewModal
+          toolId={reviewTarget.toolId}
+          toolName={reviewTarget.toolName}
+          toolImageUrl={reviewTarget.toolImageUrl}
+          accessToken={session.access_token}
+          existingReview={reviewTarget.review}
+          onClose={() => setReviewTarget(null)}
+          onSaved={(review) => {
+            setUserReviews(prev => ({ ...prev, [reviewTarget.toolId]: review }));
+            setReviewTarget(null);
+          }}
+          onDeleted={() => {
+            setUserReviews(prev => ({ ...prev, [reviewTarget.toolId]: null }));
+            setReviewTarget(null);
+          }}
+        />
       )}
     </>
   );

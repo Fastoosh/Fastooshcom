@@ -1,14 +1,15 @@
-import { UserAuthModal } from '../components/shared/UserAuthModal';
 import { FreeDownloadModal } from '../components/shared/FreeDownloadModal';
 import { useUserAuth } from '../hooks/useUserAuth';
 import { useParams, Link } from 'react-router';
 import { GlassCard } from '../components/shared/GlassCard';
 import { NeonButton } from '../components/shared/NeonButton';
 import { ToolSupportModal } from '../components/shared/ToolSupportModal';
+import { UserAuthModal } from '../components/shared/UserAuthModal';
+import { SeoHead } from '../components/shared/SeoHead';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import {
   ArrowLeft, Check, Download, Play, ChevronDown, ChevronUp,
-  Monitor, Zap, Star, ExternalLink, Sparkles, ShoppingCart,
+  Monitor, Zap, Star, ExternalLink, Sparkles, ShoppingCart, Quote,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -390,6 +391,7 @@ export function ToolDetail() {
   // Free download modal state
   const [freeDownloadVersion, setFreeDownloadVersion] = useState<ToolVersion | null>(null);
   const [userPurchasedProductNames, setUserPurchasedProductNames] = useState<string[]>([]);
+  const [reviews, setReviews] = useState<any[]>([]);
 
   useEffect(() => { loadTool(); }, [slug]);
 
@@ -443,6 +445,8 @@ export function ToolDetail() {
           if (!found.versions && (found as any).toolVersions)
             found = { ...found, versions: (found as any).toolVersions };
           setTool(found);
+          // Fetch reviews for this tool
+          fetchReviews(found.id);
         } else {
           setError('Tool not found');
         }
@@ -454,6 +458,18 @@ export function ToolDetail() {
       setError('Failed to load tool');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchReviews = async (toolId: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/reviews?toolId=${encodeURIComponent(toolId)}`, {
+        headers: { Authorization: `Bearer ${publicAnonKey}` },
+      });
+      const data = await res.json();
+      if (data.success) setReviews(data.data || []);
+    } catch (err) {
+      console.warn('[ToolDetail] Could not load reviews:', err);
     }
   };
 
@@ -507,6 +523,14 @@ export function ToolDetail() {
 
   return (
     <div className="min-h-screen pt-8 pb-24">
+      <SeoHead
+        pageKey={`tool--${slug}`}
+        fallback={{
+          title: tool ? `${tool.name} — Fastoosh Tools` : 'Tool — Fastoosh',
+          description: tool?.description || 'Professional After Effects tool by Fastoosh.',
+          ogImage: tool?.imageUrl || undefined,
+        }}
+      />
       <div className="max-w-5xl mx-auto px-6">
 
         {/* ── Back nav ──────────────────────────────────────────────────────── */}
@@ -753,6 +777,124 @@ export function ToolDetail() {
             </GlassCard>
           </motion.section>
         )}
+
+        {/* ── Reviews ───────────────────────────────────────────────────────── */}
+        {reviews.length > 0 && (() => {
+          const avg = Math.round((reviews.reduce((s, r) => s + r.rating, 0) / reviews.length) * 10) / 10;
+          const dist = [5, 4, 3, 2, 1].map(n => ({
+            n,
+            count: reviews.filter(r => r.rating === n).length,
+          }));
+          return (
+            <motion.section
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              className="mb-20"
+            >
+              <SectionLabel>User reviews</SectionLabel>
+
+              {/* Summary bar */}
+              <div className="flex flex-col sm:flex-row gap-6 items-start sm:items-center mb-8 p-6 rounded-2xl border border-white/8 bg-white/3">
+                {/* Big score */}
+                <div className="text-center flex-shrink-0">
+                  <div className="text-5xl font-black text-white leading-none">{avg}</div>
+                  <div className="flex gap-0.5 justify-center mt-2">
+                    {[1, 2, 3, 4, 5].map(n => (
+                      <Star key={n} className={`w-4 h-4 ${n <= Math.round(avg) ? 'text-yellow-400 fill-yellow-400' : 'text-white/15'}`} />
+                    ))}
+                  </div>
+                  <p className="text-white/35 text-xs mt-1">{reviews.length} review{reviews.length !== 1 ? 's' : ''}</p>
+                </div>
+
+                {/* Distribution bars */}
+                <div className="flex-1 space-y-1.5 w-full">
+                  {dist.map(({ n, count }) => (
+                    <div key={n} className="flex items-center gap-2">
+                      <span className="text-white/35 text-xs w-2 text-right flex-shrink-0">{n}</span>
+                      <Star className="w-3 h-3 text-yellow-400/50 fill-yellow-400/50 flex-shrink-0" />
+                      <div className="flex-1 h-1.5 rounded-full bg-white/8 overflow-hidden">
+                        <motion.div
+                          initial={{ width: 0 }}
+                          whileInView={{ width: reviews.length ? `${(count / reviews.length) * 100}%` : '0%' }}
+                          viewport={{ once: true }}
+                          transition={{ duration: 0.6, delay: (5 - n) * 0.06 }}
+                          className="h-full rounded-full bg-gradient-to-r from-yellow-500 to-yellow-400"
+                        />
+                      </div>
+                      <span className="text-white/25 text-xs w-3 flex-shrink-0">{count}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Review cards grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {reviews.map((review, i) => (
+                  <motion.div
+                    key={review.id}
+                    initial={{ opacity: 0, y: 12 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ delay: i * 0.06 }}
+                  >
+                    <GlassCard className="p-5 h-full flex flex-col">
+                      {/* Quote icon + stars */}
+                      <div className="flex items-start justify-between gap-2 mb-3">
+                        <Quote className="w-5 h-5 text-purple-400/40 flex-shrink-0 -scale-x-100" />
+                        <div className="flex gap-0.5">
+                          {[1, 2, 3, 4, 5].map(n => (
+                            <Star key={n} className={`w-3.5 h-3.5 ${n <= review.rating ? 'text-yellow-400 fill-yellow-400' : 'text-white/12'}`} />
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Comment */}
+                      {review.comment ? (
+                        <p className="text-white/60 text-sm leading-relaxed flex-1 italic">
+                          "{review.comment}"
+                        </p>
+                      ) : (
+                        <p className="text-white/25 text-sm italic flex-1">No written review.</p>
+                      )}
+
+                      {/* Author */}
+                      <div className="flex items-center gap-2 mt-4 pt-3 border-t border-white/6">
+                        <div className="w-7 h-7 rounded-full bg-gradient-to-br from-purple-500/30 to-blue-500/30 border border-white/10 flex items-center justify-center flex-shrink-0">
+                          <span className="text-white/60 text-[10px] font-bold">
+                            {(review.userName || '?')[0].toUpperCase()}
+                          </span>
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-white/60 text-xs font-semibold truncate">{review.userName || 'Anonymous'}</p>
+                          <p className="text-white/25 text-[10px]">
+                            {review.updatedAt
+                              ? new Date(review.updatedAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+                              : ''}
+                          </p>
+                        </div>
+                        {/* Verified badge */}
+                        <span className="ml-auto flex-shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                          ✓ Verified
+                        </span>
+                      </div>
+                    </GlassCard>
+                  </motion.div>
+                ))}
+              </div>
+
+              {/* CTA for non-buyers */}
+              {!user && (
+                <p className="text-center text-white/30 text-sm mt-6">
+                  <button onClick={() => openAuthModal()} className="text-purple-400 hover:text-purple-300 underline">
+                    Sign in
+                  </button>{' '}
+                  to leave your own review after purchasing.
+                </p>
+              )}
+            </motion.section>
+          );
+        })()}
 
         {/* ── Support CTA ───────────────────────────────────────────────────── */}
         <motion.section

@@ -2759,4 +2759,581 @@ app.post("/make-server-e07959ec/init", async (c) => {
   }
 });
 
+// ========== SEO ENDPOINTS ==========
+
+// Convert pageKey (e.g. "tool--my-slug") → KV key (e.g. "seo:tool:my-slug")
+const toSeoKvKey = (pageKey: string) => `seo:${pageKey.replace(/--/g, ':')}`;
+
+// GET /seo/:pageKey — public
+app.get('/make-server-e07959ec/seo/:pageKey', async (c) => {
+  try {
+    const pageKey = c.req.param('pageKey');
+    const data = await kv.get(toSeoKvKey(pageKey));
+    return c.json({ success: true, data: data || null });
+  } catch (error) {
+    console.log(`[seo] GET error: ${error}`);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
+// PUT /seo/:pageKey — admin only
+app.put('/make-server-e07959ec/seo/:pageKey', requireAuth, async (c) => {
+  try {
+    const pageKey = c.req.param('pageKey');
+    const body = await c.req.json();
+    const seoData = {
+      title:              body.title              || '',
+      description:        body.description        || '',
+      keywords:           body.keywords           || '',
+      ogTitle:            body.ogTitle            || '',
+      ogDescription:      body.ogDescription      || '',
+      ogImage:            body.ogImage            || '',
+      twitterCard:        body.twitterCard        || 'summary_large_image',
+      twitterTitle:       body.twitterTitle       || '',
+      twitterDescription: body.twitterDescription || '',
+      canonicalUrl:       body.canonicalUrl       || '',
+      noIndex:            body.noIndex            || false,
+      updatedAt:          new Date().toISOString(),
+    };
+    await kv.set(toSeoKvKey(pageKey), seoData);
+    console.log(`[seo] Saved SEO for "${pageKey}"`);
+    return c.json({ success: true, data: seoData });
+  } catch (error) {
+    console.log(`[seo] PUT error: ${error}`);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
+// POST /admin/generate-seo-content — admin only, Gemini AI
+app.post('/make-server-e07959ec/admin/generate-seo-content', requireAuth, async (c) => {
+  try {
+    const { pageName, pageType, pageContext, existingSeo, instruction = '', improveExisting = false } = await c.req.json();
+    const apiKey = Deno.env.get('GEMINI_API_KEY');
+    if (!apiKey) return c.json({ success: false, error: 'GEMINI_API_KEY not configured' }, 500);
+    if (!pageName) return c.json({ success: false, error: 'pageName is required' }, 400);
+
+    const gen: Record<string, boolean> = {};
+    if (improveExisting || !existingSeo?.title?.trim())              gen.title              = true;
+    if (improveExisting || !existingSeo?.description?.trim())        gen.description        = true;
+    if (improveExisting || !existingSeo?.keywords?.trim())           gen.keywords           = true;
+    if (improveExisting || !existingSeo?.ogTitle?.trim())            gen.ogTitle            = true;
+    if (improveExisting || !existingSeo?.ogDescription?.trim())      gen.ogDescription      = true;
+    if (improveExisting || !existingSeo?.twitterTitle?.trim())       gen.twitterTitle       = true;
+    if (improveExisting || !existingSeo?.twitterDescription?.trim()) gen.twitterDescription = true;
+
+    if (!Object.values(gen).some(Boolean)) {
+      return c.json({ success: true, data: {}, nothingToGenerate: true });
+    }
+
+    const instructionLine = instruction?.trim() ? `\nUser instruction: "${instruction.trim()}"` : '';
+    const contextLine     = pageContext?.trim()  ? `\nPage context: "${pageContext.trim()}"` : '';
+    const existingCtx = improveExisting && existingSeo ? [
+      existingSeo.title?.trim()       ? `Current title: "${existingSeo.title.trim()}"` : '',
+      existingSeo.description?.trim() ? `Current description: "${existingSeo.description.trim()}"` : '',
+    ].filter(Boolean).join('\n') : '';
+
+    let schemaLines = '';
+    if (gen.title)              schemaLines += `  "title": "<SEO title max 60 chars, includes Fastoosh brand>",\n`;
+    if (gen.description)        schemaLines += `  "description": "<Meta description 120-160 chars, compelling>",\n`;
+    if (gen.keywords)           schemaLines += `  "keywords": "<comma-separated keywords, 6-10 terms>",\n`;
+    if (gen.ogTitle)            schemaLines += `  "ogTitle": "<OG title for social sharing, max 60 chars>",\n`;
+    if (gen.ogDescription)      schemaLines += `  "ogDescription": "<OG description for social, max 200 chars>",\n`;
+    if (gen.twitterTitle)       schemaLines += `  "twitterTitle": "<Twitter title, max 70 chars>",\n`;
+    if (gen.twitterDescription) schemaLines += `  "twitterDescription": "<Twitter description, max 200 chars>",\n`;
+
+    const modeInstruction = improveExisting
+      ? 'REWRITE and IMPROVE the existing SEO metadata. Make it more compelling and search-optimized.'
+      : 'Generate professional SEO metadata for this page.';
+
+    const prompt = `You are an SEO expert for Fastoosh, a premium motion design studio creating After Effects plugins and tools for professional motion designers.
+
+${modeInstruction} Return ONLY valid JSON — no markdown fences, no extra text.
+
+Page: "${pageName}"
+Page Type: "${pageType || 'static'}"${contextLine}${instructionLine}${existingCtx ? '\n' + existingCtx : ''}
+
+Rules:
+- title: Include "Fastoosh" brand name, max 60 chars, page-specific
+- description: 120-160 chars, value proposition + primary keywords
+- keywords: 6-10 relevant terms, comma-separated
+- ogTitle: Optimized for social, max 60 chars
+- ogDescription: Engaging for social, max 200 chars
+- twitterTitle: max 70 chars
+- twitterDescription: max 200 chars
+- Target: motion designers, VFX artists, After Effects users
+- Be specific to "${pageName}" — no generic filler
+${improveExisting ? '- REWRITE mode: elevate existing copy, do not repeat verbatim\n' : ''}
+Return exactly this JSON:
+{
+${schemaLines}}`;
+
+    console.log(`[seo] Gemini call for "${pageName}" [${improveExisting ? 'REWRITE' : 'FILL'}] fields: ${Object.keys(gen).join(', ')}`);
+
+    const geminiRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { responseMimeType: 'application/json', temperature: 0.7, maxOutputTokens: 2048 },
+        }),
+      }
+    );
+
+    if (!geminiRes.ok) {
+      const errText = await geminiRes.text();
+      return c.json({ success: false, error: `Gemini API error (${geminiRes.status}): ${errText}` }, 500);
+    }
+
+    const geminiData = await geminiRes.json();
+    const rawText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!rawText) return c.json({ success: false, error: 'Gemini returned empty response' }, 500);
+
+    let generated: Record<string, any>;
+    try {
+      const repaired = repairJson(rawText);
+      generated = JSON.parse(repaired);
+    } catch (parseErr) {
+      console.log('[seo] JSON repair failed. Raw (first 300):', rawText.substring(0, 300));
+      return c.json({ success: false, error: `AI response was not valid JSON: ${String(parseErr)}` }, 500);
+    }
+
+    console.log(`✅ SEO generated for "${pageName}"`);
+    return c.json({ success: true, data: generated });
+  } catch (error) {
+    console.log('[seo] generate-seo-content error:', error);
+    return c.json({ success: false, error: `Content generation failed: ${String(error)}` }, 500);
+  }
+});
+
+// ========== HOME CONTENT ==========
+
+// GET /home-content — public
+app.get('/make-server-e07959ec/home-content', async (c) => {
+  try {
+    const raw = await kv.get('home_content');
+    return c.json({ success: true, data: raw ? JSON.parse(raw) : null });
+  } catch (error) {
+    console.log('[home-content GET] error:', error);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
+// PUT /home-content — admin only
+app.put('/make-server-e07959ec/home-content', requireAuth, async (c) => {
+  try {
+    const body = await c.req.json();
+    await kv.set('home_content', JSON.stringify(body));
+    console.log('✅ Home content saved');
+    return c.json({ success: true });
+  } catch (error) {
+    console.log('[home-content PUT] error:', error);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
+// POST /admin/generate-home-content — admin only, AI generation
+app.post('/make-server-e07959ec/admin/generate-home-content', requireAuth, async (c) => {
+  try {
+    const { section = 'all', existingContent = {}, instruction = '', improveExisting = false } = await c.req.json();
+    const apiKey = Deno.env.get('GEMINI_API_KEY');
+    if (!apiKey) return c.json({ success: false, error: 'GEMINI_API_KEY not configured' }, 500);
+
+    const instructionLine = instruction?.trim() ? `\nExtra instruction: "${instruction.trim()}"` : '';
+    const modeInstruction = improveExisting ? 'REWRITE/IMPROVE the existing content.' : 'Generate fresh content for the following section(s).';
+
+    const sectionGuides: Record<string, string> = {
+      hero: `Return JSON with: heroLine1 (main heading — no gradient), heroLine2 (second line with gradient color — catchy), heroSubtitle (1-2 sentence value prop), heroCta1Text (primary CTA ~3 words), heroCta2Text (secondary CTA ~3 words).`,
+      testimonial: `Return JSON with: testimonialQuote (compelling 1-2 sentence client quote), testimonialAuthor (realistic full name), testimonialRole (job title + company e.g. "Head of Marketing at TechCorp").`,
+      featured: `Return JSON with: featuredHeading (e.g. "Featured work"), featuredSubtitle (1 sentence about curated selection).`,
+      capabilities: `Return JSON with: capabilitiesHeading (e.g. "Why work with us"), capabilities (array of 3 objects, each: { icon: one of [sparkles|zap|target|star|shield|trending-up|award|heart|layers|globe], title: 2-3 words, description: 1-2 sentences }).`,
+      process: `Return JSON with: processHeading (e.g. "Our process"), processSubtitle (1 sentence), processSteps (array of 4 objects: { number: "01"|"02"|"03"|"04", title: string, description: 1 sentence }).`,
+      turnaround: `Return JSON with: turnaroundRows (array of 4 objects: { label: string e.g. "Short-form video", time: string e.g. "1-2 weeks" }), turnaroundNote (short e.g. "Rush options available").`,
+      deliverables: `Return JSON with: deliverablesTitle (e.g. "What you get"), deliverables (array of 5-7 concise deliverable strings).`,
+      cta: `Return JSON with: ctaHeading (e.g. "Ready to create something"), ctaHeadingGradient (1 dramatic word/phrase e.g. "extraordinary?"), ctaSubtitle (1-2 warm sentences), ctaBadges (array of 3 short trust signals e.g. ["✓ Reply in 24-48h","✓ NDA-friendly","✓ Remote worldwide"]).`,
+    };
+
+    const sectionsToGenerate = section === 'all' ? Object.keys(sectionGuides) : [section];
+    const guideText = sectionsToGenerate.map(s => sectionGuides[s] || '').filter(Boolean).join('\n\n');
+    const existingCtx = improveExisting && Object.keys(existingContent).length > 0
+      ? `\nExisting content:\n${JSON.stringify(existingContent, null, 2)}`
+      : '';
+
+    const prompt = `You are a premium copywriter for Fastoosh, a high-end motion design studio that creates animations, After Effects tools, and visual storytelling for ambitious brands worldwide.
+
+${modeInstruction}
+
+Tone: Premium, confident, creative, modern. Not salesy. Short sentences. No clichés.${instructionLine}${existingCtx}
+
+Generate all sections below and merge into ONE flat JSON object:
+
+${guideText}
+
+RULES: Return ONLY valid JSON, no markdown, no explanation. All strings concise and professional.`;
+
+    const geminiRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { responseMimeType: 'application/json', temperature: 0.7, maxOutputTokens: 3000 },
+        }),
+      }
+    );
+
+    if (!geminiRes.ok) {
+      const errText = await geminiRes.text();
+      return c.json({ success: false, error: `Gemini API error (${geminiRes.status}): ${errText}` }, 500);
+    }
+
+    const geminiData = await geminiRes.json();
+    const rawText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!rawText) return c.json({ success: false, error: 'Gemini returned empty response' }, 500);
+
+    let generated: Record<string, any>;
+    try {
+      generated = JSON.parse(repairJson(rawText));
+    } catch (parseErr) {
+      console.log('[home-content AI] JSON parse failed. Raw:', rawText.substring(0, 500));
+      return c.json({ success: false, error: `AI response was not valid JSON: ${String(parseErr)}` }, 500);
+    }
+
+    console.log(`✅ Home content generated (section: ${section})`);
+    return c.json({ success: true, data: generated });
+  } catch (error) {
+    console.log('[home-content AI] error:', error);
+    return c.json({ success: false, error: `Generation failed: ${String(error)}` }, 500);
+  }
+});
+
+// POST /admin/generate-seo-jsonld — admin only, generates JSON-LD structured data
+app.post('/make-server-e07959ec/admin/generate-seo-jsonld', requireAuth, async (c) => {
+  try {
+    const { pageName, pageType, pageContext, siteUrl, existingJsonLd, instruction = '', improveExisting = false } = await c.req.json();
+    const apiKey = Deno.env.get('GEMINI_API_KEY');
+    if (!apiKey) return c.json({ success: false, error: 'GEMINI_API_KEY not configured' }, 500);
+    if (!pageName) return c.json({ success: false, error: 'pageName is required' }, 400);
+
+    if (!improveExisting && existingJsonLd?.trim()) {
+      return c.json({ success: true, data: {}, nothingToGenerate: true });
+    }
+
+    const instructionLine = instruction?.trim() ? `\nUser instruction: "${instruction.trim()}"` : '';
+    const contextLine     = pageContext?.trim()  ? `\nPage context: "${pageContext.trim()}"` : '';
+    const siteUrlLine     = siteUrl?.trim()       ? `\nSite URL: "${siteUrl.trim()}"` : '';
+    const modeInstruction = improveExisting
+      ? 'REWRITE and IMPROVE the existing JSON-LD.'
+      : 'Generate JSON-LD structured data for this page.';
+
+    // Build schema guidance based on page type
+    let schemaGuidance = '';
+    if (pageType === 'tool') {
+      schemaGuidance = `Use "@type": "SoftwareApplication" with applicationCategory "MultimediaApplication", operatingSystem, offers (with price if known), description, name, and url. Include "softwareVersion" if relevant.`;
+    } else if (pageType === 'project') {
+      schemaGuidance = `Use "@type": "CreativeWork" with name, description, creator (Fastoosh), dateCreated, and genre (e.g. "Motion Design").`;
+    } else if (pageName.toLowerCase() === 'home') {
+      schemaGuidance = `Use "@type": "Organization" with name "Fastoosh", description, url, logo, sameAs (social links array placeholder), and contactPoint.`;
+    } else {
+      schemaGuidance = `Use "@type": "WebPage" with name, description, url, and publisher (Fastoosh Organization).`;
+    }
+
+    const existingCtx = improveExisting && existingJsonLd?.trim()
+      ? `\nExisting JSON-LD:\n${existingJsonLd.trim()}`
+      : '';
+
+    const prompt = `You are an SEO expert generating JSON-LD structured data for Fastoosh, a premium motion design studio.
+
+${modeInstruction} Return ONLY the raw JSON-LD object — no markdown fences, no extra text, no @context wrapper (include @context inside the object).
+
+Page: "${pageName}"
+Page Type: "${pageType || 'static'}"${siteUrlLine}${contextLine}${instructionLine}${existingCtx}
+
+Schema guidance: ${schemaGuidance}
+
+Rules:
+- Include "@context": "https://schema.org"
+- Fill in realistic values based on the page context
+- Use the siteUrl to construct page URLs if provided
+- For Fastoosh as publisher/creator: use name "Fastoosh", url from siteUrl if available
+- Keep it concise but complete — no placeholder <values>, use real data from context or sensible defaults
+- Return valid JSON only`;
+
+    console.log(`[seo-jsonld] Gemini call for "${pageName}" [${pageType}] ${improveExisting ? 'REWRITE' : 'GENERATE'}`);
+
+    const geminiRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { responseMimeType: 'application/json', temperature: 0.5, maxOutputTokens: 2048 },
+        }),
+      }
+    );
+
+    if (!geminiRes.ok) {
+      const errText = await geminiRes.text();
+      return c.json({ success: false, error: `Gemini API error (${geminiRes.status}): ${errText}` }, 500);
+    }
+
+    const geminiData = await geminiRes.json();
+    const rawText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!rawText) return c.json({ success: false, error: 'Gemini returned empty response' }, 500);
+
+    let generated: Record<string, any>;
+    try {
+      const repaired = repairJson(rawText);
+      generated = JSON.parse(repaired);
+    } catch (parseErr) {
+      console.log('[seo-jsonld] JSON repair failed. Raw (first 300):', rawText.substring(0, 300));
+      return c.json({ success: false, error: `AI response was not valid JSON: ${String(parseErr)}` }, 500);
+    }
+
+    console.log(`✅ JSON-LD generated for "${pageName}"`);
+    return c.json({ success: true, data: { structuredData: JSON.stringify(generated, null, 2) } });
+  } catch (error) {
+    console.log('[seo-jsonld] error:', error);
+    return c.json({ success: false, error: `JSON-LD generation failed: ${String(error)}` }, 500);
+  }
+});
+
+// ========== TOOL REVIEWS ==========
+
+// GET /reviews?toolId=xxx — public: list all reviews for a tool
+app.get('/make-server-e07959ec/reviews', async (c) => {
+  const toolId = c.req.query('toolId');
+  if (!toolId) return c.json({ success: false, error: 'toolId query param required' }, 400);
+  try {
+    const reviews: any[] = await kv.getByPrefix(`review:${toolId}:`);
+    const cleaned = reviews
+      .filter(Boolean)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return c.json({ success: true, data: cleaned });
+  } catch (error) {
+    console.log('[reviews GET] error:', error);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
+// GET /tools-ratings — public: aggregate avg rating + count per toolId
+app.get('/make-server-e07959ec/tools-ratings', async (c) => {
+  try {
+    const allReviews: any[] = await kv.getByPrefix('review:');
+    const ratings: Record<string, { avg: number; count: number }> = {};
+    for (const review of allReviews.filter(Boolean)) {
+      if (!review?.toolId || !review?.rating) continue;
+      if (!ratings[review.toolId]) ratings[review.toolId] = { avg: 0, count: 0 };
+      ratings[review.toolId].count++;
+      ratings[review.toolId].avg += review.rating;
+    }
+    for (const toolId in ratings) {
+      ratings[toolId].avg = Math.round((ratings[toolId].avg / ratings[toolId].count) * 10) / 10;
+    }
+    return c.json({ success: true, data: ratings });
+  } catch (error) {
+    console.log('[tools-ratings] error:', error);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
+// GET /user/reviews — authenticated: all purchased tools + user's review for each
+app.get('/make-server-e07959ec/user/reviews', requireUserAuth, async (c) => {
+  const user = c.get('user');
+  try {
+    const { data: purchases, error: pErr } = await supabase
+      .from('user_purchases')
+      .select('tool_version_id, tool_versions!inner(tool_id, tools!inner(id, name, slug, image_url))')
+      .eq('user_id', user.id);
+    if (pErr) {
+      console.log('[user/reviews] purchases error:', pErr.message);
+      return c.json({ success: false, error: pErr.message }, 500);
+    }
+    // De-dup by tool_id
+    const toolMap: Record<string, { name: string; slug: string; imageUrl: string }> = {};
+    for (const p of (purchases || [])) {
+      const tv = (p as any).tool_versions;
+      if (tv?.tool_id && tv?.tools) {
+        toolMap[tv.tool_id] = {
+          name: tv.tools.name || '',
+          slug: tv.tools.slug || '',
+          imageUrl: tv.tools.image_url || '',
+        };
+      }
+    }
+    const toolIds = Object.keys(toolMap);
+    const reviewResults = await Promise.all(
+      toolIds.map(toolId => kv.get(`review:${toolId}:${user.id}`))
+    );
+    const result = reviewResults.map((review, i) => ({
+      toolId: toolIds[i],
+      toolName: toolMap[toolIds[i]].name,
+      toolSlug: toolMap[toolIds[i]].slug,
+      toolImageUrl: toolMap[toolIds[i]].imageUrl,
+      review: review || null,
+    }));
+    return c.json({ success: true, data: result });
+  } catch (error) {
+    console.log('[user/reviews] error:', error);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
+// POST /reviews — authenticated: create or update own review
+app.post('/make-server-e07959ec/reviews', requireUserAuth, async (c) => {
+  const user = c.get('user');
+  try {
+    const { toolId, rating, comment } = await c.req.json();
+    if (!toolId) return c.json({ success: false, error: 'toolId is required' }, 400);
+    const ratingNum = Number(rating);
+    if (!ratingNum || ratingNum < 1 || ratingNum > 5)
+      return c.json({ success: false, error: 'rating must be 1–5' }, 400);
+
+    // Verify user has purchased this tool
+    const { data: toolVersions, error: tvErr } = await supabase
+      .from('tool_versions').select('id').eq('tool_id', toolId);
+    if (tvErr) return c.json({ success: false, error: tvErr.message }, 500);
+    const versionIds = (toolVersions || []).map((v: any) => v.id);
+    if (versionIds.length === 0) return c.json({ success: false, error: 'Tool not found' }, 404);
+
+    // Primary check: match by tool_version_id (set when checkout had custom_data.tool_version_id)
+    let hasPurchase = false;
+    const { data: byVersion, error: pErr } = await supabase
+      .from('user_purchases').select('id')
+      .eq('user_id', user.id).in('tool_version_id', versionIds);
+    if (pErr) return c.json({ success: false, error: pErr.message }, 500);
+    hasPurchase = !!(byVersion && byVersion.length > 0);
+
+    // Fallback: match by product_name — handles purchases where tool_version_id was NULL
+    // (e.g. webhook received before the version ID was wired into the checkout link)
+    if (!hasPurchase) {
+      const { data: toolRow } = await supabase
+        .from('tools').select('name').eq('id', toolId).maybeSingle();
+      if (toolRow?.name) {
+        const { data: byName } = await supabase
+          .from('user_purchases').select('id')
+          .eq('user_id', user.id)
+          .ilike('product_name', toolRow.name);
+        hasPurchase = !!(byName && byName.length > 0);
+        if (hasPurchase)
+          console.log(`[reviews POST] ✅ Purchase verified by product_name fallback: "${toolRow.name}"`);
+      }
+    }
+
+    if (!hasPurchase)
+      return c.json({ success: false, error: 'You must purchase this tool to leave a review' }, 403);
+
+    const reviewKey = `review:${toolId}:${user.id}`;
+    const existing: any = await kv.get(reviewKey);
+    const now = new Date().toISOString();
+    const review = {
+      id: existing?.id || crypto.randomUUID(),
+      toolId,
+      userId: user.id,
+      userName: user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || 'Anonymous',
+      rating: ratingNum,
+      comment: (comment || '').trim(),
+      createdAt: existing?.createdAt || now,
+      updatedAt: now,
+    };
+    await kv.set(reviewKey, review);
+    console.log(`[reviews POST] ✅ Saved: tool=${toolId} user=${user.id} rating=${ratingNum}`);
+    return c.json({ success: true, data: review });
+  } catch (error) {
+    console.log('[reviews POST] error:', error);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
+// ── ADMIN REVIEW ENDPOINTS (requireAuth = X-Admin-Token) ──────────────────────
+
+// GET /admin/reviews — list every review stored in KV (real + fake)
+app.get('/make-server-e07959ec/admin/reviews', requireAuth, async (c) => {
+  try {
+    const all = await kv.getByPrefix('review:');
+    const reviews = (all || []).filter(Boolean);
+    console.log(`[admin/reviews GET] returning ${reviews.length} reviews`);
+    return c.json({ success: true, data: reviews });
+  } catch (error) {
+    console.log('[admin/reviews GET] error:', error);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
+// POST /admin/reviews — create or update a fake review (no purchase check)
+app.post('/make-server-e07959ec/admin/reviews', requireAuth, async (c) => {
+  try {
+    const { toolId, userId: existingUserId, userName, rating, comment, createdAt } = await c.req.json();
+    if (!toolId) return c.json({ success: false, error: 'toolId is required' }, 400);
+    const ratingNum = Number(rating);
+    if (!ratingNum || ratingNum < 1 || ratingNum > 5)
+      return c.json({ success: false, error: 'rating must be 1–5' }, 400);
+
+    const { data: toolRow } = await supabase.from('tools').select('id').eq('id', toolId).maybeSingle();
+    if (!toolRow) return c.json({ success: false, error: 'Tool not found' }, 404);
+
+    const now = new Date().toISOString();
+    const userId = existingUserId || `admin_${crypto.randomUUID()}`;
+    const reviewKey = `review:${toolId}:${userId}`;
+    const existing: any = await kv.get(reviewKey);
+
+    const review = {
+      id: existing?.id || crypto.randomUUID(),
+      toolId,
+      userId,
+      userName: (userName || 'Anonymous').trim(),
+      rating: ratingNum,
+      comment: (comment || '').trim(),
+      createdAt: createdAt ? new Date(createdAt).toISOString() : (existing?.createdAt || now),
+      updatedAt: now,
+      isFake: true,
+    };
+    await kv.set(reviewKey, review);
+    console.log(`[admin/reviews POST] ✅ Saved fake review: tool=${toolId} user=${userId} rating=${ratingNum}`);
+    return c.json({ success: true, data: review });
+  } catch (error) {
+    console.log('[admin/reviews POST] error:', error);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
+// DELETE /admin/reviews — delete any review by toolId + userId
+app.delete('/make-server-e07959ec/admin/reviews', requireAuth, async (c) => {
+  try {
+    const { toolId, userId } = await c.req.json();
+    if (!toolId || !userId) return c.json({ success: false, error: 'toolId and userId are required' }, 400);
+    const reviewKey = `review:${toolId}:${userId}`;
+    const existing = await kv.get(reviewKey);
+    if (!existing) return c.json({ success: false, error: 'Review not found' }, 404);
+    await kv.del(reviewKey);
+    console.log(`[admin/reviews DELETE] ✅ Deleted: tool=${toolId} user=${userId}`);
+    return c.json({ success: true });
+  } catch (error) {
+    console.log('[admin/reviews DELETE] error:', error);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
+// ── END ADMIN REVIEW ENDPOINTS ─────────────────────────────────────────────────
+
+// DELETE /reviews/:toolId — authenticated: delete own review
+app.delete('/make-server-e07959ec/reviews/:toolId', requireUserAuth, async (c) => {
+  const user = c.get('user');
+  const toolId = c.req.param('toolId');
+  try {
+    const reviewKey = `review:${toolId}:${user.id}`;
+    const existing = await kv.get(reviewKey);
+    if (!existing) return c.json({ success: false, error: 'Review not found' }, 404);
+    await kv.del(reviewKey);
+    console.log(`[reviews DELETE] ✅ Deleted: tool=${toolId} user=${user.id}`);
+    return c.json({ success: true });
+  } catch (error) {
+    console.log('[reviews DELETE] error:', error);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
 Deno.serve(app.fetch);

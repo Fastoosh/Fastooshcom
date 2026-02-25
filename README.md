@@ -1,7 +1,7 @@
 
-  # Responsive Website Design
+  # Fastoosh
 
-  This is a code bundle for Responsive Website Design. The original project is available at https://www.figma.com/design/jFvlEHClQ36zuTvusXMDVi/Responsive-Website-Design.
+  This is a code bundle for Fastoosh. The original project is available at https://www.figma.com/design/jFvlEHClQ36zuTvusXMDVi/Fastoosh.
 
   ## Running the code
 

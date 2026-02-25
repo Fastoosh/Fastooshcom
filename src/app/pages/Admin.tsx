@@ -5,10 +5,15 @@ import { GlassCard } from '../components/shared/GlassCard';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Textarea } from '../components/ui/textarea';
+import { AdminSelect } from '../components/admin/AdminSelect';
 import { Plus, Pencil, Trash2, Save, X, LogOut, Upload, Sparkles } from 'lucide-react';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import { ToolFormNew } from '../components/admin/ToolFormNew';
 import { LeadsTab } from '../components/admin/LeadsTab';
+import { SeoTab } from '../components/admin/SeoTab';
+import { HomeTab } from '../components/admin/HomeTab';
+import { AdminReviewsTab } from '../components/admin/AdminReviewsTab';
+import { invalidateSiteSettingsCache } from '../components/shared/SeoHead';
 
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-e07959ec`;
 
@@ -82,6 +87,9 @@ interface TeamMember {
 interface Settings {
   showreelUrl?: string;
   faviconUrl?: string;
+  siteUrl?: string;
+  defaultOgImage?: string;
+  calendlyUrl?: string;
   projectCategories?: string[];
   toolCategories?: string[];
   toolStatuses?: { label: string; color: string }[];
@@ -494,6 +502,7 @@ export function Admin() {
 
       const result = await response.json();
       if (result.success) {
+        invalidateSiteSettingsCache();
         await loadData();
         setEditingSettings(false);
       } else {
@@ -562,8 +571,11 @@ export function Admin() {
             <TabsTrigger value="projects">Projects</TabsTrigger>
             <TabsTrigger value="tools">Tools</TabsTrigger>
             <TabsTrigger value="team">Team</TabsTrigger>
+            <TabsTrigger value="home">Home</TabsTrigger>
             <TabsTrigger value="settings">Settings</TabsTrigger>
             <TabsTrigger value="leads">Leads</TabsTrigger>
+            <TabsTrigger value="reviews">Reviews</TabsTrigger>
+            <TabsTrigger value="seo">SEO</TabsTrigger>
           </TabsList>
 
           {/* PROJECTS TAB */}
@@ -802,15 +814,26 @@ export function Admin() {
               )}
 
               <div className="space-y-4">
-                <div
-                  className="flex justify-between items-center p-4 bg-white/5 rounded-lg border border-white/10"
-                >
-                  <div>
-                    <h3 className="text-white font-semibold">Showreel URL</h3>
-                    <p className="text-gray-400 text-sm">
-                      {settings.showreelUrl || 'Not set'}
-                    </p>
-                  </div>
+                <div className="p-4 bg-white/5 rounded-lg border border-white/10">
+                  <h3 className="text-white font-semibold mb-1">Site URL</h3>
+                  <p className="text-gray-400 text-sm">{settings.siteUrl || 'Not set'}</p>
+                  <p className="text-gray-600 text-xs mt-0.5">Used to auto-generate canonical URLs in the SEO Manager.</p>
+                </div>
+
+                <div className="p-4 bg-white/5 rounded-lg border border-white/10">
+                  <h3 className="text-white font-semibold mb-2">Default OG Image</h3>
+                  {settings.defaultOgImage ? (
+                    <div className="flex items-center gap-3">
+                      <img
+                        src={settings.defaultOgImage}
+                        alt="Default OG"
+                        className="w-24 h-14 rounded object-cover border border-white/10"
+                      />
+                      <p className="text-gray-400 text-xs truncate max-w-xs">{settings.defaultOgImage}</p>
+                    </div>
+                  ) : (
+                    <p className="text-gray-500 text-sm">Not set — used as fallback OG image for pages without a custom image.</p>
+                  )}
                 </div>
 
                 <div className="p-4 bg-white/5 rounded-lg border border-white/10">
@@ -913,6 +936,12 @@ export function Admin() {
                     </p>
                   </div>
                 </div>
+
+                <div className="p-4 bg-white/5 rounded-lg border border-white/10">
+                  <h3 className="text-white font-semibold mb-1">Calendly Booking URL</h3>
+                  <p className="text-gray-400 text-sm">{settings.calendlyUrl || 'Not set'}</p>
+                  <p className="text-gray-600 text-xs mt-0.5">Used on the "Work with us" page for the discovery call booking widget.</p>
+                </div>
                 
               </div>
             </GlassCard>
@@ -921,6 +950,32 @@ export function Admin() {
           {/* LEADS TAB */}
           <TabsContent value="leads">
             <LeadsTab />
+          </TabsContent>
+
+          {/* HOME TAB */}
+          <TabsContent value="home">
+            <GlassCard className="p-6 mb-6">
+              <HomeTab />
+            </GlassCard>
+          </TabsContent>
+
+          {/* REVIEWS TAB */}
+          <TabsContent value="reviews">
+            <AdminReviewsTab />
+          </TabsContent>
+
+          {/* SEO TAB */}
+          <TabsContent value="seo">
+            <GlassCard className="p-6">
+              <div className="mb-6">
+                <h2 className="text-2xl font-bold text-white">SEO Manager</h2>
+                <p className="text-gray-400 text-sm mt-1">
+                  Manage meta tags, Open Graph, and Twitter cards for every page.
+                  Use the ✨ AI button to auto-generate content.
+                </p>
+              </div>
+              <SeoTab />
+            </GlassCard>
           </TabsContent>
 
         </Tabs>
@@ -1334,20 +1389,16 @@ function ProjectForm({
             <label className="block text-sm font-medium text-gray-300 mb-2">
               Category *
             </label>
-            <select
+            <AdminSelect
               value={formData.category || ''}
-              onChange={(e) => {
-                setFormData({ ...formData, category: e.target.value });
+              onChange={(v) => {
+                setFormData({ ...formData, category: v });
                 setErrors(prev => ({ ...prev, category: '' }));
               }}
-              className={`w-full px-3 py-2 bg-black/50 border rounded-md text-white focus:outline-none focus:ring-2 focus:ring-purple-500 ${errors.category ? 'border-red-500' : 'border-white/20'}`}
-            >
-              {categories.map((category) => (
-                <option key={category} value={category}>
-                  {category}
-                </option>
-              ))}
-            </select>
+              options={categories.map((c) => ({ value: c, label: c }))}
+              placeholder="Select category"
+              className={errors.category ? 'ring-1 ring-red-500 rounded-lg' : ''}
+            />
             {errors.category && (
               <p className="text-red-400 text-sm mt-1">{errors.category}</p>
             )}
@@ -2479,7 +2530,6 @@ function SettingsForm({
   });
   const [uploading, setUploading] = useState(false);
   const [uploadingFavicon, setUploadingFavicon] = useState(false);
-  const [videoInputMode, setVideoInputMode] = useState<'url' | 'upload'>('url');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [newCategory, setNewCategory] = useState('');
   const [newToolCategory, setNewToolCategory] = useState('');
@@ -2574,41 +2624,7 @@ function SettingsForm({
     }
   };
 
-  const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
 
-    setUploading(true);
-    setErrors(prev => ({ ...prev, videoUpload: '' }));
-    
-    try {
-      const token = localStorage.getItem('admin_token');
-      const uploadFormData = new FormData();
-      uploadFormData.append('file', file);
-
-      const response = await fetch(`${API_BASE}/upload-video`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${publicAnonKey}`,
-          'X-Admin-Token': token || '',
-        },
-        body: uploadFormData,
-      });
-
-      const result = await response.json();
-      if (result.success) {
-        setFormData(prev => ({ ...prev, showreelUrl: result.data.url }));
-        setErrors(prev => ({ ...prev, videoUpload: '', showreelUrl: '' }));
-      } else {
-        setErrors(prev => ({ ...prev, videoUpload: `Upload failed: ${result.error}` }));
-      }
-    } catch (error) {
-      console.error('Upload error:', error);
-      setErrors(prev => ({ ...prev, videoUpload: 'Failed to upload video. Please try again.' }));
-    } finally {
-      setUploading(false);
-    }
-  };
 
   return (
     <div className="mb-6 p-6 bg-white/10 rounded-lg border border-white/20">
@@ -2675,89 +2691,59 @@ function SettingsForm({
           </div>
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">
-            Showreel Video
-          </label>
-          <div className="flex gap-2 mb-2">
-            <button
-              type="button"
-              onClick={() => setVideoInputMode('url')}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                videoInputMode === 'url'
-                  ? 'bg-purple-500 text-white'
-                  : 'bg-white/10 text-gray-400 hover:bg-white/20'
-              }`}
-            >
-              Paste URL
-            </button>
-            <button
-              type="button"
-              onClick={() => setVideoInputMode('upload')}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                videoInputMode === 'upload'
-                  ? 'bg-purple-500 text-white'
-                  : 'bg-white/10 text-gray-400 hover:bg-white/20'
-              }`}
-            >
-              Upload File
-            </button>
-          </div>
-          
-          {videoInputMode === 'url' ? (
+        {/* SEO Global Settings */}
+        <div className="mt-6 pt-6 border-t border-white/10">
+          <h4 className="text-lg font-semibold text-white mb-1">Global SEO Defaults</h4>
+          <p className="text-sm text-gray-400 mb-4">Used across all pages in the SEO Manager as automatic fallbacks.</p>
+          <div className="space-y-4">
             <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Site URL</label>
               <Input
-                placeholder="https://player.vimeo.com/video/123456789 or YouTube embed URL"
-                value={formData.showreelUrl || ''}
-                onChange={(e) => {
-                  setFormData({ ...formData, showreelUrl: e.target.value });
-                  setErrors(prev => ({ ...prev, showreelUrl: '' }));
-                }}
-                className={`bg-black/50 border-white/20 text-white ${errors.showreelUrl ? 'border-red-500' : ''}`}
+                placeholder="https://fastoosh.com"
+                value={formData.siteUrl || ''}
+                onChange={(e) => setFormData({ ...formData, siteUrl: e.target.value })}
+                className="bg-black/50 border-white/20 text-white"
               />
-              <p className="text-xs text-gray-400 mt-2">
-                Use the embed URL from Vimeo or YouTube (e.g., https://player.vimeo.com/video/123456789 or https://www.youtube.com/embed/abc123)
-              </p>
-              {errors.showreelUrl && (
-                <p className="text-red-400 text-sm mt-1">{errors.showreelUrl}</p>
-              )}
+              <p className="text-xs text-gray-500 mt-1">Used to auto-generate canonical URLs (e.g. https://fastoosh.com/tools).</p>
             </div>
-          ) : (
             <div>
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => document.getElementById('showreelVideoUpload')?.click()}
-                  disabled={uploading}
-                  className={`w-full ${errors.showreelUrl || errors.videoUpload ? 'border-red-500' : ''}`}
-                >
-                  {uploading ? 'Uploading...' : 'Choose Video to Upload'}
-                </Button>
-              </div>
-              <input
-                type="file"
-                id="showreelVideoUpload"
-                accept="video/*"
-                onChange={handleVideoUpload}
-                className="hidden"
+              <label className="block text-sm font-medium text-gray-300 mb-2">Default OG Image URL</label>
+              <Input
+                placeholder="https://fastoosh.com/og-default.jpg"
+                value={formData.defaultOgImage || ''}
+                onChange={(e) => setFormData({ ...formData, defaultOgImage: e.target.value })}
+                className="bg-black/50 border-white/20 text-white"
               />
-              <p className="text-xs text-gray-400 mt-2">
-                Supported formats: MP4, MOV, AVI, WebM (max 100MB)
-              </p>
-              {formData.showreelUrl && !errors.videoUpload && (
-                <p className="text-xs text-green-400 mt-2">✓ Video uploaded successfully</p>
-              )}
-              {errors.videoUpload && (
-                <p className="text-red-400 text-sm mt-1">{errors.videoUpload}</p>
-              )}
-              {errors.showreelUrl && !errors.videoUpload && (
-                <p className="text-red-400 text-sm mt-1">{errors.showreelUrl}</p>
+              <p className="text-xs text-gray-500 mt-1">1200×630px recommended. Used as fallback when no page-specific OG image is set.</p>
+              {formData.defaultOgImage && (
+                <img
+                  src={formData.defaultOgImage}
+                  alt="OG preview"
+                  className="mt-2 rounded-lg max-h-24 border border-white/10 object-cover"
+                  onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                />
               )}
             </div>
-          )}
+          </div>
         </div>
-        
+
+        {/* Calendly URL Section */}
+        <div className="mt-6 pt-6 border-t border-white/10">
+          <h4 className="text-lg font-semibold text-white mb-1">Calendly Booking URL</h4>
+          <p className="text-sm text-gray-400 mb-3">
+            The scheduling link shown on the "Work with us" page. Copy it from your Calendly dashboard.
+          </p>
+          <Input
+            placeholder="https://calendly.com/your-name/discovery-call"
+            value={formData.calendlyUrl || ''}
+            onChange={(e) => setFormData({ ...formData, calendlyUrl: e.target.value })}
+            className="bg-black/50 border-white/20 text-white"
+          />
+          <p className="text-xs text-gray-500 mt-1.5">
+            Example: <span className="text-gray-400">https://calendly.com/fastoosh/discovery-call</span>
+          </p>
+        </div>
+
         {/* Social Media Links Section */}
         <div className="mt-6 pt-6 border-t border-white/10">
           <h4 className="text-lg font-semibold text-white mb-4">Social Media Links</h4>

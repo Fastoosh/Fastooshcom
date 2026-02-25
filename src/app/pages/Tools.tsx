@@ -1,9 +1,13 @@
-import { motion } from "motion/react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { motion } from 'motion/react';
 import { GlassCard } from "../components/shared/GlassCard";
 import { NeonButton } from "../components/shared/NeonButton";
+import { SeoHead } from "../components/shared/SeoHead";
 import { Zap, Star, Crown } from "lucide-react";
 import { api } from "../utils/api";
+import { projectId, publicAnonKey } from '/utils/supabase/info';
+
+const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-e07959ec`;
 
 // Fallback tools (used if API fails or returns no data)
 const fallbackTools = [
@@ -88,10 +92,24 @@ export function Tools() {
   const [tools, setTools] = useState(fallbackTools);
   const [loading, setLoading] = useState(true);
   const [statuses, setStatuses] = useState<{ label: string; color: string }[]>(DEFAULT_STATUSES);
+  const [ratings, setRatings] = useState<Record<string, { avg: number; count: number }>>({});
 
   useEffect(() => {
     loadTools();
+    fetchRatings();
   }, []);
+
+  const fetchRatings = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/tools-ratings`, {
+        headers: { Authorization: `Bearer ${publicAnonKey}` },
+      });
+      const data = await res.json();
+      if (data.success) setRatings(data.data || {});
+    } catch (err) {
+      console.warn('Could not load ratings:', err);
+    }
+  };
 
   const loadTools = async () => {
     try {
@@ -144,6 +162,13 @@ export function Tools() {
 
   return (
     <div className="min-h-screen py-24 px-6">
+      <SeoHead
+        pageKey="tools"
+        fallback={{
+          title: "Tools — After Effects Plugins & Scripts by Fastoosh",
+          description: "Discover Fastoosh's professional After Effects plugins, automation scripts, and motion design tools trusted by leading studios and motion designers worldwide.",
+        }}
+      />
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <motion.div
@@ -215,7 +240,16 @@ export function Tools() {
 
                   {/* Content */}
                   <div className="p-6 flex flex-col flex-grow">
-                    <h3 className="text-xl mb-2">{tool.name}</h3>
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <h3 className="text-xl">{tool.name}</h3>
+                      {ratings[tool.id] && (
+                        <div className="flex items-center gap-1 flex-shrink-0 mt-1">
+                          <Star className="w-3.5 h-3.5 text-yellow-400 fill-yellow-400" />
+                          <span className="text-yellow-400 text-xs font-bold">{ratings[tool.id].avg}</span>
+                          <span className="text-white/25 text-xs">({ratings[tool.id].count})</span>
+                        </div>
+                      )}
+                    </div>
                     <p className="text-white/60 mb-6 flex-grow text-sm leading-relaxed">{tool.description}</p>
 
                     {/* CTA */}
@@ -239,12 +273,12 @@ export function Tools() {
           viewport={{ once: true }}
           className="text-center"
         >
-          <GlassCard className="p-12">
+          <GlassCard className="p-12 w-full">
             <h3 className="text-2xl mb-4">Need help or custom development?</h3>
             <p className="text-white/60 mb-6">
               All tools include documentation and email support. Custom scripts available on request.
             </p>
-            <NeonButton href="/work-with-us" variant="secondary">Contact us</NeonButton>
+            <NeonButton href="/work-with-us">Work with us</NeonButton>
           </GlassCard>
         </motion.div>
       </div>

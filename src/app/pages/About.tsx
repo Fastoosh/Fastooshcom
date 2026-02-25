@@ -1,10 +1,11 @@
+import { useState, useEffect } from "react";
 import { motion } from "motion/react";
 import { GlassCard } from "../components/shared/GlassCard";
 import { NeonButton } from "../components/shared/NeonButton";
+import { SeoHead } from "../components/shared/SeoHead";
 import { Target, Zap, Heart, Shield } from "lucide-react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faLinkedin, faInstagram, faBehance, faDribbble } from "@fortawesome/free-brands-svg-icons";
-import { useState, useEffect } from "react";
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-e07959ec`;
@@ -73,6 +74,13 @@ export function About() {
 
   return (
     <div className="min-h-screen py-24 px-6">
+      <SeoHead
+        pageKey="about"
+        fallback={{
+          title: "About — Fastoosh Motion Design Studio",
+          description: "Meet the Fastoosh team — a collective of motion designers, animators, and VFX artists passionate about crafting extraordinary visual experiences.",
+        }}
+      />
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <motion.div
@@ -262,7 +270,7 @@ export function About() {
           viewport={{ once: true }}
           className="text-center"
         >
-          <GlassCard neonBorder className="p-12">
+          <GlassCard className="p-12 w-full">
             <h3 className="text-3xl mb-4">Let's work together</h3>
             <p className="text-white/60 mb-8 max-w-2xl mx-auto">
               We're always looking for exciting projects. If you're building something ambitious, 

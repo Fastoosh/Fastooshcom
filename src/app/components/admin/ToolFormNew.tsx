@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
+import { AdminSelect } from './AdminSelect';
 import { Plus, Save, X, Upload, Copy, Trash2, Sparkles } from 'lucide-react';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 
@@ -651,17 +651,11 @@ export function ToolFormNew({
             <label className="block text-sm font-medium text-gray-300 mb-2">
               Status
             </label>
-            <select
+            <AdminSelect
               value={formData.category}
-              onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-              className="w-full px-3 py-2 bg-black/50 border border-white/20 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-            >
-              {statuses.map((status) => (
-                <option key={status} value={status}>
-                  {status}
-                </option>
-              ))}
-            </select>
+              onChange={(v) => setFormData({ ...formData, category: v })}
+              options={statuses.map((s) => ({ value: s, label: s }))}
+            />
           </div>
 
           <div>

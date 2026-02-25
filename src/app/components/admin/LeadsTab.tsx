@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { GlassCard } from '../shared/GlassCard';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
+import { AdminSelect } from './AdminSelect';
 import {
   Download, RefreshCw, Search, Mail, Calendar,
   Wrench, ChevronUp, ChevronDown, ChevronsUpDown, Users,
@@ -258,27 +259,29 @@ export function LeadsTab() {
         </div>
 
         {toolNames.length > 0 && (
-          <select
+          <AdminSelect
             value={toolFilter}
-            onChange={e => setToolFilter(e.target.value)}
-            className="bg-white/5 border border-white/10 text-white text-sm rounded-lg px-3 py-2
-              focus:outline-none focus:border-purple-500/50 min-w-36"
-          >
-            <option value="">All tools</option>
-            {toolNames.map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
+            onChange={setToolFilter}
+            options={[
+              { value: '', label: 'All tools' },
+              ...toolNames.map(t => ({ value: t, label: t })),
+            ]}
+            placeholder="All tools"
+            className="min-w-[9rem]"
+          />
         )}
 
         {categories.length > 0 && (
-          <select
+          <AdminSelect
             value={catFilter}
-            onChange={e => setCatFilter(e.target.value)}
-            className="bg-white/5 border border-white/10 text-white text-sm rounded-lg px-3 py-2
-              focus:outline-none focus:border-purple-500/50 min-w-36"
-          >
-            <option value="">All categories</option>
-            {categories.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
+            onChange={setCatFilter}
+            options={[
+              { value: '', label: 'All categories' },
+              ...categories.map(c => ({ value: c, label: c })),
+            ]}
+            placeholder="All categories"
+            className="min-w-[10rem]"
+          />
         )}
       </div>
 
