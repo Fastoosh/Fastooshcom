@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { GlassCard } from '../shared/GlassCard';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -6,7 +6,9 @@ import { AdminSelect } from './AdminSelect';
 import {
   Download, RefreshCw, Search, Mail, Calendar,
   Wrench, ChevronUp, ChevronDown, ChevronsUpDown, Users,
-  UserPlus, Tag, Layers,
+  UserPlus, Tag, Layers, Monitor, Globe, Smartphone, Tablet,
+  MousePointer2, Clock, TrendingUp, CheckCircle2, Activity,
+  Chrome, Navigation, ShoppingCart,
 } from 'lucide-react';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 
@@ -24,6 +26,24 @@ interface Lead {
   toolVersionId: string;
   createdAt:     string;
   displayName?:  string;
+}
+
+interface LeadBehavior {
+  sessionCount:  number;
+  firstSeen:     string;
+  lastSeen:      string;
+  totalDuration: number;
+  pagesVisited:  string[];
+  toolsViewed:   string[];
+  funnelStage:   'visit' | 'tool_view' | 'buy_click' | 'purchase';
+  converted:     boolean;
+  device:        string;
+  browser:       string;
+  os:            string;
+  referrer:      string;
+  utmSource?:    string | null;
+  utmMedium?:    string | null;
+  utmCampaign?:  string | null;
 }
 
 type SortKey = 'email' | 'toolName' | 'toolCategory' | 'tier' | 'source' | 'createdAt';
@@ -64,6 +84,26 @@ function exportCSV(leads: Lead[]) {
   URL.revokeObjectURL(url);
 }
 
+function fmtDuration(sec: number): string {
+  if (!sec || sec <= 0) return '0s';
+  if (sec < 60)   return `${sec}s`;
+  if (sec < 3600) return `${Math.floor(sec / 60)}m ${sec % 60}s`;
+  return `${Math.floor(sec / 3600)}h ${Math.floor((sec % 3600) / 60)}m`;
+}
+
+function fmtDate(iso: string) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
+}
+
+function shortDate(iso: string) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
 // ── Badge config ──────────────────────────────────────────────────────────────
 
 const TIER_STYLES: Record<string, string> = {
@@ -81,6 +121,13 @@ const SOURCE_STYLES: Record<string, string> = {
 const SOURCE_LABELS: Record<string, string> = {
   free_download: 'Free Download',
   signup:        'Sign-up',
+};
+
+const FUNNEL_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
+  visit:     { label: 'Visited',   color: 'bg-white/10 text-white/50 border-white/10',          icon: <Navigation   className="w-3 h-3" /> },
+  tool_view: { label: 'Tool View', color: 'bg-blue-500/15 text-blue-300 border-blue-500/20',    icon: <MousePointer2 className="w-3 h-3" /> },
+  buy_click: { label: 'Buy Click', color: 'bg-amber-500/15 text-amber-300 border-amber-500/20', icon: <TrendingUp   className="w-3 h-3" /> },
+  purchase:  { label: 'Purchased', color: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/20', icon: <ShoppingCart className="w-3 h-3" /> },
 };
 
 // ── Filter pill component ─────────────────────────────────────────────────────
@@ -111,6 +158,206 @@ function SortIcon({ k, sortKey, sortDir }: { k: SortKey; sortKey: SortKey; sortD
     : <ChevronDown className="w-3.5 h-3.5 text-purple-400" />;
 }
 
+// ── Behavior panel ────────────────────────────────────────────────────────────
+
+function DeviceIcon({ device }: { device: string }) {
+  if (device === 'mobile')  return <Smartphone className="w-3.5 h-3.5 text-white/40" />;
+  if (device === 'tablet')  return <Tablet     className="w-3.5 h-3.5 text-white/40" />;
+  return <Monitor className="w-3.5 h-3.5 text-white/40" />;
+}
+
+interface LeadBehaviorPanelProps {
+  email: string;
+  cache: Record<string, LeadBehavior | null | 'loading'>;
+  onCached: (email: string, data: LeadBehavior | null) => void;
+}
+
+function LeadBehaviorPanel({ email, cache, onCached }: LeadBehaviorPanelProps) {
+  const [state, setState] = useState<LeadBehavior | null | 'loading'>(
+    cache[email] !== undefined ? cache[email] : 'loading'
+  );
+
+  useEffect(() => {
+    if (cache[email] !== undefined) {
+      setState(cache[email]);
+      return;
+    }
+    setState('loading');
+    fetch(`${API_BASE}/admin/leads/behavior?email=${encodeURIComponent(email)}`, {
+      headers: getAuthHeaders(),
+    })
+      .then(r => r.json())
+      .then(d => {
+        const val = d.success ? (d.data ?? null) : null;
+        onCached(email, val);
+        setState(val);
+      })
+      .catch(() => {
+        onCached(email, null);
+        setState(null);
+      });
+  }, [email]);
+
+  if (state === 'loading') {
+    return (
+      <div className="flex items-center gap-2 py-4 px-2 text-white/25 text-xs animate-pulse">
+        <Activity className="w-3.5 h-3.5" />
+        Loading behavioral data…
+      </div>
+    );
+  }
+
+  if (!state) {
+    return (
+      <div className="flex items-center gap-2 py-4 px-2 text-white/20 text-xs">
+        <Activity className="w-3.5 h-3.5" />
+        No behavioral sessions found for this email yet.
+      </div>
+    );
+  }
+
+  const funnel = FUNNEL_CONFIG[state.funnelStage] ?? FUNNEL_CONFIG.visit;
+
+  return (
+    <div className="py-3 px-1 space-y-3 animate-[fadeIn_0.2s_ease]">
+
+      {/* ── Stats row ── */}
+      <div className="flex flex-wrap gap-2">
+
+        {/* Sessions */}
+        <div className="flex items-center gap-1.5 bg-white/4 border border-white/8 rounded-lg px-3 py-1.5">
+          <Globe className="w-3.5 h-3.5 text-purple-400 flex-shrink-0" />
+          <span className="text-white font-semibold text-xs">{state.sessionCount}</span>
+          <span className="text-white/35 text-xs">session{state.sessionCount !== 1 ? 's' : ''}</span>
+        </div>
+
+        {/* Time on site */}
+        <div className="flex items-center gap-1.5 bg-white/4 border border-white/8 rounded-lg px-3 py-1.5">
+          <Clock className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" />
+          <span className="text-white font-semibold text-xs">{fmtDuration(state.totalDuration)}</span>
+          <span className="text-white/35 text-xs">total time</span>
+        </div>
+
+        {/* First → last seen */}
+        <div className="flex items-center gap-1.5 bg-white/4 border border-white/8 rounded-lg px-3 py-1.5">
+          <Calendar className="w-3.5 h-3.5 text-white/30 flex-shrink-0" />
+          <span className="text-white/50 text-xs">{shortDate(state.firstSeen)}</span>
+          {state.firstSeen !== state.lastSeen && (
+            <>
+              <span className="text-white/20 text-xs">→</span>
+              <span className="text-white/50 text-xs">{shortDate(state.lastSeen)}</span>
+            </>
+          )}
+        </div>
+
+        {/* Funnel stage */}
+        <div className={`flex items-center gap-1.5 border rounded-lg px-3 py-1.5 ${funnel.color}`}>
+          {funnel.icon}
+          <span className="text-xs font-medium">{funnel.label}</span>
+        </div>
+
+        {/* Converted */}
+        {state.converted && (
+          <div className="flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-1.5">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+            <span className="text-emerald-300 text-xs font-medium">Converted</span>
+          </div>
+        )}
+      </div>
+
+      {/* ── Two-column details ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+
+        {/* Pages visited */}
+        <div className="space-y-1.5">
+          <p className="text-white/25 text-[10px] uppercase tracking-widest font-medium flex items-center gap-1">
+            <Navigation className="w-3 h-3" /> Pages visited
+          </p>
+          {state.pagesVisited.length > 0 ? (
+            <div className="flex flex-wrap gap-1">
+              {state.pagesVisited.map(p => (
+                <span key={p}
+                  className="px-2 py-0.5 rounded-md text-[10px] bg-white/5 border border-white/8 text-white/50 font-mono">
+                  {p}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <span className="text-white/20 text-xs">—</span>
+          )}
+        </div>
+
+        {/* Tools viewed */}
+        <div className="space-y-1.5">
+          <p className="text-white/25 text-[10px] uppercase tracking-widest font-medium flex items-center gap-1">
+            <Wrench className="w-3 h-3" /> Tools viewed
+          </p>
+          {state.toolsViewed.length > 0 ? (
+            <div className="flex flex-wrap gap-1">
+              {state.toolsViewed.map(t => (
+                <span key={t}
+                  className="px-2 py-0.5 rounded-md text-[10px] bg-purple-500/10 border border-purple-500/20 text-purple-300">
+                  {t}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <span className="text-white/20 text-xs">—</span>
+          )}
+        </div>
+
+        {/* Device + env */}
+        <div className="space-y-1.5">
+          <p className="text-white/25 text-[10px] uppercase tracking-widest font-medium flex items-center gap-1">
+            <Monitor className="w-3 h-3" /> Environment
+          </p>
+          <div className="flex flex-wrap gap-1.5 items-center">
+            <span className="flex items-center gap-1 text-white/45 text-xs">
+              <DeviceIcon device={state.device} />
+              {state.device}
+            </span>
+            {state.browser && (
+              <span className="flex items-center gap-1 text-white/45 text-xs">
+                <Chrome className="w-3 h-3 text-white/30" />
+                {state.browser}
+              </span>
+            )}
+            {state.os && (
+              <span className="text-white/30 text-xs">{state.os}</span>
+            )}
+          </div>
+        </div>
+
+        {/* Referrer + UTM */}
+        <div className="space-y-1.5">
+          <p className="text-white/25 text-[10px] uppercase tracking-widest font-medium flex items-center gap-1">
+            <Globe className="w-3 h-3" /> Traffic source
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {state.referrer ? (
+              <span className="text-white/40 text-xs truncate max-w-[200px]">
+                {state.referrer.replace(/^https?:\/\//, '').split('/')[0]}
+              </span>
+            ) : (
+              <span className="text-white/20 text-xs">Direct</span>
+            )}
+            {state.utmSource && (
+              <span className="px-2 py-0.5 rounded-md text-[10px] bg-pink-500/10 border border-pink-500/20 text-pink-300">
+                utm: {state.utmSource}{state.utmMedium ? ` / ${state.utmMedium}` : ''}
+              </span>
+            )}
+            {state.utmCampaign && (
+              <span className="px-2 py-0.5 rounded-md text-[10px] bg-amber-500/10 border border-amber-500/20 text-amber-300">
+                {state.utmCampaign}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function LeadsTab() {
@@ -118,10 +365,15 @@ export function LeadsTab() {
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState('');
 
+  // Expandable rows
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const behaviorCacheRef = useRef<Record<string, LeadBehavior | null | 'loading'>>({});
+  const [, forceUpdate] = useState(0); // trigger re-render when cache updates
+
   // Filters
   const [search,       setSearch]       = useState('');
-  const [sourceFilter, setSourceFilter] = useState<string>('');   // '' = All
-  const [tierFilter,   setTierFilter]   = useState<string>('');   // '' = All
+  const [sourceFilter, setSourceFilter] = useState<string>('');
+  const [tierFilter,   setTierFilter]   = useState<string>('');
   const [toolFilter,   setToolFilter]   = useState('');
   const [catFilter,    setCatFilter]    = useState('');
 
@@ -149,7 +401,23 @@ export function LeadsTab() {
 
   useEffect(() => { loadLeads(); }, [loadLeads]);
 
-  // ── Derived lists for filter options ──────────────────────────────────────
+  // ── Row expand / collapse ─────────────────────────────────────────────────
+
+  const toggleRow = (key: string) => {
+    setExpandedRows(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const handleCached = (email: string, data: LeadBehavior | null) => {
+    behaviorCacheRef.current[email] = data;
+    forceUpdate(n => n + 1);
+  };
+
+  // ── Derived lists ─────────────────────────────────────────────────────────
 
   const toolNames  = useMemo(() =>
     [...new Set(leads.map(l => l.toolName).filter(Boolean))].sort(), [leads]);
@@ -158,7 +426,7 @@ export function LeadsTab() {
   const tiers      = useMemo(() =>
     [...new Set(leads.map(l => l.tier))].sort(), [leads]);
 
-  // ── Filter + sort ──────────────────────────────────────────────────────────
+  // ── Filter + sort ─────────────────────────────────────────────────────────
 
   const filtered = useMemo(() => leads.filter(l => {
     const q = search.toLowerCase();
@@ -189,13 +457,13 @@ export function LeadsTab() {
     else { setSortKey(key); setSortDir('asc'); }
   };
 
-  // ── Stats ──────────────────────────────────────────────────────────────────
+  // ── Stats ─────────────────────────────────────────────────────────────────
 
-  const totalUnique    = new Set(leads.map(l => l.email.toLowerCase())).size;
-  const freeCount      = leads.filter(l => l.source === 'free_download').length;
-  const signupCount    = leads.filter(l => l.source === 'signup').length;
+  const totalUnique = new Set(leads.map(l => l.email.toLowerCase())).size;
+  const freeCount   = leads.filter(l => l.source === 'free_download').length;
+  const signupCount = leads.filter(l => l.source === 'signup').length;
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <GlassCard className="p-6">
@@ -231,10 +499,10 @@ export function LeadsTab() {
       {/* ── Stats ── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         {[
-          { label: 'Total entries',    value: leads.length,   icon: <Mail     className="w-4 h-4 text-white/40"   />, color: '' },
-          { label: 'Unique emails',    value: totalUnique,    icon: <Users    className="w-4 h-4 text-purple-400" />, color: '' },
-          { label: 'Free downloads',   value: freeCount,      icon: <Download className="w-4 h-4 text-emerald-400"/>, color: '' },
-          { label: 'Signed-up users',  value: signupCount,    icon: <UserPlus className="w-4 h-4 text-sky-400"    />, color: '' },
+          { label: 'Total entries',   value: leads.length,  icon: <Mail     className="w-4 h-4 text-white/40"   /> },
+          { label: 'Unique emails',   value: totalUnique,   icon: <Users    className="w-4 h-4 text-purple-400" /> },
+          { label: 'Free downloads',  value: freeCount,     icon: <Download className="w-4 h-4 text-emerald-400"/> },
+          { label: 'Signed-up users', value: signupCount,   icon: <UserPlus className="w-4 h-4 text-sky-400"    /> },
         ].map(s => (
           <div key={s.label} className="bg-white/5 border border-white/8 rounded-xl px-4 py-3 flex items-center gap-3">
             {s.icon}
@@ -332,12 +600,12 @@ export function LeadsTab() {
             <thead>
               <tr className="border-b border-white/8 bg-white/3">
                 {([
-                  ['email',     'Email'],
-                  ['source',    'Source'],
-                  ['tier',      'Tier'],
-                  ['toolName',  'Tool'],
+                  ['email',        'Email'],
+                  ['source',       'Source'],
+                  ['tier',         'Tier'],
+                  ['toolName',     'Tool'],
                   ['toolCategory', 'Category'],
-                  ['createdAt', 'Date'],
+                  ['createdAt',    'Date'],
                 ] as [SortKey, string][]).map(([key, label]) => (
                   <th key={key} className="text-left px-4 py-3">
                     <button
@@ -350,86 +618,111 @@ export function LeadsTab() {
                     </button>
                   </th>
                 ))}
+                {/* expand column */}
+                <th className="w-10 px-3 py-3" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-white/5">
-              {sorted.map((lead, i) => (
-                <tr
-                  key={`${lead.email}-${lead.source}-${lead.toolVersionId}-${i}`}
-                  className="hover:bg-white/3 transition-colors"
-                >
-                  {/* Email */}
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0
-                        ${lead.source === 'signup'
-                          ? 'bg-sky-500/15 border border-sky-500/20'
-                          : 'bg-emerald-500/15 border border-emerald-500/20'}`}>
-                        {lead.source === 'signup'
-                          ? <UserPlus className="w-3 h-3 text-sky-400" />
-                          : <Download className="w-3 h-3 text-emerald-400" />}
+            {sorted.map((lead, i) => {
+              const rowKey     = `${lead.email}-${lead.source}-${lead.toolVersionId}-${i}`;
+              const isExpanded = expandedRows.has(rowKey);
+
+              return (
+                <tbody key={rowKey} className="divide-y divide-white/5 border-b border-white/5">
+                  {/* ── Main row ── */}
+                  <tr className={`transition-colors ${isExpanded ? 'bg-white/3' : 'hover:bg-white/3'}`}>
+                    {/* Email */}
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0
+                          ${lead.source === 'signup'
+                            ? 'bg-sky-500/15 border border-sky-500/20'
+                            : 'bg-emerald-500/15 border border-emerald-500/20'}`}>
+                          {lead.source === 'signup'
+                            ? <UserPlus className="w-3 h-3 text-sky-400" />
+                            : <Download className="w-3 h-3 text-emerald-400" />}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-white font-medium truncate max-w-48">{lead.email}</div>
+                          {lead.displayName && (
+                            <div className="text-white/35 text-xs truncate">{lead.displayName}</div>
+                          )}
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <div className="text-white font-medium truncate max-w-48">{lead.email}</div>
-                        {lead.displayName && (
-                          <div className="text-white/35 text-xs truncate">{lead.displayName}</div>
-                        )}
-                      </div>
-                    </div>
-                  </td>
+                    </td>
 
-                  {/* Source */}
-                  <td className="px-4 py-3">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${SOURCE_STYLES[lead.source]}`}>
-                      {SOURCE_LABELS[lead.source]}
-                    </span>
-                  </td>
-
-                  {/* Tier */}
-                  <td className="px-4 py-3">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${TIER_STYLES[lead.tier] || ''}`}>
-                      {lead.tier}
-                    </span>
-                  </td>
-
-                  {/* Tool */}
-                  <td className="px-4 py-3">
-                    {lead.toolName ? (
-                      <div className="flex items-center gap-1.5">
-                        <Wrench className="w-3.5 h-3.5 text-white/25 flex-shrink-0" />
-                        <span className="text-white/70 truncate max-w-32">{lead.toolName}</span>
-                      </div>
-                    ) : (
-                      <span className="text-white/15">—</span>
-                    )}
-                  </td>
-
-                  {/* Category */}
-                  <td className="px-4 py-3">
-                    {lead.toolCategory ? (
-                      <span className="text-white/45 text-xs">{lead.toolCategory}</span>
-                    ) : (
-                      <span className="text-white/15">—</span>
-                    )}
-                  </td>
-
-                  {/* Date */}
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1.5 text-white/40">
-                      <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
-                      <span className="whitespace-nowrap">
-                        {lead.createdAt
-                          ? new Date(lead.createdAt).toLocaleString('en-US', {
-                              month: 'short', day: 'numeric', year: 'numeric',
-                              hour: '2-digit', minute: '2-digit',
-                            })
-                          : '—'}
+                    {/* Source */}
+                    <td className="px-4 py-3">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${SOURCE_STYLES[lead.source]}`}>
+                        {SOURCE_LABELS[lead.source]}
                       </span>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
+                    </td>
+
+                    {/* Tier */}
+                    <td className="px-4 py-3">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${TIER_STYLES[lead.tier] || ''}`}>
+                        {lead.tier}
+                      </span>
+                    </td>
+
+                    {/* Tool */}
+                    <td className="px-4 py-3">
+                      {lead.toolName ? (
+                        <div className="flex items-center gap-1.5">
+                          <Wrench className="w-3.5 h-3.5 text-white/25 flex-shrink-0" />
+                          <span className="text-white/70 truncate max-w-32">{lead.toolName}</span>
+                        </div>
+                      ) : (
+                        <span className="text-white/15">—</span>
+                      )}
+                    </td>
+
+                    {/* Category */}
+                    <td className="px-4 py-3">
+                      {lead.toolCategory ? (
+                        <span className="text-white/45 text-xs">{lead.toolCategory}</span>
+                      ) : (
+                        <span className="text-white/15">—</span>
+                      )}
+                    </td>
+
+                    {/* Date */}
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1.5 text-white/40">
+                        <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
+                        <span className="whitespace-nowrap">{fmtDate(lead.createdAt)}</span>
+                      </div>
+                    </td>
+
+                    {/* Expand toggle */}
+                    <td className="px-3 py-3 w-10">
+                      <button
+                        onClick={() => toggleRow(rowKey)}
+                        title={isExpanded ? 'Hide behavior' : 'Show behavior'}
+                        className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all cursor-pointer
+                          ${isExpanded
+                            ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                            : 'bg-white/5 text-white/25 border border-white/8 hover:bg-white/10 hover:text-white/60'}`}
+                      >
+                        <Activity className="w-3.5 h-3.5" />
+                      </button>
+                    </td>
+                  </tr>
+
+                  {/* ── Behavior detail row ── */}
+                  {isExpanded && (
+                    <tr className="bg-white/[0.015]">
+                      <td colSpan={7} className="px-6 pb-4 pt-0 border-t border-white/5">
+                        <LeadBehaviorPanel
+                          email={lead.email}
+                          cache={behaviorCacheRef.current}
+                          onCached={handleCached}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              );
+            })}
           </table>
         </div>
       )}
@@ -439,6 +732,8 @@ export function LeadsTab() {
         <p className="text-white/25 text-xs mt-3 text-right">
           {sorted.length} {sorted.length === 1 ? 'entry' : 'entries'}
           {leads.length !== sorted.length && ` (filtered from ${leads.length})`}
+          {' · '}
+          <span className="text-white/15">Click <Activity className="w-3 h-3 inline" /> to view behavioral data</span>
         </p>
       )}
     </GlassCard>

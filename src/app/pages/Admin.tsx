@@ -13,6 +13,7 @@ import { LeadsTab } from '../components/admin/LeadsTab';
 import { SeoTab } from '../components/admin/SeoTab';
 import { HomeTab } from '../components/admin/HomeTab';
 import { AdminReviewsTab } from '../components/admin/AdminReviewsTab';
+import { DashboardTab } from '../components/admin/DashboardTab';
 import { invalidateSiteSettingsCache } from '../components/shared/SeoHead';
 
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-e07959ec`;
@@ -90,6 +91,7 @@ interface Settings {
   siteUrl?: string;
   defaultOgImage?: string;
   calendlyUrl?: string;
+  contactEmail?: string;
   projectCategories?: string[];
   toolCategories?: string[];
   toolStatuses?: { label: string; color: string }[];
@@ -129,7 +131,7 @@ export function Admin() {
   const [loading, setLoading] = useState(true);
   const [authChecking, setAuthChecking] = useState(true);
   const [networkError, setNetworkError] = useState(false);
-  const [activeTab, setActiveTab] = useState('projects');
+  const [activeTab, setActiveTab] = useState('dashboard');
 
   // Editing states
   const [editingProject, setEditingProject] = useState<Project | null>(null);
@@ -567,7 +569,8 @@ export function Admin() {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="mb-6">
+          <TabsList className="mb-6 flex-wrap">
+            <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
             <TabsTrigger value="projects">Projects</TabsTrigger>
             <TabsTrigger value="tools">Tools</TabsTrigger>
             <TabsTrigger value="team">Team</TabsTrigger>
@@ -577,6 +580,11 @@ export function Admin() {
             <TabsTrigger value="reviews">Reviews</TabsTrigger>
             <TabsTrigger value="seo">SEO</TabsTrigger>
           </TabsList>
+
+          {/* DASHBOARD TAB */}
+          <TabsContent value="dashboard">
+            <DashboardTab />
+          </TabsContent>
 
           {/* PROJECTS TAB */}
           <TabsContent value="projects">
@@ -935,6 +943,12 @@ export function Admin() {
                       <span className="text-gray-500">TikTok:</span> {settings.socialLinks?.tiktok || 'Not set'}
                     </p>
                   </div>
+                </div>
+
+                <div className="p-4 bg-white/5 rounded-lg border border-white/10">
+                  <h3 className="text-white font-semibold mb-1">Contact Email</h3>
+                  <p className="text-gray-400 text-sm">{settings.contactEmail || 'Not set'}</p>
+                  <p className="text-gray-600 text-xs mt-0.5">Displayed in the footer and used as the public contact address.</p>
                 </div>
 
                 <div className="p-4 bg-white/5 rounded-lg border border-white/10">
@@ -1891,7 +1905,7 @@ function ProjectForm({
               <Textarea
                 placeholder="Enter each deliverable on a new line&#10;e.g.:&#10;90-second explainer video&#10;Social media cutdowns&#10;Brand guidelines"
                 value={(formData.deliverables || []).join('\n')}
-                onChange={(e) => setFormData({ ...formData, deliverables: e.target.value.split('\n').filter(d => d.trim()) })}
+                onChange={(e) => setFormData({ ...formData, deliverables: e.target.value.split('\n') })}
                 className={`bg-black/50 border-white/20 text-white transition-all duration-700 ${hlClass('deliverables')}`}
                 rows={4}
               />
@@ -1945,7 +1959,7 @@ function ProjectForm({
                 <Textarea
                   placeholder="Enter image URLs (one per line)&#10;e.g.:&#10;https://images.unsplash.com/photo-xxx&#10;https://images.unsplash.com/photo-yyy"
                   value={(formData.screenshots || []).join('\n')}
-                  onChange={(e) => setFormData({ ...formData, screenshots: e.target.value.split('\n').filter(s => s.trim()) })}
+                  onChange={(e) => setFormData({ ...formData, screenshots: e.target.value.split('\n') })}
                   className="bg-black/50 border-white/20 text-white"
                   rows={4}
                 />
@@ -2725,6 +2739,20 @@ function SettingsForm({
               )}
             </div>
           </div>
+        </div>
+
+        {/* Contact Email Section */}
+        <div className="mt-6 pt-6 border-t border-white/10">
+          <h4 className="text-lg font-semibold text-white mb-1">Contact Email</h4>
+          <p className="text-sm text-gray-400 mb-3">
+            Displayed in the footer "Get in touch" section and used as the public contact address sitewide.
+          </p>
+          <Input
+            placeholder="hello@fastoosh.com"
+            value={formData.contactEmail || ''}
+            onChange={(e) => setFormData({ ...formData, contactEmail: e.target.value })}
+            className="bg-black/50 border-white/20 text-white"
+          />
         </div>
 
         {/* Calendly URL Section */}

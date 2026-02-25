@@ -2071,6 +2071,34 @@ app.post("/make-server-e07959ec/webhooks/lemon-squeezy", async (c) => {
 
       console.log('✅ Purchase created:', purchase.id);
 
+      // ── Mark the behavior tracking session as converted ──────────────────
+      const trackingSessionId: string | null = body.meta?.custom_data?.session_id || null;
+      if (trackingSessionId) {
+        try {
+          const tSession: any = await kv.get(`session:${trackingSessionId}`);
+          if (tSession) {
+            tSession.events = tSession.events || [];
+            tSession.events.push({
+              type: 'purchase_complete',
+              timestamp: new Date().toISOString(),
+              data: {
+                orderId,
+                toolVersionId: toolVersionId || null,
+                productName: orderData.attributes?.first_order_item?.product_name || '',
+                amount: parseFloat(orderData.attributes?.total || '0') / 100,
+              },
+            });
+            tSession.converted   = true;
+            tSession.funnelStage = 'purchase';
+            if (customerEmail && !tSession.userEmail) tSession.userEmail = customerEmail;
+            await kv.set(`session:${trackingSessionId}`, tSession);
+            console.log(`✅ Tracking session ${trackingSessionId} marked as converted`);
+          }
+        } catch (e) {
+          console.warn('Could not update tracking session on purchase:', e);
+        }
+      }
+
       // If no user found, track in KV so the user can claim it after sign-up
       if (!userId && customerEmail) {
         const orphanKey = `ls_orphan:${customerEmail.toLowerCase()}`;
@@ -2286,6 +2314,29 @@ app.post("/make-server-e07959ec/contact", async (c) => {
       }, 400);
     }
 
+    // ── Store message in KV for admin dashboard (always, even if email fails) ──
+    try {
+      const msgTs    = Date.now();
+      const msgUuid  = crypto.randomUUID().replace(/-/g, '').substring(0, 8);
+      const msgKvKey = `msg:${msgTs}:contact:${msgUuid}`;
+      await kv.set(msgKvKey, {
+        kvKey: msgKvKey,
+        id: `${msgTs}-${msgUuid}`,
+        type: 'contact',
+        name: name || '',
+        email: email || '',
+        projectType: projectType || '',
+        timeline: timeline || '',
+        budget: budget || '',
+        message: message || '',
+        read: false,
+        createdAt: new Date().toISOString(),
+      });
+      console.log(`[contact] Message stored in KV: ${msgKvKey}`);
+    } catch (kvErr) {
+      console.log('[contact] KV store warning:', kvErr);
+    }
+
     const resendApiKey = Deno.env.get('RESEND_API_KEY');
     if (!resendApiKey) {
       console.log('Error: RESEND_API_KEY not configured');
@@ -2356,6 +2407,28 @@ app.post("/make-server-e07959ec/tool-support", async (c) => {
 
     if (!name || !email || !message || !toolName || !inquiryType) {
       return c.json({ success: false, error: "All fields are required" }, 400);
+    }
+
+    // ── Store message in KV for admin dashboard ──
+    try {
+      const msgTs    = Date.now();
+      const msgUuid  = crypto.randomUUID().replace(/-/g, '').substring(0, 8);
+      const msgKvKey = `msg:${msgTs}:support:${msgUuid}`;
+      await kv.set(msgKvKey, {
+        kvKey: msgKvKey,
+        id: `${msgTs}-${msgUuid}`,
+        type: 'support',
+        name: name || '',
+        email: email || '',
+        toolName: toolName || '',
+        inquiryType: inquiryType || '',
+        message: message || '',
+        read: false,
+        createdAt: new Date().toISOString(),
+      });
+      console.log(`[tool-support] Message stored in KV: ${msgKvKey}`);
+    } catch (kvErr) {
+      console.log('[tool-support] KV store warning:', kvErr);
     }
 
     const resendApiKey = Deno.env.get('RESEND_API_KEY');
@@ -2563,6 +2636,783 @@ app.get('/make-server-e07959ec/leads', requireAuth, async (c) => {
     return c.json({ success: true, data: allLeads, count: allLeads.length });
   } catch (error) {
     console.log('[leads] Error:', error);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
+// GET /admin/leads/behavior?email=<email> — behavioral summary for a known lead
+app.get('/make-server-e07959ec/admin/leads/behavior', requireAuth, async (c) => {
+  try {
+    const email = (c.req.query('email') || '').toLowerCase().trim();
+    if (!email) return c.json({ success: false, error: 'email param required' }, 400);
+
+    const allSessions: any[] = await kv.getByPrefix('session:');
+    const matched = allSessions.filter((s: any) =>
+      (s.userEmail || '').toLowerCase() === email
+    );
+
+    if (matched.length === 0) {
+      return c.json({ success: true, data: null });
+    }
+
+    const FUNNEL_RANK: Record<string, number> = {
+      visit: 0, tool_view: 1, buy_click: 2, purchase: 3,
+    };
+
+    let topFunnel     = 'visit';
+    let converted     = false;
+    let totalDuration = 0;
+    const pagesSet    = new Set<string>();
+    const toolsSet    = new Set<string>();
+    let firstSeen     = matched[0].startedAt  || '';
+    let lastSeen      = matched[0].lastSeenAt || '';
+
+    for (const s of matched) {
+      if (s.startedAt  && (!firstSeen || new Date(s.startedAt)  < new Date(firstSeen))) firstSeen = s.startedAt;
+      if (s.lastSeenAt && (!lastSeen  || new Date(s.lastSeenAt) > new Date(lastSeen)))  lastSeen  = s.lastSeenAt;
+      totalDuration += s.totalDuration || 0;
+      if (s.converted) converted = true;
+      if ((FUNNEL_RANK[s.funnelStage] ?? 0) > (FUNNEL_RANK[topFunnel] ?? 0)) topFunnel = s.funnelStage;
+      for (const e of (s.events || [])) {
+        if (e.type === 'page_view' && e.data?.path) pagesSet.add(e.data.path);
+      }
+      for (const t of (s.toolNamesViewed || [])) {
+        if (t) toolsSet.add(t);
+      }
+    }
+
+    // Most recent session for device / browser / referrer
+    const recent = [...matched].sort((a: any, b: any) =>
+      new Date(b.lastSeenAt || 0).getTime() - new Date(a.lastSeenAt || 0).getTime()
+    )[0];
+
+    return c.json({
+      success: true,
+      data: {
+        sessionCount:  matched.length,
+        firstSeen,
+        lastSeen,
+        totalDuration,
+        pagesVisited:  [...pagesSet],
+        toolsViewed:   [...toolsSet],
+        funnelStage:   topFunnel,
+        converted,
+        device:        recent.device      || 'desktop',
+        browser:       recent.browser     || '',
+        os:            recent.os          || '',
+        referrer:      recent.referrer    || '',
+        utmSource:     recent.utmSource   || null,
+        utmMedium:     recent.utmMedium   || null,
+        utmCampaign:   recent.utmCampaign || null,
+      },
+    });
+  } catch (error) {
+    console.log('[admin/leads/behavior] Error:', error);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
+// ========== LEMON SQUEEZY LIVE REVENUE ENDPOINT ==========
+
+// Helper: fetch all pages from a Lemon Squeezy list endpoint
+async function lsFetchAll(apiKey: string, path: string, extraParams: Record<string, string> = {}): Promise<any[]> {
+  const results: any[] = [];
+  let pageNumber = 1;
+  const pageSize  = 100;
+  while (true) {
+    const params = new URLSearchParams({
+      'page[size]':   String(pageSize),
+      'page[number]': String(pageNumber),
+      ...extraParams,
+    });
+    const res = await fetch(`https://api.lemonsqueezy.com/v1${path}?${params}`, {
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Accept':        'application/vnd.api+json',
+      },
+    });
+    if (!res.ok) {
+      console.log(`[ls] ${path} page ${pageNumber} error ${res.status}: ${await res.text()}`);
+      break;
+    }
+    const json = await res.json();
+    const data = json.data ?? [];
+    results.push(...data);
+    if (data.length < pageSize) break;
+    pageNumber++;
+  }
+  return results;
+}
+
+// GET /admin/ls-revenue — live revenue data pulled directly from Lemon Squeezy API
+app.get('/make-server-e07959ec/admin/ls-revenue', requireAuth, async (c) => {
+  try {
+    const apiKey = Deno.env.get('LEMON_SQUEEZY_API_KEY');
+    if (!apiKey) {
+      return c.json({ success: false, error: 'LEMON_SQUEEZY_API_KEY is not configured' }, 500);
+    }
+
+    const orders = await lsFetchAll(apiKey, '/orders');
+    console.log(`[ls-revenue] Fetched ${orders.length} orders from Lemon Squeezy`);
+
+    const now            = new Date();
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const sevenDaysAgo  = new Date(now.getTime() -  7 * 24 * 60 * 60 * 1000);
+    const todayStr       = now.toISOString().split('T')[0];
+
+    const paidOrders     = orders.filter((o: any) => ['paid', 'partial_refund'].includes(o.attributes?.status));
+    const refundedOrders = orders.filter((o: any) => ['refunded', 'partial_refund'].includes(o.attributes?.status));
+
+    const toUSD = (cents: number) => parseFloat((cents / 100).toFixed(2));
+    const sumCents = (arr: any[]) => arr.reduce((s: number, o: any) => s + (o.attributes?.total_usd ?? o.attributes?.total ?? 0), 0);
+
+    const totalRevenue  = sumCents(paidOrders);
+    const totalRefunded = sumCents(refundedOrders);
+    const revenue30d    = sumCents(paidOrders.filter((o: any) => new Date(o.attributes?.created_at || 0) >= thirtyDaysAgo));
+    const revenue7d     = sumCents(paidOrders.filter((o: any) => new Date(o.attributes?.created_at || 0) >= sevenDaysAgo));
+    const revenueToday  = sumCents(paidOrders.filter((o: any) => (o.attributes?.created_at || '').startsWith(todayStr)));
+
+    // By status
+    const statusMap: Record<string, { count: number; total: number }> = {};
+    for (const o of orders as any[]) {
+      const st = o.attributes?.status || 'unknown';
+      if (!statusMap[st]) statusMap[st] = { count: 0, total: 0 };
+      statusMap[st].count++;
+      statusMap[st].total += o.attributes?.total_usd ?? o.attributes?.total ?? 0;
+    }
+    const byStatus = Object.entries(statusMap)
+      .map(([status, v]) => ({ status, count: v.count, total: toUSD(v.total) }))
+      .sort((a, b) => b.total - a.total);
+
+    // By product
+    const productMap: Record<string, { name: string; revenue: number; sales: number }> = {};
+    for (const o of paidOrders as any[]) {
+      const name = o.attributes?.first_order_item?.product_name || 'Unknown';
+      if (!productMap[name]) productMap[name] = { name, revenue: 0, sales: 0 };
+      productMap[name].revenue += o.attributes?.total_usd ?? o.attributes?.total ?? 0;
+      productMap[name].sales++;
+    }
+    const byProduct = Object.values(productMap)
+      .sort((a, b) => b.revenue - a.revenue)
+      .map(p => ({ ...p, revenue: toUSD(p.revenue) }));
+
+    // By variant / tier
+    const variantMap: Record<string, { name: string; revenue: number; sales: number }> = {};
+    for (const o of paidOrders as any[]) {
+      const name = o.attributes?.first_order_item?.variant_name || 'Unknown';
+      if (!variantMap[name]) variantMap[name] = { name, revenue: 0, sales: 0 };
+      variantMap[name].revenue += o.attributes?.total_usd ?? o.attributes?.total ?? 0;
+      variantMap[name].sales++;
+    }
+    const byVariant = Object.values(variantMap)
+      .sort((a, b) => b.revenue - a.revenue)
+      .map(v => ({ ...v, revenue: toUSD(v.revenue) }));
+
+    // Daily series — last 30 days
+    const seriesMap: Record<string, { revenue: number; sales: number; refunds: number }> = {};
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      seriesMap[d.toISOString().split('T')[0]] = { revenue: 0, sales: 0, refunds: 0 };
+    }
+    for (const o of orders as any[]) {
+      const dateStr = (o.attributes?.created_at || '').split('T')[0];
+      if (!seriesMap[dateStr]) continue;
+      const cents = o.attributes?.total_usd ?? o.attributes?.total ?? 0;
+      if (['paid', 'partial_refund'].includes(o.attributes?.status)) {
+        seriesMap[dateStr].revenue += cents;
+        seriesMap[dateStr].sales++;
+      }
+      if (['refunded', 'partial_refund'].includes(o.attributes?.status)) {
+        seriesMap[dateStr].refunds++;
+      }
+    }
+    const series = Object.entries(seriesMap).map(([date, v]) => ({
+      date,
+      revenue: toUSD(v.revenue),
+      sales:   v.sales,
+      refunds: v.refunds,
+    }));
+
+    // Recent orders
+    const recentOrders = [...orders as any[]]
+      .sort((a, b) => new Date(b.attributes?.created_at || 0).getTime() - new Date(a.attributes?.created_at || 0).getTime())
+      .slice(0, 20)
+      .map((o: any) => ({
+        id:          o.id,
+        orderNumber: o.attributes?.order_number,
+        status:      o.attributes?.status,
+        email:       o.attributes?.user_email || '',
+        productName: o.attributes?.first_order_item?.product_name || '',
+        variantName: o.attributes?.first_order_item?.variant_name || '',
+        total:       toUSD(o.attributes?.total_usd ?? o.attributes?.total ?? 0),
+        currency:    o.attributes?.currency || 'USD',
+        createdAt:   o.attributes?.created_at || '',
+        refundedAt:  o.attributes?.refunded_at || null,
+        lsUrl:       `https://app.lemonsqueezy.com/orders/${o.id}`,
+      }));
+
+    return c.json({
+      success: true,
+      data: {
+        summary: {
+          totalOrders:    orders.length,
+          paidOrders:     paidOrders.length,
+          refundedOrders: refundedOrders.length,
+          totalRevenue:   toUSD(totalRevenue),
+          totalRefunded:  toUSD(totalRefunded),
+          netRevenue:     toUSD(totalRevenue - totalRefunded),
+          revenue30d:     toUSD(revenue30d),
+          revenue7d:      toUSD(revenue7d),
+          revenueToday:   toUSD(revenueToday),
+        },
+        byStatus,
+        byProduct,
+        byVariant,
+        series,
+        recentOrders,
+      },
+    });
+  } catch (error) {
+    console.log('[admin/ls-revenue] Error:', error);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
+// ========== BEHAVIOR TRACKING ENDPOINTS ==========
+
+// POST /track/event — public, no auth. Called by frontend to record user behavior.
+app.post('/make-server-e07959ec/track/event', async (c) => {
+  try {
+    const body = await c.req.json();
+    const { sessionId, events, meta } = body;
+    if (!sessionId || !Array.isArray(events)) {
+      return c.json({ success: false, error: 'sessionId and events[] required' }, 400);
+    }
+
+    let session: any = await kv.get(`session:${sessionId}`);
+    if (!session) {
+      session = {
+        sessionId,
+        startedAt:   new Date().toISOString(),
+        events:      [],
+        device:      meta?.device      || 'desktop',
+        browser:     meta?.browser     || 'Other',
+        os:          meta?.os          || 'Other',
+        referrer:    meta?.referrer    || '',
+        screenWidth: meta?.screenWidth || null,
+        language:    meta?.language    || null,
+        utmSource:   meta?.utmSource   || null,
+        utmMedium:   meta?.utmMedium   || null,
+        utmCampaign: meta?.utmCampaign || null,
+      };
+    }
+
+    if (meta?.userId    && !session.userId)    session.userId    = meta.userId;
+    if (meta?.userEmail && !session.userEmail) session.userEmail = meta.userEmail;
+
+    const all: any[] = [...(session.events || []), ...events];
+    session.events     = all.slice(-500);
+    session.lastSeenAt = new Date().toISOString();
+
+    const evs: any[]  = session.events;
+    const pageViews   = evs.filter((e: any) => e.type === 'page_view');
+    const pageExits   = evs.filter((e: any) => e.type === 'page_exit');
+    const toolViews   = evs.filter((e: any) => e.type === 'tool_view');
+    const buyClicks   = evs.filter((e: any) => e.type === 'buy_click');
+    const videoPlays  = evs.filter((e: any) => e.type === 'video_play');
+    const purchases   = evs.filter((e: any) => e.type === 'purchase_complete');
+
+    session.pageCount       = pageViews.length;
+    session.totalDuration   = pageExits.reduce((s: number, e: any) => s + (e.data?.duration || 0), 0);
+    session.toolsViewed     = [...new Set(toolViews.map((e: any) => e.data?.toolSlug).filter(Boolean))];
+    session.toolNamesViewed = [...new Set(toolViews.map((e: any) => e.data?.toolName).filter(Boolean))];
+    session.buyClickCount   = buyClicks.length;
+    session.videoPlayCount  = videoPlays.length;
+    session.converted       = purchases.length > 0;
+    session.isBounce        = session.pageCount <= 1 && session.totalDuration < 30;
+    session.lastPath        = pageViews.at(-1)?.data?.path || '';
+
+    if (purchases.length > 0)      session.funnelStage = 'purchase';
+    else if (buyClicks.length > 0) session.funnelStage = 'buy_click';
+    else if (toolViews.length > 0) session.funnelStage = 'tool_view';
+    else                           session.funnelStage = 'visit';
+
+    await kv.set(`session:${sessionId}`, session);
+    return c.json({ success: true });
+  } catch (error) {
+    console.log('[track/event] Error:', error);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
+// GET /admin/behavior — admin auth. Paginated sessions + funnel analytics.
+app.get('/make-server-e07959ec/admin/behavior', requireAuth, async (c) => {
+  try {
+    const { from, to, device, stage, converted, tool, page = '1', limit = '25' } = c.req.query();
+
+    const allSessions: any[] = await kv.getByPrefix('session:');
+    let sessions = [...allSessions];
+
+    if (from) { const d = new Date(from); sessions = sessions.filter((s: any) => new Date(s.startedAt) >= d); }
+    if (to)   { const d = new Date(to); d.setHours(23,59,59,999); sessions = sessions.filter((s: any) => new Date(s.startedAt) <= d); }
+    if (device && device !== 'all')    sessions = sessions.filter((s: any) => (s.device || 'desktop') === device);
+    if (stage  && stage  !== 'all')    sessions = sessions.filter((s: any) => s.funnelStage === stage);
+    if (converted === 'true')          sessions = sessions.filter((s: any) => s.converted);
+    if (converted === 'false')         sessions = sessions.filter((s: any) => !s.converted);
+    if (tool) sessions = sessions.filter((s: any) => (s.toolsViewed || []).includes(tool));
+
+    sessions.sort((a: any, b: any) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
+
+    const fVisits    = sessions.filter((s: any) => (s.pageCount || 0) > 0).length;
+    const fToolViews = sessions.filter((s: any) => (s.toolsViewed?.length || 0) > 0).length;
+    const fBuyClicks = sessions.filter((s: any) => (s.buyClickCount || 0) > 0).length;
+    const fPurchases = sessions.filter((s: any) => s.converted).length;
+    const pct = (n: number) => fVisits > 0 ? Math.round((n / fVisits) * 1000) / 10 : 0;
+
+    const funnel = [
+      { stage: 'visit',     label: 'Page Visits', count: fVisits,    pct: 100,             dropOff: 0 },
+      { stage: 'tool_view', label: 'Tool Views',  count: fToolViews, pct: pct(fToolViews), dropOff: fVisits    - fToolViews },
+      { stage: 'buy_click', label: 'Buy Clicks',  count: fBuyClicks, pct: pct(fBuyClicks), dropOff: fToolViews - fBuyClicks },
+      { stage: 'purchase',  label: 'Purchases',   count: fPurchases, pct: pct(fPurchases), dropOff: fBuyClicks - fPurchases },
+    ];
+
+    const pageMap: Record<string, { count: number; totalDuration: number }> = {};
+    for (const s of sessions) {
+      for (const e of (s.events || []) as any[]) {
+        if (e.type === 'page_view' && e.data?.path) {
+          const p = e.data.path;
+          if (!pageMap[p]) pageMap[p] = { count: 0, totalDuration: 0 };
+          pageMap[p].count++;
+        }
+        if (e.type === 'page_exit' && e.data?.path) {
+          const p = e.data.path;
+          if (!pageMap[p]) pageMap[p] = { count: 0, totalDuration: 0 };
+          pageMap[p].totalDuration += e.data.duration || 0;
+        }
+      }
+    }
+    const topPages = Object.entries(pageMap)
+      .sort(([, a], [, b]) => b.count - a.count).slice(0, 12)
+      .map(([path, v]) => ({ path, count: v.count, avgDuration: v.count > 0 ? Math.round(v.totalDuration / v.count) : 0 }));
+
+    const toolMap: Record<string, { slug: string; name: string; views: number; buyClicks: number; videoPlays: number }> = {};
+    for (const s of sessions) {
+      for (const e of (s.events || []) as any[]) {
+        const sl = e.data?.toolSlug;
+        if (!sl) continue;
+        if (!toolMap[sl]) toolMap[sl] = { slug: sl, name: e.data?.toolName || sl, views: 0, buyClicks: 0, videoPlays: 0 };
+        if (e.type === 'tool_view')  toolMap[sl].views++;
+        if (e.type === 'buy_click')  toolMap[sl].buyClicks++;
+        if (e.type === 'video_play') toolMap[sl].videoPlays++;
+      }
+    }
+    const toolFunnel = Object.values(toolMap)
+      .sort((a, b) => b.views - a.views)
+      .map(t => ({ ...t, convRate: t.views > 0 ? Math.round((t.buyClicks / t.views) * 100) : 0 }));
+
+    const deviceMap: Record<string, number> = {};
+    for (const s of sessions) { const d = s.device || 'desktop'; deviceMap[d] = (deviceMap[d] || 0) + 1; }
+
+    const now = new Date();
+    const seriesMap: Record<string, { sessions: number; toolViews: number; buyClicks: number }> = {};
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(now); d.setDate(d.getDate() - i);
+      seriesMap[d.toISOString().split('T')[0]] = { sessions: 0, toolViews: 0, buyClicks: 0 };
+    }
+    for (const s of sessions) {
+      const ds = (s.startedAt || '').split('T')[0];
+      if (!seriesMap[ds]) continue;
+      seriesMap[ds].sessions++;
+      if ((s.toolsViewed?.length || 0) > 0) seriesMap[ds].toolViews++;
+      if ((s.buyClickCount || 0) > 0)       seriesMap[ds].buyClicks++;
+    }
+    const dailySeries = Object.entries(seriesMap).map(([date, v]) => ({ date, ...v }));
+
+    const totalDur = sessions.reduce((s: number, sess: any) => s + (sess.totalDuration || 0), 0);
+    const bounces  = sessions.filter((s: any) => s.isBounce).length;
+    const summary  = {
+      totalSessions: sessions.length,
+      bounceRate:    sessions.length > 0 ? Math.round((bounces / sessions.length) * 100) : 0,
+      avgPageViews:  sessions.length > 0 ? +(sessions.reduce((s: number, sess: any) => s + (sess.pageCount || 0), 0) / sessions.length).toFixed(1) : 0,
+      avgDuration:   sessions.length > 0 ? Math.round(totalDur / sessions.length) : 0,
+      convRate:      sessions.length > 0 ? Math.round((fBuyClicks / sessions.length) * 100) : 0,
+    };
+
+    const pageNum  = Math.max(1, parseInt(page,  10));
+    const limitNum = Math.max(1, parseInt(limit, 10));
+    const total    = sessions.length;
+    const paged    = sessions
+      .slice((pageNum - 1) * limitNum, pageNum * limitNum)
+      .map((s: any) => ({
+        sessionId:       s.sessionId,
+        userId:          s.userId          || null,
+        userEmail:       s.userEmail       || null,
+        startedAt:       s.startedAt,
+        lastSeenAt:      s.lastSeenAt      || s.startedAt,
+        device:          s.device          || 'desktop',
+        browser:         s.browser         || 'Other',
+        os:              s.os              || 'Other',
+        referrer:        s.referrer        || '',
+        utmSource:       s.utmSource       || null,
+        utmMedium:       s.utmMedium       || null,
+        utmCampaign:     s.utmCampaign     || null,
+        pageCount:       s.pageCount       || 0,
+        totalDuration:   s.totalDuration   || 0,
+        toolsViewed:     s.toolsViewed     || [],
+        toolNamesViewed: s.toolNamesViewed || [],
+        buyClickCount:   s.buyClickCount   || 0,
+        videoPlayCount:  s.videoPlayCount  || 0,
+        converted:       s.converted       || false,
+        isBounce:        s.isBounce        || false,
+        lastPath:        s.lastPath        || '',
+        funnelStage:     s.funnelStage     || 'visit',
+        eventCount:      (s.events || []).length,
+      }));
+
+    return c.json({
+      success: true,
+      data: { total, page: pageNum, limit: limitNum, sessions: paged, funnel, topPages, toolFunnel, dailySeries, deviceBreakdown: Object.entries(deviceMap).map(([device, count]) => ({ device, count })), summary },
+    });
+  } catch (error) {
+    console.log('[admin/behavior] Error:', error);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
+// GET /admin/behavior/session/:sid — full session detail with all events
+app.get('/make-server-e07959ec/admin/behavior/session/:sid', requireAuth, async (c) => {
+  try {
+    const { sid } = c.req.param();
+    const session = await kv.get(`session:${sid}`);
+    if (!session) return c.json({ success: false, error: 'Session not found' }, 404);
+    return c.json({ success: true, data: session });
+  } catch (error) {
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
+// GET /admin/behavior/heatmap?path=<path> — aggregate click coords + scroll depth for a page
+app.get('/make-server-e07959ec/admin/behavior/heatmap', requireAuth, async (c) => {
+  try {
+    const { path: pagePath } = c.req.query();
+    const allSessions: any[] = await kv.getByPrefix('session:');
+
+    const clicks: Array<{ x: number; y: number }> = [];
+    const pathSet = new Set<string>();
+
+    // Scroll depth: sessions that visited this page and how far they scrolled
+    const scrollTotals: Record<string, number> = { '25': 0, '50': 0, '75': 0, '100': 0 };
+    let scrollVisitors = 0;
+
+    for (const s of allSessions) {
+      const evs: any[] = s.events || [];
+      let visitedPage = false;
+
+      for (const e of evs) {
+        const ePath: string | undefined = e.data?.path;
+
+        // Collect all visited paths for the dropdown (page_view, scroll_depth, click_map)
+        if (ePath && (e.type === 'page_view' || e.type === 'scroll_depth' || e.type === 'click_map')) {
+          pathSet.add(ePath);
+        }
+
+        // Click heatmap — sampled batches
+        if (e.type === 'click_map' && ePath) {
+          if (pagePath && ePath === pagePath && Array.isArray(e.data.clicks)) {
+            for (const pt of e.data.clicks) {
+              if (typeof pt.x === 'number' && typeof pt.y === 'number') clicks.push(pt);
+            }
+          }
+        }
+
+        // Scroll depth for selected page
+        if (e.type === 'page_view' && ePath === pagePath) visitedPage = true;
+        if (pagePath && e.type === 'scroll_depth' && ePath === pagePath) {
+          const pct = String(e.data.percent);
+          if (scrollTotals[pct] !== undefined) scrollTotals[pct]++;
+        }
+      }
+      if (visitedPage && pagePath) scrollVisitors++;
+    }
+
+    const scrollDepth = Object.entries(scrollTotals).map(([percent, count]) => ({
+      percent: parseInt(percent),
+      count,
+      pct: scrollVisitors > 0 ? Math.round((count / scrollVisitors) * 100) : 0,
+    }));
+
+    return c.json({
+      success: true,
+      data: {
+        clicks,
+        totalClicks: clicks.length,
+        scrollDepth,
+        scrollVisitors,
+        availablePaths: [...pathSet].sort(),
+      },
+    });
+  } catch (error) {
+    console.log('[admin/behavior/heatmap] Error:', error);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
+// ========== ADMIN MESSAGES ENDPOINTS ==========
+
+// GET /admin/messages — all stored contact + support messages
+app.get('/make-server-e07959ec/admin/messages', requireAuth, async (c) => {
+  try {
+    const all: any[] = await kv.getByPrefix('msg:');
+    const sorted = all.sort((a: any, b: any) =>
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+    const unread = sorted.filter((m: any) => !m.read).length;
+    return c.json({ success: true, data: sorted, unread, count: sorted.length });
+  } catch (error) {
+    console.log('[admin/messages] Error:', error);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
+// PUT /admin/messages/mark-read — mark one or all messages as read
+app.put('/make-server-e07959ec/admin/messages/mark-read', requireAuth, async (c) => {
+  try {
+    const { kvKey, markAll } = await c.req.json();
+    if (markAll) {
+      const all: any[] = await kv.getByPrefix('msg:');
+      await Promise.all(
+        all.filter((m: any) => !m.read && m.kvKey)
+           .map((m: any) => kv.set(m.kvKey, { ...m, read: true }))
+      );
+      console.log(`[admin/messages] Marked all ${all.length} messages as read`);
+    } else if (kvKey) {
+      const msg = await kv.get(kvKey);
+      if (msg) {
+        await kv.set(kvKey, { ...msg, read: true });
+        console.log(`[admin/messages] Marked ${kvKey} as read`);
+      }
+    }
+    return c.json({ success: true });
+  } catch (error) {
+    console.log('[admin/messages/mark-read] Error:', error);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
+// DELETE /admin/messages/:kvKey — delete a single message
+app.delete('/make-server-e07959ec/admin/messages/delete', requireAuth, async (c) => {
+  try {
+    const { kvKey } = await c.req.json();
+    if (kvKey) {
+      await kv.del(kvKey);
+      console.log(`[admin/messages] Deleted message: ${kvKey}`);
+    }
+    return c.json({ success: true });
+  } catch (error) {
+    console.log('[admin/messages/delete] Error:', error);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
+// ========== ADMIN DASHBOARD ENDPOINT ==========
+
+// GET /admin/dashboard — aggregated stats for the admin dashboard
+app.get('/make-server-e07959ec/admin/dashboard', requireAuth, async (c) => {
+  try {
+    // Fetch all data sources in parallel
+    const [
+      toolsRes,
+      projectsRes,
+      purchasesRes,
+      kvLeads,
+      messages,
+    ] = await Promise.all([
+      supabase.from('tools').select('id, name, category, slug'),
+      supabase.from('projects').select('id, title, category, created_at'),
+      supabase
+        .from('user_purchases')
+        .select('id, amount, currency, status, product_name, variant_name, purchased_at, lemon_squeezy_order_id')
+        .order('purchased_at', { ascending: false }),
+      kv.getByPrefix('lead:free:log:'),
+      kv.getByPrefix('msg:'),
+    ]);
+
+    const tools     = toolsRes.data     || [];
+    const projects  = projectsRes.data  || [];
+    const purchases = purchasesRes.data || [];
+
+    if (purchasesRes.error) {
+      console.log('[admin/dashboard] Warning fetching purchases:', purchasesRes.error.message);
+    }
+
+    // Fetch registered users
+    let signupUsers: any[] = [];
+    const { data: usersData } = await supabase.auth.admin.listUsers({ perPage: 1000 });
+    signupUsers = usersData?.users || [];
+
+    // ── Revenue calculations ──────────────────────────────────────────────────
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const sevenDaysAgo  = new Date(now.getTime() -  7 * 24 * 60 * 60 * 1000);
+
+    const activePurchases   = purchases.filter((p: any) => p.status !== 'refunded');
+    const refundedPurchases = purchases.filter((p: any) => p.status === 'refunded');
+
+    const totalRevenue  = activePurchases.reduce((sum: number, p: any) => sum + (parseFloat(p.amount) || 0), 0);
+    const revenue30d    = activePurchases
+      .filter((p: any) => new Date(p.purchased_at || 0) >= thirtyDaysAgo)
+      .reduce((sum: number, p: any) => sum + (parseFloat(p.amount) || 0), 0);
+    const revenue7d     = activePurchases
+      .filter((p: any) => new Date(p.purchased_at || 0) >= sevenDaysAgo)
+      .reduce((sum: number, p: any) => sum + (parseFloat(p.amount) || 0), 0);
+    const totalRefunded = refundedPurchases.reduce((sum: number, p: any) => sum + (parseFloat(p.amount) || 0), 0);
+
+    // ── Revenue by product ────────────────────────────────────────────────────
+    const revenueByProduct: Record<string, { name: string; revenue: number; sales: number }> = {};
+    for (const p of activePurchases as any[]) {
+      const key = p.product_name || 'Unknown';
+      if (!revenueByProduct[key]) revenueByProduct[key] = { name: key, revenue: 0, sales: 0 };
+      revenueByProduct[key].revenue += parseFloat(p.amount) || 0;
+      revenueByProduct[key].sales++;
+    }
+    const revenueByProductArr = Object.values(revenueByProduct)
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 6)
+      .map(r => ({ ...r, revenue: parseFloat(r.revenue.toFixed(2)) }));
+
+    // ── Revenue by tier ───────────────────────────────────────────────────────
+    const revenueByTier: Record<string, { name: string; revenue: number; sales: number }> = {};
+    for (const p of activePurchases as any[]) {
+      const key = p.variant_name || 'Unknown';
+      if (!revenueByTier[key]) revenueByTier[key] = { name: key, revenue: 0, sales: 0 };
+      revenueByTier[key].revenue += parseFloat(p.amount) || 0;
+      revenueByTier[key].sales++;
+    }
+    const revenueByTierArr = Object.values(revenueByTier)
+      .sort((a, b) => b.revenue - a.revenue)
+      .map(r => ({ ...r, revenue: parseFloat(r.revenue.toFixed(2)) }));
+
+    // ── Time series: last 30 days ─────────────────────────────────────────────
+    const days = 30;
+    const series: { date: string; downloads: number; signups: number; messages: number; revenue: number; sales: number }[] = [];
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toISOString().split('T')[0];
+
+      const downloads    = (kvLeads   as any[]).filter(l => (l.downloadedAt || '').startsWith(dateStr)).length;
+      const signups      = signupUsers.filter((u: any)  => (u.created_at   || '').startsWith(dateStr)).length;
+      const msgs         = (messages  as any[]).filter(m => (m.createdAt   || '').startsWith(dateStr)).length;
+      const dayPurchases = activePurchases.filter((p: any) => (p.purchased_at || '').startsWith(dateStr));
+      const revenue      = parseFloat(dayPurchases.reduce((s: number, p: any) => s + (parseFloat(p.amount) || 0), 0).toFixed(2));
+      const sales        = dayPurchases.length;
+
+      series.push({ date: dateStr, downloads, signups, messages: msgs, revenue, sales });
+    }
+
+    // ── Top tools by download count ──────────────────────────────────────────
+    const toolCountMap: Record<string, { name: string; category: string; slug: string; count: number }> = {};
+    for (const lead of kvLeads as any[]) {
+      const key = lead.toolSlug || lead.toolName || 'Unknown';
+      if (!toolCountMap[key]) toolCountMap[key] = { name: lead.toolName || key, category: '', slug: key, count: 0 };
+      toolCountMap[key].count++;
+    }
+    for (const t of tools as any[]) {
+      const key = t.slug || t.name;
+      if (toolCountMap[key]) toolCountMap[key].category = t.category || '';
+    }
+    const topTools = Object.values(toolCountMap).sort((a, b) => b.count - a.count).slice(0, 8);
+
+    // ── Lead sources for pie chart ──
+    const leadSources = [
+      { name: 'Free Downloads', value: kvLeads.length },
+      { name: 'Sign-ups',       value: signupUsers.length },
+    ];
+
+    // ── Downloads by tool ──
+    const downloadsByTool = Object.values(toolCountMap)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 6)
+      .map(t => ({ name: t.name.length > 14 ? t.name.substring(0, 14) + '…' : t.name, count: t.count }));
+
+    // ── 30-day lead stats ──
+    const newLeads30d    = (kvLeads as any[]).filter(l => new Date(l.downloadedAt || 0) >= thirtyDaysAgo).length;
+    const newSignups30d  = signupUsers.filter((u: any) => new Date(u.created_at || 0) >= thirtyDaysAgo).length;
+    const unreadMessages = (messages as any[]).filter(m => !m.read).length;
+
+    // ── Recent activity (downloads + signups + purchases) ────────────────────
+    const recentLeads = [...kvLeads as any[]]
+      .sort((a, b) => new Date(b.downloadedAt || 0).getTime() - new Date(a.downloadedAt || 0).getTime())
+      .slice(0, 8)
+      .map(l => ({ ...l, activityType: 'download' }));
+
+    const recentSignups = [...signupUsers]
+      .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
+      .slice(0, 5)
+      .map((u: any) => ({
+        email: u.email,
+        displayName: u.user_metadata?.full_name || '',
+        createdAt: u.created_at,
+        activityType: 'signup',
+      }));
+
+    const recentPurchaseActivity = [...activePurchases]
+      .slice(0, 8)
+      .map((p: any) => ({
+        email: '',
+        productName: p.product_name || '',
+        variantName: p.variant_name || '',
+        amount: parseFloat(p.amount) || 0,
+        currency: p.currency || 'USD',
+        createdAt: p.purchased_at,
+        activityType: 'purchase',
+      }));
+
+    const recentMessages = [...messages as any[]]
+      .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+      .slice(0, 5);
+
+    const activity = [...recentLeads, ...recentSignups, ...recentPurchaseActivity]
+      .sort((a, b) => {
+        const ta = new Date(a.downloadedAt || a.createdAt || 0).getTime();
+        const tb = new Date(b.downloadedAt || b.createdAt || 0).getTime();
+        return tb - ta;
+      })
+      .slice(0, 15);
+
+    return c.json({
+      success: true,
+      data: {
+        stats: {
+          totalLeads:    kvLeads.length + signupUsers.length,
+          freeDownloads: kvLeads.length,
+          signups:       signupUsers.length,
+          totalTools:    tools.length,
+          totalProjects: projects.length,
+          totalMessages: messages.length,
+          unreadMessages,
+          newLeads30d:   newLeads30d + newSignups30d,
+          totalRevenue:  parseFloat(totalRevenue.toFixed(2)),
+          revenue30d:    parseFloat(revenue30d.toFixed(2)),
+          revenue7d:     parseFloat(revenue7d.toFixed(2)),
+          totalSales:    activePurchases.length,
+          totalRefunded: parseFloat(totalRefunded.toFixed(2)),
+          refundCount:   refundedPurchases.length,
+        },
+        series,
+        topTools,
+        downloadsByTool,
+        leadSources,
+        revenueByProduct: revenueByProductArr,
+        revenueByTier:    revenueByTierArr,
+        recentMessages,
+        recentPurchases:  activePurchases.slice(0, 10),
+        activity,
+      },
+    });
+  } catch (error) {
+    console.log('[admin/dashboard] Error:', error);
     return c.json({ success: false, error: String(error) }, 500);
   }
 });

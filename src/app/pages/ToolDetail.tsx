@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useTracker } from '../hooks/useTracker';
 
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-e07959ec`;
 
@@ -113,10 +114,16 @@ function parsePricing(version: ToolVersion): { priceLabel: string; cleanFeatures
 
 // ── DemoPlayer ────────────────────────────────────────────────────────────────
 
-function DemoPlayer({ url }: { url: string }) {
+function DemoPlayer({ url, toolId, toolName, toolSlug }: { url: string; toolId: string; toolName: string; toolSlug: string }) {
   const [playing, setPlaying] = useState(false);
+  const { track } = useTracker();
   const yt = parseYouTube(url);
   const thumbnailUrl = yt ? `https://img.youtube.com/vi/${yt.videoId}/maxresdefault.jpg` : null;
+
+  const handlePlay = () => {
+    setPlaying(true);
+    track('video_play', { toolId, toolName, toolSlug, videoId: yt?.videoId || url });
+  };
 
   return (
     <motion.section
@@ -146,7 +153,7 @@ function DemoPlayer({ url }: { url: string }) {
           />
         ) : (
           <button
-            onClick={() => setPlaying(true)}
+            onClick={handlePlay}
             className="absolute inset-0 w-full h-full group focus:outline-none"
             aria-label="Play demo"
           >
@@ -200,6 +207,8 @@ function PricingCard({
   userPurchasedProductNames,
   onSignInRequired,
   onFreeDownload,
+  onBuyClick,
+  sessionId,
 }: {
   version: ToolVersion;
   index: number;
@@ -207,6 +216,8 @@ function PricingCard({
   userPurchasedProductNames: string[];
   onSignInRequired: (msg?: string) => void;
   onFreeDownload: (v: ToolVersion) => void;
+  onBuyClick?: (v: ToolVersion) => void;
+  sessionId?: string;
 }) {
   const { priceLabel, cleanFeatures } = parsePricing(version);
   const isPro = version.versionType === 'Pro';
@@ -227,9 +238,10 @@ function PricingCard({
       if (user?.id)    url.searchParams.set('checkout[custom][user_id]', user.id);
       // Pass version ID so the webhook can record tool_version_id
       url.searchParams.set('checkout[custom][tool_version_id]', version.id);
+      // Pass session ID so the webhook can mark the session as converted
+      if (sessionId) url.searchParams.set('checkout[custom][session_id]', sessionId);
       return url.toString();
     } catch {
-      // If URL is invalid/relative, return as-is
       return version.downloadUrl;
     }
   };
@@ -239,6 +251,7 @@ function PricingCard({
       onSignInRequired('Sign in to purchase and access your license key.');
       return;
     }
+    onBuyClick?.(version);
     const url = buildCheckoutUrl();
     window.open(url, '_blank', 'noopener,noreferrer');
   };
@@ -381,6 +394,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 export function ToolDetail() {
   const { slug } = useParams();
   const { user, session, signInWithEmail, signUpWithEmail, forgotPassword } = useUserAuth();
+  const { track, setUser, sessionId } = useTracker();
   const [tool, setTool] = useState<Tool | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -394,6 +408,11 @@ export function ToolDetail() {
   const [reviews, setReviews] = useState<any[]>([]);
 
   useEffect(() => { loadTool(); }, [slug]);
+
+  // Sync user identity into tracker when user changes
+  useEffect(() => {
+    if (user?.id && user?.email) setUser(user.id, user.email);
+  }, [user?.id]);
 
   // Load user purchases to check ownership
   useEffect(() => {
@@ -445,6 +464,8 @@ export function ToolDetail() {
           if (!found.versions && (found as any).toolVersions)
             found = { ...found, versions: (found as any).toolVersions };
           setTool(found);
+          // Track tool view
+          track('tool_view', { toolId: found.id, toolName: found.name, toolSlug: found.slug ?? slug });
           // Fetch reviews for this tool
           fetchReviews(found.id);
         } else {
@@ -476,6 +497,8 @@ export function ToolDetail() {
   // Handle free download — auto-download if signed in, show modal if guest
   const handleFreeDownload = async (version: ToolVersion) => {
     if (!version.downloadUrl) return;
+    // Track free download intent
+    track('free_download', { toolId: tool?.id, toolName: tool?.name, toolSlug: tool?.slug ?? '' });
     if (user) {
       // Signed-in: record lead silently then open the file
       try {
@@ -662,7 +685,7 @@ export function ToolDetail() {
 
         {/* ── Demo video ────────────────────────────────────────────────────── */}
         <div id="demo-section">
-          {tool.demoUrl && <DemoPlayer url={tool.demoUrl} />}
+          {tool.demoUrl && <DemoPlayer url={tool.demoUrl} toolId={tool.id} toolName={tool.name} toolSlug={tool.slug ?? ''} />}
         </div>
 
         {/* ── Pricing ───────────────────────────────────────────────────────── */}
@@ -686,6 +709,11 @@ export function ToolDetail() {
                   userPurchasedProductNames={userPurchasedProductNames}
                   onSignInRequired={openAuthModal}
                   onFreeDownload={handleFreeDownload}
+                  sessionId={sessionId}
+                  onBuyClick={(ver) => track('buy_click', {
+                    toolId: tool.id, toolName: tool.name, toolSlug: tool.slug ?? '',
+                    versionType: ver.versionType, price: parsePricing(ver).priceLabel,
+                  })}
                 />
               ))}
             </div>

@@ -26,12 +26,13 @@ interface SocialLinks {
 
 export function Footer() {
   const [socialLinks, setSocialLinks] = useState<SocialLinks>({});
+  const [contactEmail, setContactEmail] = useState('');
 
   useEffect(() => {
-    fetchSocialLinks();
+    fetchSettings();
   }, []);
 
-  const fetchSocialLinks = async () => {
+  const fetchSettings = async () => {
     try {
       const response = await fetch(`${API_BASE}/settings`, {
         headers: {
@@ -41,12 +42,13 @@ export function Footer() {
 
       if (response.ok) {
         const result = await response.json();
-        if (result.success && result.data?.socialLinks) {
-          setSocialLinks(result.data.socialLinks);
+        if (result.success && result.data) {
+          if (result.data.socialLinks) setSocialLinks(result.data.socialLinks);
+          if (result.data.contactEmail) setContactEmail(result.data.contactEmail);
         }
       }
     } catch (error) {
-      console.error('Error fetching social links:', error);
+      console.error('Error fetching footer settings:', error);
     }
   };
 
@@ -143,13 +145,17 @@ export function Footer() {
           {/* Contact */}
           <div>
             <h4 className="text-white mb-4">Get in touch</h4>
-            <a 
-              href="mailto:youssef@fastoosh.com" 
-              className="text-white/60 hover:text-white transition-colors text-sm inline-flex items-center gap-2"
-            >
-              <Mail className="w-4 h-4" />
-              youssef@fastoosh.com
-            </a>
+            {contactEmail ? (
+              <a
+                href={`mailto:${contactEmail}`}
+                className="text-white/60 hover:text-white transition-colors text-sm inline-flex items-center gap-2"
+              >
+                <Mail className="w-4 h-4" />
+                {contactEmail}
+              </a>
+            ) : (
+              <p className="text-white/40 text-sm">No contact email configured</p>
+            )}
           </div>
 
           {/* Social */}

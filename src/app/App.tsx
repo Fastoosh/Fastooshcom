@@ -1,11 +1,14 @@
 import { RouterProvider } from 'react-router';
 import { HelmetProvider } from 'react-helmet-async';
 import { router } from './routes';
+import { TrackingProvider } from './components/TrackingProvider';
 
 function App() {
   return (
     <HelmetProvider>
-      <RouterProvider router={router} />
+      <TrackingProvider>
+        <RouterProvider router={router} />
+      </TrackingProvider>
     </HelmetProvider>
   );
 }
