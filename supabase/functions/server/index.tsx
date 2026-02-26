@@ -250,6 +250,99 @@ const normalizeTool = (tool: Record<string, any>): Record<string, any> => {
 };
 // ────────────────────────────────────────────────────────────────────────────
 
+// ── Brute-force rate limiter ──────────────────────────────────────────────
+// Tracks failed login attempts per IP in memory.  Edge-function instances are
+// ephemeral so this doesn't survive a cold-start — that's acceptable because
+// the Resend alert adds a persistent, out-of-band notification layer on top.
+
+interface LoginAttemptRecord {
+  count: number;        // consecutive failures
+  lockedUntil: number;  // epoch ms — 0 means not locked
+  alertSent: boolean;   // true once the 5-failure email has been sent this window
+}
+
+const loginAttempts = new Map<string, LoginAttemptRecord>();
+const MAX_LOGIN_FAILURES = 5;
+const LOCKOUT_MS         = 15 * 60 * 1000; // 15 minutes
+
+function getAttemptRecord(ip: string): LoginAttemptRecord {
+  if (!loginAttempts.has(ip)) {
+    loginAttempts.set(ip, { count: 0, lockedUntil: 0, alertSent: false });
+  }
+  return loginAttempts.get(ip)!;
+}
+
+async function sendBruteForceAlert(ip: string, attemptedEmail: string) {
+  try {
+    const resendKey = Deno.env.get('RESEND_API_KEY');
+    if (!resendKey) {
+      console.warn('⚠️  RESEND_API_KEY not set — cannot send brute-force alert');
+      return;
+    }
+
+    // Fetch the admin contact email from site_settings
+    const { data: row } = await supabase
+      .from('site_settings')
+      .select('value')
+      .eq('key', 'contactEmail')
+      .maybeSingle();
+
+    const adminEmail = row?.value as string | undefined;
+    if (!adminEmail) {
+      console.warn('⚠️  contactEmail not set in site_settings — cannot send brute-force alert');
+      return;
+    }
+
+    const resend = new Resend(resendKey);
+    const now    = new Date().toUTCString();
+
+    await resend.emails.send({
+      from: 'Fastoosh Security <security@fastoosh.com>',
+      to:   adminEmail,
+      subject: '🚨 Admin Login — 5 Failed Attempts Detected',
+      html: `
+        <div style="font-family:sans-serif;max-width:600px;margin:0 auto;background:#0a0a0a;color:#e5e5e5;border-radius:12px;overflow:hidden;">
+          <div style="background:linear-gradient(135deg,#7c3aed,#4f46e5);padding:28px 32px;">
+            <h1 style="margin:0;font-size:22px;color:#fff;">🚨 Security Alert — Fastoosh Admin</h1>
+          </div>
+          <div style="padding:32px;">
+            <p style="font-size:16px;line-height:1.6;color:#d4d4d4;">
+              <strong>5 consecutive failed login attempts</strong> were recorded on your admin panel.
+              The IP has been locked out for <strong>15 minutes</strong>.
+            </p>
+            <table style="width:100%;border-collapse:collapse;margin-top:24px;">
+              <tr>
+                <td style="padding:10px 14px;background:#1a1a1a;border-radius:6px 6px 0 0;color:#a3a3a3;font-size:13px;width:140px;">IP Address</td>
+                <td style="padding:10px 14px;background:#1a1a1a;border-radius:6px 6px 0 0;color:#fff;font-size:13px;font-family:monospace;">${ip}</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 14px;background:#141414;color:#a3a3a3;font-size:13px;">Targeted Email</td>
+                <td style="padding:10px 14px;background:#141414;color:#fff;font-size:13px;font-family:monospace;">${attemptedEmail || 'unknown'}</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 14px;background:#1a1a1a;border-radius:0 0 6px 6px;color:#a3a3a3;font-size:13px;">Time (UTC)</td>
+                <td style="padding:10px 14px;background:#1a1a1a;border-radius:0 0 6px 6px;color:#fff;font-size:13px;">${now}</td>
+              </tr>
+            </table>
+            <p style="margin-top:28px;font-size:14px;color:#a3a3a3;">
+              If this was you, simply wait 15 minutes and try again.
+              If it wasn't, consider changing your admin password immediately.
+            </p>
+            <p style="margin-top:8px;font-size:12px;color:#525252;">
+              This alert was generated automatically by Fastoosh's login security system.
+            </p>
+          </div>
+        </div>
+      `,
+    });
+
+    console.log(`✅ Brute-force alert email sent to ${adminEmail}`);
+  } catch (err) {
+    console.error('❌ Failed to send brute-force alert email:', err);
+  }
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 // ── Admin session auth ────────────────────────────────────────────────────
 // The Supabase edge-function gateway validates the standard `Authorization`
 // header BEFORE the request reaches Hono — sending a UUID there causes a 401
@@ -318,8 +411,8 @@ const requireUserAuth = async (c: any, next: any) => {
 
 // ========== AUTH ENDPOINTS ==========
 
-// Sign up endpoint (creates user)
-app.post("/make-server-e07959ec/signup", async (c) => {
+// Sign up endpoint — protected: only an existing admin can create another admin account
+app.post("/make-server-e07959ec/signup", requireAuth, async (c) => {
   try {
     const body = await c.req.json();
     const { email, password, fullName } = body;
@@ -355,11 +448,39 @@ app.post("/make-server-e07959ec/signup", async (c) => {
   }
 });
 
-// Login endpoint
+// Login endpoint — rate-limited: 5 failures per IP → 15-minute lockout + alert email
 app.post('/make-server-e07959ec/login', async (c) => {
   try {
     const { email, password } = await c.req.json();
-    
+
+    // ── Resolve client IP ────────────────────────────────────────────────────
+    const ip = (
+      c.req.header('cf-connecting-ip') ||
+      c.req.header('x-real-ip') ||
+      (c.req.header('x-forwarded-for') ?? '').split(',')[0].trim() ||
+      'unknown'
+    );
+
+    const record = getAttemptRecord(ip);
+    const now    = Date.now();
+
+    // Reject immediately if still locked out
+    if (record.lockedUntil > now) {
+      const remainingSecs = Math.ceil((record.lockedUntil - now) / 1000);
+      const remainingMins = Math.ceil(remainingSecs / 60);
+      console.log(`🔒 Login blocked for IP ${ip} — ${remainingSecs}s remaining`);
+      return c.json(
+        { success: false, error: `Too many failed attempts. Try again in ${remainingMins} minute${remainingMins !== 1 ? 's' : ''}.` },
+        429,
+      );
+    }
+
+    // Auto-reset counter if lockout window has expired (IP was locked, then unlocked)
+    if (record.lockedUntil > 0 && record.lockedUntil <= now) {
+      loginAttempts.delete(ip);
+    }
+    // ────────────────────────────────────────────────────────────────────────
+
     // Create a client with anon key for auth
     const authClient = createClient(
       Deno.env.get('SUPABASE_URL')!,
@@ -372,15 +493,42 @@ app.post('/make-server-e07959ec/login', async (c) => {
     });
     
     if (error || !data.user || !data.session) {
-      console.log('Login failed:', error?.message);
-      return c.json({ success: false, error: error?.message || 'Authentication failed' }, 401);
+      // ── Record failure ─────────────────────────────────────────────────────
+      const rec = getAttemptRecord(ip); // re-fetch in case it was deleted above
+      rec.count += 1;
+      console.log(`❌ Login failed for IP ${ip} (attempt ${rec.count}/${MAX_LOGIN_FAILURES}):`, error?.message);
+
+      if (rec.count >= MAX_LOGIN_FAILURES) {
+        rec.lockedUntil = Date.now() + LOCKOUT_MS;
+
+        // Fire alert email once per lockout window
+        if (!rec.alertSent) {
+          rec.alertSent = true;
+          sendBruteForceAlert(ip, email).catch(() => {}); // fire-and-forget
+        }
+
+        console.log(`🔒 IP ${ip} locked out for 15 minutes`);
+        return c.json(
+          { success: false, error: 'Too many failed attempts. You have been locked out for 15 minutes. The site owner has been notified.' },
+          429,
+        );
+      }
+
+      const remaining = MAX_LOGIN_FAILURES - rec.count;
+      return c.json(
+        { success: false, error: `Invalid credentials. ${remaining} attempt${remaining !== 1 ? 's' : ''} remaining before lockout.` },
+        401,
+      );
+      // ──────────────────────────────────────────────────────────────────────
     }
-    
+
+    // ── Successful login — wipe rate-limit record for this IP ────────────────
+    loginAttempts.delete(ip);
+    // ─────────────────────────────────────────────────────────────────────────
+
     console.log('✅ Credentials verified for:', data.user.email);
 
     // Mint an opaque server-side session token (UUID) stored in KV.
-    // This is completely independent of Supabase JWT/OAuth — no client-side
-    // JWT crypto, no supabase.auth state conflicts.
     const sessionToken = crypto.randomUUID();
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 30); // 30-day session
@@ -396,7 +544,7 @@ app.post('/make-server-e07959ec/login', async (c) => {
     return c.json({
       success: true,
       session: {
-        access_token: sessionToken, // opaque UUID — verified server-side in KV
+        access_token: sessionToken,
       },
       user: {
         id:    data.user.id,
@@ -4804,6 +4952,88 @@ app.delete('/make-server-e07959ec/reviews/:toolId', requireUserAuth, async (c) =
   } catch (error) {
     console.log('[reviews DELETE] error:', error);
     return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
+// ========== SETUP WIZARD ENDPOINTS ==========
+// Power the one-time client deployment wizard at /setup.
+// These are intentionally unauthenticated — each route has its own guard.
+
+/** GET /setup/status — is setup complete? (any auth users exist?) */
+app.get('/make-server-e07959ec/setup/status', async (c) => {
+  try {
+    const { data, error } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1 });
+    if (error) return c.json({ success: false, error: error.message }, 500);
+    const userCount = data?.users?.length ?? 0;
+    return c.json({ success: true, isComplete: userCount > 0, userCount });
+  } catch (err) {
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+/** GET /setup/check-env — which secrets are configured? (boolean only, never the values) */
+app.get('/make-server-e07959ec/setup/check-env', (c) => {
+  const keys = [
+    'SUPABASE_URL',
+    'SUPABASE_ANON_KEY',
+    'SUPABASE_SERVICE_ROLE_KEY',
+    'RESEND_API_KEY',
+    'GEMINI_API_KEY',
+    'LEMON_SQUEEZY_API_KEY',
+    'LEMON_SQUEEZY_WEBHOOK_SECRET',
+  ];
+  const vars: Record<string, boolean> = {};
+  for (const k of keys) vars[k] = !!Deno.env.get(k);
+  return c.json({ success: true, vars });
+});
+
+/** POST /setup/create-admin — creates the FIRST admin (blocked if any user exists) */
+app.post('/make-server-e07959ec/setup/create-admin', async (c) => {
+  try {
+    const { email, password } = await c.req.json();
+    if (!email || !password) return c.json({ success: false, error: 'Email and password are required' }, 400);
+    if (password.length < 8)  return c.json({ success: false, error: 'Password must be at least 8 characters' }, 400);
+
+    // Security gate — only works when no users exist yet
+    const { data: existing } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1 });
+    if ((existing?.users?.length ?? 0) > 0) {
+      return c.json({ success: false, error: 'An admin account already exists. Go to /admin/login.' }, 403);
+    }
+
+    const { data, error } = await supabase.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+    });
+    if (error) return c.json({ success: false, error: error.message }, 400);
+
+    console.log('✅ Setup: first admin created for', data.user.email);
+    return c.json({ success: true, user: { id: data.user.id, email: data.user.email } });
+  } catch (err) {
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+/** POST /setup/brand — saves initial brand settings to site_settings */
+app.post('/make-server-e07959ec/setup/brand', async (c) => {
+  try {
+    const body = await c.req.json();
+    const allowed = [
+      'studioName', 'contactEmail', 'siteUrl', 'calendlyUrl', 'showreelUrl',
+      'linkedin', 'instagram', 'twitter', 'tiktok', 'behance', 'dribbble',
+    ];
+    for (const key of allowed) {
+      if (body[key] !== undefined && body[key] !== '') {
+        await supabase.from('site_settings').upsert(
+          { key, value: body[key], updated_at: new Date().toISOString() },
+          { onConflict: 'key' },
+        );
+      }
+    }
+    console.log('✅ Setup: brand settings saved');
+    return c.json({ success: true });
+  } catch (err) {
+    return c.json({ success: false, error: String(err) }, 500);
   }
 });
 

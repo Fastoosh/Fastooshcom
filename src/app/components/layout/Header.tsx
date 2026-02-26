@@ -17,7 +17,7 @@ export function Header() {
   const userMenuRef = useRef<HTMLDivElement>(null);
   const { activeLogoUrl, logoText, logoHeight } = useLogo();
 
-  const { user, loading, signInWithEmail, signUpWithEmail, forgotPassword, signOut } = useUserAuth();
+  const { user, loading, signInWithEmail, signUpWithEmail, forgotPassword, signInWithOAuth, signOut } = useUserAuth();
 
   // Close user menu on outside click
   useEffect(() => {
@@ -292,6 +292,7 @@ export function Header() {
           onSignInEmail={signInWithEmail}
           onSignUpEmail={signUpWithEmail}
           onForgotPassword={forgotPassword}
+          onSignInOAuth={signInWithOAuth}
         />
       )}
     </>

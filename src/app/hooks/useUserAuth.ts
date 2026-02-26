@@ -1,12 +1,15 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getSupabaseClient } from '../utils/supabase-client';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
-import type { User, Session } from '@supabase/supabase-js';
+import type { User, Session, Provider } from '@supabase/supabase-js';
 
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-e07959ec`;
 
 // Password reset lands here; must be in Supabase → Auth → Redirect URLs allowlist.
 const RESET_REDIRECT = 'https://www.fastoosh.com/auth/reset-password';
+
+// Redirect URL for OAuth callbacks — works in dev and production
+const OAUTH_REDIRECT = `${window.location.origin}/auth/callback`;
 
 export interface UserAuth {
   user: User | null;
@@ -14,6 +17,7 @@ export interface UserAuth {
   loading: boolean;
   signInWithEmail:   (email: string, password: string) => Promise<void>;
   signUpWithEmail:   (email: string, password: string, name?: string) => Promise<void>;
+  signInWithOAuth:   (provider: 'google' | 'discord') => Promise<void>;
   forgotPassword:    (email: string) => Promise<void>;
   updatePassword:    (newPassword: string) => Promise<void>;
   updateEmail:       (newEmail: string) => Promise<void>;
@@ -66,6 +70,22 @@ export function useUserAuth(): UserAuth {
     if (loginError) throw new Error(loginError.message);
   }, []);
 
+  /* ── OAuth (Google, Discord) ─────────────────────────────────────────────── */
+
+  const signInWithOAuth = useCallback(async (provider: 'google' | 'discord') => {
+    const supabase = getSupabaseClient();
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider,
+      options: {
+        // PKCE: Supabase sends ?code= to this URL; AuthCallback exchanges it
+        redirectTo: OAUTH_REDIRECT,
+        // Do NOT pass custom scopes — let Supabase use its built-in defaults for each provider
+      },
+    });
+    if (error) throw new Error(error.message);
+    // signInWithOAuth triggers a full-page redirect — nothing executes after this
+  }, []);
+
   /* ── Forgot / reset password ────────────────────────────────────────────── */
 
   const forgotPassword = useCallback(async (email: string) => {
@@ -99,7 +119,7 @@ export function useUserAuth(): UserAuth {
 
   return {
     user, session, loading,
-    signInWithEmail, signUpWithEmail,
+    signInWithEmail, signUpWithEmail, signInWithOAuth,
     forgotPassword, updatePassword, updateEmail,
     signOut,
   };

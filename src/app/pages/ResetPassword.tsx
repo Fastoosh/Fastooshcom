@@ -2,13 +2,12 @@
  * /auth/reset-password
  *
  * Supabase sends the user here after clicking the "Reset password" email link.
- * The URL arrives as:
- *   PKCE:     ?code=xxx          → exchangeCodeForSession() is called automatically
- *                                   by detectSessionInUrl; we just wait for onAuthStateChange
- *   Implicit: #access_token=xxx&type=recovery  → same auto-detection
+ * With detectSessionInUrl:false the exchange is done EXPLICITLY here:
  *
- * Once Supabase signals PASSWORD_RECOVERY (or SIGNED_IN with a recovery token),
- * we show the "set new password" form. On success → /account.
+ *   PKCE:     ?code=xxx          → supabase.auth.exchangeCodeForSession(code)
+ *   Implicit: #access_token=xxx  → onAuthStateChange PASSWORD_RECOVERY (legacy)
+ *
+ * Once the session is confirmed we show the "set new password" form.
  */
 
 import { useEffect, useState } from 'react';
@@ -36,47 +35,81 @@ export function ResetPassword() {
 
   /* ── Listen for the recovery event ──────────────────────────────────────── */
   useEffect(() => {
-    const supabase = getSupabaseClient();
+    const supabase     = getSupabaseClient();
+    const searchParams = new URLSearchParams(window.location.search);
+    const hashParams   = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    const code         = searchParams.get('code');
+    const hasToken     = hashParams.has('access_token');
 
-    // onAuthStateChange fires PASSWORD_RECOVERY when the reset link is valid
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log('[ResetPassword] auth event:', event, session?.user?.email);
-
-      if (event === 'PASSWORD_RECOVERY') {
-        setStage('ready');
-        return;
-      }
-
-      // With PKCE the session comes in as SIGNED_IN; check the recovery flag
-      if (event === 'SIGNED_IN' && session) {
-        setStage('ready');
-        return;
-      }
-    });
-
-    // Also handle the case where the page loads with a hash / code already present
-    // (some browsers fire the event before this listener is registered)
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        setStage('ready');
-      }
-    });
-
-    // Safety timeout: if nothing fires in 8 s, show error
-    const timeout = setTimeout(() => {
-      setStage(s => {
-        if (s === 'waiting') {
-          setErrorMsg('This reset link has expired or is invalid. Please request a new one.');
-          return 'error';
+    // ── PKCE: email link contains ?code=  ───────────────────────────────────
+    if (code) {
+      console.log('[ResetPassword] exchanging PKCE code…');
+      let cancelled = false;
+      supabase.auth.exchangeCodeForSession(code).then(({ data: { session }, error }) => {
+        if (cancelled) return;
+        if (error || !session) {
+          console.error('[ResetPassword] exchange error:', error?.message);
+          setErrorMsg(
+            error?.message || 'Invalid or expired reset link. Please request a new one.'
+          );
+          setStage('error');
+          return;
         }
-        return s;
+        console.log('[ResetPassword] ✅ recovery session for', session.user.email);
+        setStage('ready');
       });
-    }, 8000);
 
-    return () => {
-      subscription.unsubscribe();
-      clearTimeout(timeout);
-    };
+      // Safety timeout
+      const timeout = setTimeout(() => {
+        setStage(s => {
+          if (s === 'waiting') {
+            setErrorMsg('This reset link has expired or is invalid. Please request a new one.');
+            return 'error';
+          }
+          return s;
+        });
+      }, 8000);
+
+      return () => {
+        cancelled = true;
+        clearTimeout(timeout);
+      };
+    }
+
+    // ── Implicit / legacy: #access_token in hash ────────────────────────────
+    if (hasToken) {
+      // onAuthStateChange fires PASSWORD_RECOVERY when the recovery token is valid
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+        console.log('[ResetPassword] auth event:', event, session?.user?.email);
+        if (event === 'PASSWORD_RECOVERY' || (event === 'SIGNED_IN' && session)) {
+          setStage('ready');
+        }
+      });
+
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session) setStage('ready');
+      });
+
+      const timeout = setTimeout(() => {
+        setStage(s => {
+          if (s === 'waiting') {
+            setErrorMsg('This reset link has expired or is invalid. Please request a new one.');
+            return 'error';
+          }
+          return s;
+        });
+      }, 8000);
+
+      return () => {
+        subscription.unsubscribe();
+        clearTimeout(timeout);
+      };
+    }
+
+    // ── Nothing in URL ───────────────────────────────────────────────────────
+    console.error('[ResetPassword] No code or token in URL');
+    setErrorMsg('This reset link is invalid. Please request a new one.');
+    setStage('error');
   }, []);
 
   /* ── Submit new password ─────────────────────────────────────────────────── */

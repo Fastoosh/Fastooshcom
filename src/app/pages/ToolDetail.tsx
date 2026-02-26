@@ -744,7 +744,7 @@ function FeaturesShowcase({
 
 export function ToolDetail() {
   const { slug } = useParams();
-  const { user, session, signInWithEmail, signUpWithEmail, forgotPassword } = useUserAuth();
+  const { user, session, signInWithEmail, signUpWithEmail, forgotPassword, signInWithOAuth } = useUserAuth();
   const { track, setUser, sessionId } = useTracker();
   const [tool, setTool] = useState<Tool | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1400,6 +1400,7 @@ export function ToolDetail() {
           onSignInEmail={signInWithEmail}
           onSignUpEmail={signUpWithEmail}
           onForgotPassword={forgotPassword}
+          onSignInOAuth={signInWithOAuth}
           message={authModalMessage}
         />
       )}
