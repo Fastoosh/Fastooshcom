@@ -1,11 +1,15 @@
 import { useParams } from "react-router";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import Player from '@vimeo/player';
 import { motion } from "motion/react";
 import { GlassCard } from "../components/shared/GlassCard";
 import { NeonButton } from "../components/shared/NeonButton";
 import { SeoHead } from "../components/shared/SeoHead";
 import { ArrowLeft, Play } from "lucide-react";
 import { api } from "../utils/api";
+import { projectId as supabaseProjectId, publicAnonKey } from '/utils/supabase/info';
+
+const API_BASE = `https://${supabaseProjectId}.supabase.co/functions/v1/make-server-e07959ec`;
 
 // Fallback project data
 const fallbackProject = {
@@ -35,6 +39,135 @@ export function ProjectDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showVideo, setShowVideo] = useState(false);
+
+  // ── Video analytics tracking ───────────────────────────────────────────────
+  const idRef           = useRef<string | undefined>(id);
+  const playStartRef    = useRef<number | null>(null);   // non-null only while actually playing
+  const isPlayingRef    = useRef(false);                 // mirrors real player play/pause state
+  const viewRecordedRef = useRef(false);
+  const iframeRef       = useRef<HTMLIFrameElement>(null);
+
+  useEffect(() => { idRef.current = id; }, [id]);
+
+  /** Fire-and-forget: POST seconds watched to the server. */
+  const postWatchSeconds = useCallback((secs: number) => {
+    const pid = idRef.current;
+    if (secs <= 0 || !pid) return;
+    console.log(`[VideoTrack] sending ${secs}s for project ${pid}`);
+    fetch(`${API_BASE}/projects/${pid}/video-view`, {
+      method:    'POST',
+      headers:   { 'Authorization': `Bearer ${publicAnonKey}`, 'Content-Type': 'application/json' },
+      body:      JSON.stringify({ addView: false, watchSeconds: secs }),
+      keepalive: true,
+    }).catch(err => console.warn('[VideoTrack] watch-time send failed:', err));
+  }, []);
+
+  /** Compute elapsed since last checkpoint, send it, then reset or stop the clock. */
+  const drainTimer = useCallback((keepRunning: boolean) => {
+    if (playStartRef.current === null) return;
+    const elapsed = Math.floor((Date.now() - playStartRef.current) / 1000);
+    playStartRef.current = keepRunning ? Date.now() : null;
+    postWatchSeconds(elapsed);
+  }, [postWatchSeconds]);
+
+  /** Called when the play button overlay is clicked — shows iframe, records one view. */
+  const handleVideoPlay = useCallback(() => {
+    setShowVideo(true);
+    // Timer starts on the player's actual 'play' event, not here.
+    if (!viewRecordedRef.current && idRef.current) {
+      viewRecordedRef.current = true;
+      fetch(`${API_BASE}/projects/${idRef.current}/video-view`, {
+        method:  'POST',
+        headers: { 'Authorization': `Bearer ${publicAnonKey}`, 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ addView: true, watchSeconds: 0 }),
+      }).catch(err => console.warn('[VideoTrack] view record failed:', err));
+    }
+  }, []);
+
+  // ── Hook into the player APIs for real play / pause events ─────────────────
+  useEffect(() => {
+    if (!showVideo || !iframeRef.current) return;
+    const url = project.videoUrl || '';
+
+    // ── Vimeo ────────────────────────────────────────────────────────────────
+    if (url.includes('vimeo.com') || iframeRef.current.src.includes('vimeo.com') || iframeRef.current.src.includes('player.vimeo')) {
+      const vimeoPlayer = new Player(iframeRef.current);
+
+      const onPlay  = () => { isPlayingRef.current = true;  playStartRef.current = Date.now(); };
+      const onPause = () => { isPlayingRef.current = false; drainTimer(false); };
+      const onEnded = () => { isPlayingRef.current = false; drainTimer(false); };
+
+      vimeoPlayer.on('play',   onPlay);
+      vimeoPlayer.on('pause',  onPause);
+      vimeoPlayer.on('ended',  onEnded);
+
+      return () => {
+        vimeoPlayer.off('play',  onPlay);
+        vimeoPlayer.off('pause', onPause);
+        vimeoPlayer.off('ended', onEnded);
+      };
+    }
+
+    // ── YouTube ──────────────────────────────────────────────────────────────
+    if (url.includes('youtube.com') || url.includes('youtu.be')) {
+      const onMessage = (e: MessageEvent) => {
+        if (!e.origin.includes('youtube.com')) return;
+        try {
+          const data = JSON.parse(typeof e.data === 'string' ? e.data : JSON.stringify(e.data));
+          // playerState: 1=playing, 2=paused, 0=ended, 3=buffering
+          const state = data?.info?.playerState;
+          if (state === 1) {
+            isPlayingRef.current = true;
+            playStartRef.current = Date.now();
+          } else if (state === 2 || state === 0) {
+            isPlayingRef.current = false;
+            drainTimer(false);
+          }
+        } catch { /* ignore malformed messages */ }
+      };
+      window.addEventListener('message', onMessage);
+
+      // Tell the YouTube iframe to start sending events
+      const ping = setTimeout(() => {
+        iframeRef.current?.contentWindow?.postMessage(
+          JSON.stringify({ event: 'listening', id: 1 }),
+          'https://www.youtube.com'
+        );
+      }, 800);
+
+      return () => {
+        window.removeEventListener('message', onMessage);
+        clearTimeout(ping);
+      };
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showVideo]); // re-bind only when the iframe mounts
+
+  // ── 10-second heartbeat: flush chunks while video is actually playing ───────
+  useEffect(() => {
+    if (!showVideo) return;
+    const hb = setInterval(() => drainTimer(true), 10_000);
+    return () => clearInterval(hb);
+  }, [showVideo, drainTimer]);
+
+  // ── Tab visibility: drain if playing, restart only when player fires play ───
+  useEffect(() => {
+    const onVis = () => {
+      if (document.hidden && isPlayingRef.current) {
+        drainTimer(false);
+        // Note: browser usually auto-pauses the iframe too; player will fire
+        // a pause/play event when it actually changes state.
+      }
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [drainTimer]);
+
+  // ── Final flush on component unmount ────────────────────────────────────────
+  useEffect(() => {
+    return () => drainTimer(false);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // ──────────────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     const loadProject = async () => {
@@ -83,7 +216,7 @@ export function ProjectDetail() {
       const videoId = url.includes('youtu.be') 
         ? url.split('youtu.be/')[1]?.split('?')[0]
         : url.split('v=')[1]?.split('&')[0];
-      return videoId ? `https://www.youtube.com/embed/${videoId}?autoplay=1` : null;
+      return videoId ? `https://www.youtube.com/embed/${videoId}?autoplay=1&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}` : null;
     }
     
     // Vimeo
@@ -156,6 +289,7 @@ export function ProjectDetail() {
           <GlassCard neonBorder className="aspect-video overflow-hidden mb-12">
             {showVideo && embedUrl ? (
               <iframe
+                ref={iframeRef}
                 src={embedUrl}
                 className="w-full h-full"
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
@@ -165,7 +299,7 @@ export function ProjectDetail() {
               <div 
                 className="w-full h-full bg-cover bg-center relative group cursor-pointer"
                 style={{ backgroundImage: `url(${project.thumbnail})` }}
-                onClick={() => embedUrl && setShowVideo(true)}
+                onClick={() => embedUrl && handleVideoPlay()}
               >
                 <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
                   {embedUrl ? (

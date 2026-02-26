@@ -92,7 +92,7 @@ export function AuthCallback() {
 
   /* ── UI ─────────────────────────────────────────────────────────────────── */
   return (
-    <div className="min-h-screen bg-[#080810] flex items-center justify-center px-6">
+    <div className="min-h-screen bg-black flex items-center justify-center px-6">
 
       {/* Redirect URL not whitelisted */}
       {missingRedirect && (

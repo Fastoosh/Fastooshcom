@@ -15,8 +15,9 @@ const supabase = createClient(
 
 
 // Initialize storage buckets on startup
-const BUCKET_NAME = 'make-e07959ec-images';
+const BUCKET_NAME       = 'make-e07959ec-images';
 const VIDEO_BUCKET_NAME = 'make-e07959ec-videos';
+const BRAND_BUCKET_NAME = 'make-e07959ec-brand';
 
 async function initializeStorage() {
   try {
@@ -68,6 +69,25 @@ async function initializeStorage() {
       }
     } else {
       console.log('Video bucket already exists');
+    }
+
+    // Initialize brand bucket (public — logo is a public asset)
+    const brandBucketExists = buckets?.some(bucket => bucket.name === BRAND_BUCKET_NAME);
+    if (!brandBucketExists) {
+      console.log('Creating brand storage bucket:', BRAND_BUCKET_NAME);
+      const { error } = await supabase.storage.createBucket(BRAND_BUCKET_NAME, {
+        public: true,
+        fileSizeLimit: 5242880, // 5 MB
+      });
+      if (error && (error.message?.includes('already exists') || error?.statusCode === '409')) {
+        console.log('Brand bucket already exists (409 caught)');
+      } else if (error) {
+        console.error('Error creating brand bucket:', error);
+      } else {
+        console.log('Brand bucket created successfully');
+      }
+    } else {
+      console.log('Brand bucket already exists');
     }
   } catch (error) {
     console.error('Error initializing storage:', error);
@@ -853,6 +873,260 @@ Return exactly this JSON:
   }
 });
 
+// ========== AI STYLE GENERATION ==========
+
+app.post("/make-server-e07959ec/admin/generate-style", requireAuth, async (c) => {
+  try {
+    const { prompt, mode = 'dark' } = await c.req.json();
+
+    const apiKey = Deno.env.get('GEMINI_API_KEY');
+    if (!apiKey) return c.json({ success: false, error: 'GEMINI_API_KEY not configured' }, 500);
+    if (!prompt?.trim()) return c.json({ success: false, error: 'Style prompt is required' }, 400);
+
+    const isLight = mode === 'light';
+
+    const headingFonts = ['Inter', 'Space Grotesk', 'Syne', 'Outfit', 'Orbitron', 'Exo 2', 'Rajdhani', 'Bebas Neue', 'Montserrat', 'DM Sans'];
+    const bodyFonts    = ['Inter', 'DM Sans', 'Outfit', 'Plus Jakarta Sans', 'Nunito', 'Manrope', 'Rubik', 'Space Grotesk', 'IBM Plex Sans', 'Karla'];
+
+    const systemPrompt = `You are a world-class UI/UX designer and color theorist specializing in premium ${isLight ? 'light' : 'dark'}-mode web applications with glassmorphism and neon gradient aesthetics.
+
+Your task: Generate a complete, harmonious design system for "Fastoosh" — a premium motion design studio.
+Style vibe requested: "${prompt.trim()}"
+
+CRITICAL: ALL hex color values MUST be EXACTLY 6 hexadecimal digits after the # symbol.
+Examples of VALID hex colors: #7c3aed, #ec4899, #000000, #ffffff, #0f0519
+Examples of INVALID hex colors: #0, #, #fff, #7c3ae, rgb(0,0,0)
+
+STRICT COLOR THEORY RULES:
+1. Pick a PRIMARY HUE (0–360 in HSL) that best matches the mood
+2. accentPrimary: primary hue, HSL saturation 75–95%, lightness ${isLight ? '45–60%' : '60–80%'}
+3. accentSecondary: rotate 30–50° FORWARD from primary hue (analogous harmony), same saturation band
+4. accentGlow: rotate 160–185° from primary (near-complement = visual pop / contrast)
+5. All three accent hex colors must differ visually and be EXACTLY 6 hex digits
+6. Background and overlay colors must be ${isLight ? 'very light (near white with subtle hue traces)' : 'very dark (near black with subtle hue traces)'}
+${isLight ? `
+LIGHT MODE SPECIFICS:
+- bgBase: #f5f4fe or similar very soft cool white (L >= 94%), MUST be 6 hex digits
+- bgGrad1: mix of white + primary hue at very low saturation (L 88-96%), MUST be 6 hex digits
+- bgGrad2: even lighter / near white (L 95-99%), MUST be 6 hex digits
+- textPrimary: deep near-black with a hue tint e.g. #0d0620, #120624, MUST be 6 hex digits
+- overlayColor1: the primary accent hex (shows in gradient over light bg), MUST be 6 hex digits
+- overlayColor2: a blue-violet e.g. #6366f1 or #7c3aed adjusted to mood, MUST be 6 hex digits
+- headerBg: "rgba(255,255,255,0.65)" to "rgba(255,255,255,0.85)"
+- footerBg: "rgba(245,244,254,0.70)" to "rgba(255,255,255,0.75)"
+- cardBg: "rgba(255,255,255,0.55)" to "rgba(255,255,255,0.72)"
+- cardDarkFill: "rgba(255,255,255,0.92)" to "rgba(255,255,255,0.97)"
+- signinBg: use accent primary rgb values at 0.07 opacity
+- navText: use textPrimary rgb values at 0.60 opacity` : `
+DARK MODE SPECIFICS:
+- bgBase: #000000 or near-black like #02010a (L <= 3%), MUST be 6 hex digits
+- bgGrad1: very dark with primary hue trace e.g. #0f0519 (L 4-8%), MUST be 6 hex digits
+- bgGrad2: very dark with secondary hue trace e.g. #05050f (L 3-5%), MUST be 6 hex digits
+- textPrimary: #ffffff or #f8f8ff, MUST be 6 hex digits
+- overlayColor1: saturated version of accentPrimary (keep the hue, S >= 60%, L 60-75%), MUST be 6 hex digits
+- overlayColor2: a contrasting saturated blue-indigo in the #3b82f6 range (adjustable to mood), MUST be 6 hex digits
+- headerBg: "rgba(0,0,0,0.08)" to "rgba(r,g,b,0.06)" using accent primary rgb
+- footerBg: "rgba(0,0,0,0.28)" to "rgba(0,0,0,0.42)"
+- cardBg: "rgba(255,255,255,0.018)" to "rgba(255,255,255,0.038)"
+- cardDarkFill: "rgba(0,0,0,0.90)" to "rgba(0,0,0,0.97)"
+- signinBg: "rgba(255,255,255,0.05)" to "rgba(255,255,255,0.08)"
+- navText: "rgba(255,255,255,0.62)" to "rgba(255,255,255,0.78)"`}
+
+TYPOGRAPHY PAIRING RULES:
+- Available headingFont: ${headingFonts.join(', ')}
+- Available bodyFont: ${bodyFonts.join(', ')}
+- Pair expressive heading with clean body — they should complement, not compete
+- Cyberpunk/tech vibes: Orbitron or Exo 2 heading + IBM Plex Sans or Manrope body
+- Elegant/luxury vibes: Syne or Montserrat heading + Manrope or Karla body
+- Minimal/clean vibes: Space Grotesk or DM Sans heading + Inter or Plus Jakarta Sans body
+- Bold/studio vibes: Bebas Neue or Rajdhani heading + Rubik or Nunito body
+- Do NOT use same font for both
+
+CRITICAL OUTPUT RULES:
+1. Return ONLY valid JSON - no markdown code blocks, no explanation text before or after
+2. ALL hex color values MUST be exactly 6 hexadecimal characters after # (e.g., #7c3aed)
+3. Double-check every hex color before responding
+4. Do not use shorthand hex colors (e.g., #fff is INVALID, use #ffffff)
+
+OUTPUT JSON SCHEMA:
+{
+  "accentPrimary":   "#XXXXXX",
+  "accentSecondary": "#XXXXXX",
+  "accentGlow":      "#XXXXXX",
+  "bgBase":          "#XXXXXX",
+  "bgGrad1":         "#XXXXXX",
+  "bgGrad2":         "#XXXXXX",
+  "overlayColor1":   "#XXXXXX",
+  "overlayColor2":   "#XXXXXX",
+  "textPrimary":     "#XXXXXX",
+  "headingFont":     "FontName",
+  "bodyFont":        "FontName",
+  "headerBg":        "rgba(r,g,b,a)",
+  "footerBg":        "rgba(r,g,b,a)",
+  "cardBg":          "rgba(r,g,b,a)",
+  "cardDarkFill":    "rgba(r,g,b,a)",
+  "signinBg":        "rgba(r,g,b,a)",
+  "navText":         "rgba(r,g,b,a)",
+  "gradSpeed":       "medium",
+  "themeName":       "Short evocative theme name (2-4 words)",
+  "themeDescription":"One sentence capturing the visual mood."
+}
+
+Where XXXXXX represents exactly 6 hexadecimal digits (0-9, a-f). Example: #7c3aed, #000000, #ffffff`;
+
+    console.log(`[generate-style] prompt="${prompt.trim().substring(0, 60)}" mode=${mode}`);
+
+    const geminiRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: systemPrompt }] }],
+          generationConfig: { 
+            temperature: 0.8,
+            maxOutputTokens: 1500,
+            responseSchema: {
+              type: "object",
+              properties: {
+                accentPrimary: { type: "string", pattern: "^#[0-9a-fA-F]{6}$" },
+                accentSecondary: { type: "string", pattern: "^#[0-9a-fA-F]{6}$" },
+                accentGlow: { type: "string", pattern: "^#[0-9a-fA-F]{6}$" },
+                bgBase: { type: "string", pattern: "^#[0-9a-fA-F]{6}$" },
+                bgGrad1: { type: "string", pattern: "^#[0-9a-fA-F]{6}$" },
+                bgGrad2: { type: "string", pattern: "^#[0-9a-fA-F]{6}$" },
+                overlayColor1: { type: "string", pattern: "^#[0-9a-fA-F]{6}$" },
+                overlayColor2: { type: "string", pattern: "^#[0-9a-fA-F]{6}$" },
+                textPrimary: { type: "string", pattern: "^#[0-9a-fA-F]{6}$" },
+                headingFont: { type: "string" },
+                bodyFont: { type: "string" },
+                headerBg: { type: "string" },
+                footerBg: { type: "string" },
+                cardBg: { type: "string" },
+                cardDarkFill: { type: "string" },
+                signinBg: { type: "string" },
+                navText: { type: "string" },
+                gradSpeed: { type: "string" },
+                themeName: { type: "string" },
+                themeDescription: { type: "string" }
+              },
+              required: [
+                "accentPrimary", "accentSecondary", "accentGlow", 
+                "bgBase", "bgGrad1", "bgGrad2",
+                "overlayColor1", "overlayColor2", "textPrimary",
+                "headingFont", "bodyFont", "themeName", "themeDescription"
+              ]
+            },
+            responseMimeType: "application/json"
+          },
+        }),
+      }
+    );
+
+    if (!geminiRes.ok) {
+      const errText = await geminiRes.text();
+      console.log('[generate-style] Gemini error:', errText);
+      return c.json({ success: false, error: `Gemini API error (${geminiRes.status}): ${errText}` }, 500);
+    }
+
+    const geminiData = await geminiRes.json();
+    const rawText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!rawText) return c.json({ success: false, error: 'Gemini returned empty response' }, 500);
+
+    let generated: Record<string, any>;
+    try {
+      const repaired = repairJson(rawText);
+      generated = JSON.parse(repaired);
+    } catch (parseErr) {
+      console.log('[generate-style] JSON parse error. Raw:', rawText.substring(0, 400));
+      return c.json({ success: false, error: `AI returned invalid JSON: ${String(parseErr)}` }, 500);
+    }
+
+    // Helper function to normalize hex colors
+    const normalizeHex = (hex: string, fallback: string): string => {
+      if (!hex || typeof hex !== 'string') return fallback;
+      let cleaned = hex.trim();
+      
+      // Remove any # and whitespace
+      cleaned = cleaned.replace(/^#/, '').replace(/\s/g, '');
+      
+      // If empty or invalid, use fallback
+      if (cleaned.length === 0 || !/^[0-9a-fA-F]+$/.test(cleaned)) {
+        console.log(`[generate-style] Invalid hex "${hex}", using fallback ${fallback}`);
+        return fallback;
+      }
+      
+      // If too short, pad with zeros or expand shorthand
+      if (cleaned.length === 1) {
+        cleaned = cleaned + cleaned + '0000';
+      } else if (cleaned.length === 2) {
+        cleaned = cleaned + '0000';
+      } else if (cleaned.length === 3) {
+        // Expand shorthand: #abc -> #aabbcc
+        cleaned = cleaned[0] + cleaned[0] + cleaned[1] + cleaned[1] + cleaned[2] + cleaned[2];
+      } else if (cleaned.length === 4) {
+        cleaned = cleaned + '00';
+      } else if (cleaned.length === 5) {
+        cleaned = cleaned + '0';
+      } else if (cleaned.length > 6) {
+        // Truncate if too long
+        cleaned = cleaned.substring(0, 6);
+      }
+      
+      // Final validation
+      if (!/^[0-9a-fA-F]{6}$/.test(cleaned)) {
+        console.log(`[generate-style] Could not normalize "${hex}", using fallback ${fallback}`);
+        return fallback;
+      }
+      
+      return '#' + cleaned.toLowerCase();
+    };
+
+    // Default fallback colors based on mode
+    const fallbacks = isLight ? {
+      accentPrimary: '#7c3aed',
+      accentSecondary: '#a855f7',
+      accentGlow: '#ec4899',
+      bgBase: '#f5f4fe',
+      bgGrad1: '#ede9fe',
+      bgGrad2: '#faf9ff',
+      overlayColor1: '#7c3aed',
+      overlayColor2: '#6366f1',
+      textPrimary: '#0d0620',
+    } : {
+      accentPrimary: '#7c3aed',
+      accentSecondary: '#a855f7',
+      accentGlow: '#ec4899',
+      bgBase: '#000000',
+      bgGrad1: '#0f0519',
+      bgGrad2: '#05050f',
+      overlayColor1: '#8b5cf6',
+      overlayColor2: '#3b82f6',
+      textPrimary: '#ffffff',
+    };
+
+    // Normalize and validate all hex color fields
+    const hexFields = ['accentPrimary','accentSecondary','accentGlow','bgBase','bgGrad1','bgGrad2','overlayColor1','overlayColor2','textPrimary'];
+    for (const field of hexFields) {
+      generated[field] = normalizeHex(generated[field], fallbacks[field as keyof typeof fallbacks]);
+    }
+
+    // Validate all required fields are present
+    if (!generated.themeName) generated.themeName = 'Generated Theme';
+    if (!generated.themeDescription) generated.themeDescription = 'A harmonious design system.';
+    if (!generated.headingFont) generated.headingFont = 'Inter';
+    if (!generated.bodyFont) generated.bodyFont = 'Inter';
+    if (!generated.gradSpeed) generated.gradSpeed = 'medium';
+
+    console.log(`[generate-style] Done. Theme: "${generated.themeName}"`);
+    return c.json({ success: true, data: generated });
+
+  } catch (error) {
+    console.log('[generate-style] Error:', error);
+    return c.json({ success: false, error: `Style generation failed: ${String(error)}` }, 500);
+  }
+});
+
 // ========== FILE UPLOAD ENDPOINTS ==========
 
 // Upload favicon to Supabase Storage (protected)
@@ -1061,6 +1335,16 @@ app.post('/make-server-e07959ec/upload-video', requireAuth, async (c) => {
 
 // ========== PROJECTS ENDPOINTS ==========
 
+/** Converts a project title into a URL-safe slug. */
+const generateSlug = (title: string): string =>
+  title
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/--+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
 // Get all projects
 app.get("/make-server-e07959ec/projects", async (c) => {
   try {
@@ -1081,26 +1365,40 @@ app.get("/make-server-e07959ec/projects", async (c) => {
   }
 });
 
-// Get single project by ID
+// Get single project by slug OR UUID
 app.get("/make-server-e07959ec/projects/:id", async (c) => {
   try {
-    const id = c.req.param("id");
+    const idOrSlug = c.req.param("id");
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+    // Try slug lookup first (works for both slug and UUID columns)
+    const isUuid = UUID_RE.test(idOrSlug);
     
-    const { data, error } = await supabase
+    // Build query: if it looks like a UUID, match on id; otherwise match on slug
+    let query = supabase.from('projects').select('*');
+    if (isUuid) {
+      // Could be either a real UUID id or a slug that happens to look like a UUID (unlikely)
+      // Try id first, then fall back to slug
+      const { data: byId, error: idErr } = await query.eq('id', idOrSlug).single();
+      if (!idErr && byId) {
+        return c.json({ success: true, data: fromDbRow(byId) });
+      }
+    }
+
+    // Look up by slug (covers both slug-based URLs and UUID fallback miss above)
+    const { data: bySlug, error: slugErr } = await supabase
       .from('projects')
       .select('*')
-      .eq('id', id)
+      .eq('slug', idOrSlug)
       .single();
-    
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return c.json({ success: false, error: "Project not found" }, 404);
-      }
-      console.log(`Error fetching project: ${error.message}`);
-      return c.json({ success: false, error: error.message }, 500);
+
+    if (!slugErr && bySlug) {
+      return c.json({ success: true, data: fromDbRow(bySlug) });
     }
-    
-    return c.json({ success: true, data: fromDbRow(data) });
+
+    // Nothing found
+    console.log(`Project not found for slug/id: ${idOrSlug}`);
+    return c.json({ success: false, error: "Project not found" }, 404);
   } catch (error) {
     console.log(`Error fetching project: ${error}`);
     return c.json({ success: false, error: String(error) }, 500);
@@ -1113,6 +1411,8 @@ app.post("/make-server-e07959ec/projects", requireAuth, async (c) => {
     const body = await c.req.json();
     // Strip any temp client-side id so Supabase auto-generates a real UUID
     const { id: _tempId, ...rest } = body;
+    // Always derive slug from title (override any client-supplied slug so it stays in sync)
+    rest.slug = rest.slug?.trim() || (rest.title ? generateSlug(rest.title) : undefined);
     const dbRow = toDbRow(rest);
     
     const { data, error } = await supabase
@@ -1139,6 +1439,10 @@ app.put("/make-server-e07959ec/projects/:id", requireAuth, async (c) => {
     const id = c.req.param("id");
     const body = await c.req.json();
     const { id: _bodyId, ...rest } = body;
+    // Keep slug in sync: if a slug was explicitly provided use it, otherwise derive from title
+    if (rest.title) {
+      rest.slug = rest.slug?.trim() || generateSlug(rest.title);
+    }
     const dbRow = toDbRow(rest);
     
     const { data, error } = await supabase
@@ -1178,6 +1482,126 @@ app.delete("/make-server-e07959ec/projects/:id", requireAuth, async (c) => {
     return c.json({ success: true });
   } catch (error) {
     console.log(`Error deleting project: ${error}`);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
+// ========== VIDEO TRACKING ENDPOINTS ==========
+
+// Record a video view and/or accumulated watch time (public — called from frontend)
+app.post("/make-server-e07959ec/projects/:id/video-view", async (c) => {
+  try {
+    const projectId = c.req.param("id");
+    const body = await c.req.json().catch(() => ({}));
+    const addView      = body.addView === true;
+    const watchSeconds = typeof body.watchSeconds === 'number' ? Math.max(0, Math.round(body.watchSeconds)) : 0;
+
+    // Resolve real UUID if a slug was passed
+    let realId = projectId;
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!UUID_RE.test(projectId)) {
+      const { data: row } = await supabase.from('projects').select('id').eq('slug', projectId).single();
+      if (row) realId = row.id;
+    }
+
+    const kvKey  = `project_video_stats:${realId}`;
+    const existing = (await kv.get(kvKey)) ?? { views: 0, totalWatchSeconds: 0, lastViewed: null };
+
+    const updated = {
+      views:             (existing.views || 0) + (addView ? 1 : 0),
+      totalWatchSeconds: (existing.totalWatchSeconds || 0) + watchSeconds,
+      lastViewed:        addView ? new Date().toISOString() : (existing.lastViewed ?? null),
+    };
+
+    await kv.set(kvKey, updated);
+    return c.json({ success: true, data: updated });
+  } catch (error) {
+    console.log(`Error recording video view: ${error}`);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
+// Record showreel view / watch time (public — called from Home page)
+app.post("/make-server-e07959ec/showreel/video-view", async (c) => {
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    const addView      = body.addView === true;
+    const watchSeconds = typeof body.watchSeconds === 'number' ? Math.max(0, Math.round(body.watchSeconds)) : 0;
+
+    const kvKey    = 'showreel_video_stats';
+    const existing = (await kv.get(kvKey)) ?? { views: 0, totalWatchSeconds: 0, lastViewed: null };
+
+    const updated = {
+      views:             (existing.views || 0) + (addView ? 1 : 0),
+      totalWatchSeconds: (existing.totalWatchSeconds || 0) + watchSeconds,
+      lastViewed:        addView ? new Date().toISOString() : (existing.lastViewed ?? null),
+    };
+
+    await kv.set(kvKey, updated);
+    return c.json({ success: true, data: updated });
+  } catch (error) {
+    console.log(`Error recording showreel view: ${error}`);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
+// Get video stats for all projects + showreel (admin only)
+app.get("/make-server-e07959ec/admin/video-stats", requireAuth, async (c) => {
+  try {
+    const { data: projects, error } = await supabase
+      .from('projects')
+      .select('id, title, slug, image_url, video_url')
+      .order('order_index', { ascending: true });
+
+    if (error) {
+      console.log(`Error fetching projects for video stats: ${error.message}`);
+      return c.json({ success: false, error: error.message }, 500);
+    }
+
+    const keys     = (projects || []).map(p => `project_video_stats:${p.id}`);
+    const statsArr = keys.length > 0 ? await kv.mget(keys) : [];
+
+    const result = (projects || []).map((project, i) => {
+      const stats             = statsArr[i] ?? { views: 0, totalWatchSeconds: 0, lastViewed: null };
+      const views             = stats.views || 0;
+      const totalWatchSeconds = stats.totalWatchSeconds || 0;
+      return {
+        projectId:       project.id,
+        title:           project.title,
+        slug:            project.slug,
+        imageUrl:        project.image_url,
+        hasVideo:        !!project.video_url,
+        isShowreel:      false,
+        views,
+        totalWatchSeconds,
+        avgWatchSeconds: views > 0 ? Math.round(totalWatchSeconds / views) : 0,
+        lastViewed:      stats.lastViewed ?? null,
+      };
+    });
+
+    // Sort projects by views descending
+    result.sort((a, b) => b.views - a.views);
+
+    // Prepend showreel (always pinned at the top)
+    const showreelRaw = (await kv.get('showreel_video_stats')) ?? { views: 0, totalWatchSeconds: 0, lastViewed: null };
+    const srViews     = showreelRaw.views || 0;
+    const srWatch     = showreelRaw.totalWatchSeconds || 0;
+    result.unshift({
+      projectId:        'showreel',
+      title:            'Showreel',
+      slug:             null,
+      imageUrl:         null,
+      hasVideo:         true,
+      isShowreel:       true,
+      views:            srViews,
+      totalWatchSeconds: srWatch,
+      avgWatchSeconds:  srViews > 0 ? Math.round(srWatch / srViews) : 0,
+      lastViewed:       showreelRaw.lastViewed ?? null,
+    });
+
+    return c.json({ success: true, data: result });
+  } catch (error) {
+    console.log(`Error fetching video stats: ${error}`);
     return c.json({ success: false, error: String(error) }, 500);
   }
 });
@@ -1694,6 +2118,102 @@ app.post("/make-server-e07959ec/settings", requireAuth, async (c) => {
   } catch (error) {
     console.log(`Error saving settings: ${error}`);
     return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
+// ========== LOGO MANAGEMENT ==========
+
+// ── Shared logo upload helper ────────────────────────────────────────────────
+const LOGO_EXTS = ['png', 'jpg', 'jpeg', 'svg', 'webp', 'gif'];
+
+async function uploadLogoVariant(
+  file: File,
+  variant: 'dark' | 'light',
+): Promise<{ logoUrl: string } | { error: string }> {
+  const ext = file.name.split('.').pop()?.toLowerCase() || 'png';
+  if (!LOGO_EXTS.includes(ext)) {
+    return { error: 'Unsupported file type. Use PNG, JPG, SVG, WEBP, or GIF.' };
+  }
+  const path = `logo-${variant}.${ext}`;
+  const buf  = await file.arrayBuffer();
+
+  // Remove all previous variants of this slot (different extensions)
+  await supabase.storage.from(BRAND_BUCKET_NAME).remove(
+    LOGO_EXTS.map(e => `logo-${variant}.${e}`)
+  );
+
+  const { error: upErr } = await supabase.storage
+    .from(BRAND_BUCKET_NAME)
+    .upload(path, buf, { contentType: file.type, upsert: true });
+
+  if (upErr) return { error: upErr.message };
+
+  const { data: pubData } = supabase.storage.from(BRAND_BUCKET_NAME).getPublicUrl(path);
+  const logoUrl = `${pubData.publicUrl}?v=${Date.now()}`;
+
+  const settingKey = variant === 'dark' ? 'logoDarkUrl' : 'logoLightUrl';
+  await supabase.from('site_settings').upsert(
+    { key: settingKey, value: logoUrl, updated_at: new Date().toISOString() },
+    { onConflict: 'key' }
+  );
+  return { logoUrl };
+}
+
+// Upload dark logo (admin-protected, multipart/form-data)
+app.post('/make-server-e07959ec/logo/dark', requireAuth, async (c) => {
+  try {
+    const formData = await c.req.formData();
+    const file = formData.get('file') as File | null;
+    if (!file) return c.json({ success: false, error: 'No file uploaded' }, 400);
+    const result = await uploadLogoVariant(file, 'dark');
+    if ('error' in result) return c.json({ success: false, error: result.error }, 400);
+    console.log('Dark logo uploaded:', result.logoUrl);
+    return c.json({ success: true, logoUrl: result.logoUrl });
+  } catch (err) {
+    console.log('Dark logo upload error:', err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// Upload light logo (admin-protected, multipart/form-data)
+app.post('/make-server-e07959ec/logo/light', requireAuth, async (c) => {
+  try {
+    const formData = await c.req.formData();
+    const file = formData.get('file') as File | null;
+    if (!file) return c.json({ success: false, error: 'No file uploaded' }, 400);
+    const result = await uploadLogoVariant(file, 'light');
+    if ('error' in result) return c.json({ success: false, error: result.error }, 400);
+    console.log('Light logo uploaded:', result.logoUrl);
+    return c.json({ success: true, logoUrl: result.logoUrl });
+  } catch (err) {
+    console.log('Light logo upload error:', err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// Delete dark logo (admin-protected)
+app.delete('/make-server-e07959ec/logo/dark', requireAuth, async (c) => {
+  try {
+    await supabase.storage.from(BRAND_BUCKET_NAME).remove(LOGO_EXTS.map(e => `logo-dark.${e}`));
+    await supabase.from('site_settings').delete().eq('key', 'logoDarkUrl');
+    console.log('Dark logo deleted');
+    return c.json({ success: true });
+  } catch (err) {
+    console.log('Dark logo delete error:', err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// Delete light logo (admin-protected)
+app.delete('/make-server-e07959ec/logo/light', requireAuth, async (c) => {
+  try {
+    await supabase.storage.from(BRAND_BUCKET_NAME).remove(LOGO_EXTS.map(e => `logo-light.${e}`));
+    await supabase.from('site_settings').delete().eq('key', 'logoLightUrl');
+    console.log('Light logo deleted');
+    return c.json({ success: true });
+  } catch (err) {
+    console.log('Light logo delete error:', err);
+    return c.json({ success: false, error: String(err) }, 500);
   }
 });
 
@@ -3763,7 +4283,16 @@ ${schemaLines}}`;
 app.get('/make-server-e07959ec/home-content', async (c) => {
   try {
     const raw = await kv.get('home_content');
-    return c.json({ success: true, data: raw ? JSON.parse(raw) : null });
+    // kv may return a JSON string (stored via JSON.stringify) or an already-parsed object
+    let parsed: any = null;
+    if (raw !== null && raw !== undefined) {
+      if (typeof raw === 'string') {
+        try { parsed = JSON.parse(raw); } catch { parsed = null; }
+      } else {
+        parsed = raw; // already an object returned by kv
+      }
+    }
+    return c.json({ success: true, data: parsed });
   } catch (error) {
     console.log('[home-content GET] error:', error);
     return c.json({ success: false, error: String(error) }, 500);

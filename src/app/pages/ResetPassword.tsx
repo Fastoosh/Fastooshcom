@@ -105,7 +105,7 @@ export function ResetPassword() {
 
   /* ── UI ─────────────────────────────────────────────────────────────────── */
   return (
-    <div className="min-h-screen bg-[#080810] flex items-center justify-center px-4">
+    <div className="min-h-screen bg-black flex items-center justify-center px-4">
       {/* Subtle background glow */}
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
         <div className="absolute -top-40 left-1/2 -translate-x-1/2 w-[600px] h-[600px]
@@ -125,8 +125,8 @@ export function ResetPassword() {
               <div className="relative w-12 h-12 rounded-full border border-purple-500/40
                 bg-purple-500/15 flex items-center justify-center">
                 <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none">
-                  <path d="M12 2L2 7l10 5 10-5-10-5z" stroke="#c084fc" strokeWidth="1.5" strokeLinejoin="round"/>
-                  <path d="M2 17l10 5 10-5M2 12l10 5 10-5" stroke="#a855f7" strokeWidth="1.5" strokeLinejoin="round"/>
+                  <path d="M12 2L2 7l10 5 10-5-10-5z" stroke="var(--color-violet-300, #c084fc)" strokeWidth="1.5" strokeLinejoin="round"/>
+                  <path d="M2 17l10 5 10-5M2 12l10 5 10-5" stroke="var(--color-violet-500, #a855f7)" strokeWidth="1.5" strokeLinejoin="round"/>
                 </svg>
               </div>
             </div>

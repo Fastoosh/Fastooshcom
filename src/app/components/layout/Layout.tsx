@@ -1,3 +1,5 @@
+import { DEFAULT_STYLE, useSiteStyle } from '../../context/StyleContext';
+import { useLogo } from '../../context/LogoContext';
 import { Outlet, useLocation } from "react-router";
 import { useEffect, useRef } from "react";
 import { Header } from "./Header";
@@ -10,24 +12,61 @@ import { useTracker } from "../../hooks/useTracker";
 
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-e07959ec`;
 
+/** Retries a fetch up to `retries` times with exponential back-off.
+ *  Supabase edge functions can have cold starts of 2–5 s on the first request. */
+async function retryFetch(url: string, options: RequestInit, retries = 3, delay = 1200): Promise<Response> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fetch(url, options);
+    } catch (err) {
+      if (attempt < retries) {
+        await new Promise(r => setTimeout(r, delay * (attempt + 1)));
+      } else {
+        throw err;
+      }
+    }
+  }
+  throw new Error('retryFetch: unreachable');
+}
+
 function useDynamicFavicon() {
+  const { setSiteStyle }          = useSiteStyle();
+  const { setLogo, setSiteMode }  = useLogo();
+
   useEffect(() => {
-    fetch(`${API_BASE}/settings`, {
+    retryFetch(`${API_BASE}/settings`, {
       headers: { Authorization: `Bearer ${publicAnonKey}` },
     })
       .then(r => r.json())
       .then(({ data }) => {
+        // Apply saved site style
+        if (data?.siteStyle) {
+          setSiteStyle({ ...DEFAULT_STYLE, ...data.siteStyle });
+        }
+        // Apply active mode so Header/Footer pick the right logo variant
+        if (data?.activeStyleMode === 'light' || data?.activeStyleMode === 'dark') {
+          setSiteMode(data.activeStyleMode);
+        }
+        // Apply logos (dark + light variants)
+        setLogo(
+          data?.logoDarkUrl  || data?.logoUrl || null,
+          data?.logoLightUrl || null,
+          data?.logoText  || 'Fastoosh',
+          Number(data?.logoHeight) || 32,
+        );
+        // Apply favicon
         const url = data?.faviconUrl;
         if (!url) return;
         let link = document.querySelector<HTMLLinkElement>("link[rel~='icon']");
         if (!link) {
-          link = document.createElement("link");
-          link.rel = "icon";
+          link = document.createElement('link');
+          link.rel = 'icon';
           document.head.appendChild(link);
         }
         link.href = url;
       })
-      .catch(err => console.warn("Could not load favicon from settings:", err));
+      .catch(err => console.warn('Could not load settings:', err));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 }
 
@@ -130,7 +169,7 @@ export function Layout() {
   return (
     <>
       <ScrollingGradientBackground />
-      <div className="min-h-screen text-white">
+      <div id="fastoosh-site" className="min-h-screen text-white">
         <RouteTracker />
         <ScrollRestoration />
         <Header />

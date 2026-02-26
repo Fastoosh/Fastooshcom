@@ -10,12 +10,13 @@ import {
   CheckCheck, ChevronDown, ChevronUp, BarChart2, LayoutDashboard,
   Inbox, Calendar, Tag, Clock, ArrowUpRight, Activity,
   Sparkles, Circle, CheckCircle2, ExternalLink, DollarSign, ShoppingCart,
-  RotateCcw, BadgeDollarSign, TrendingDown,
+  RotateCcw, BadgeDollarSign, TrendingDown, Play,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import { LSRevenuePanel } from './LSRevenuePanel';
 import { BehaviorTab } from './BehaviorTab';
+import { VideoStatsTab } from './VideoStatsTab';
 
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-e07959ec`;
 
@@ -429,7 +430,7 @@ export function DashboardTab() {
   const [messages,    setMessages]    = useState<Message[]>([]);
   const [loading,     setLoading]     = useState(true);
   const [refreshing,  setRefreshing]  = useState(false);
-  const [view,        setView]        = useState<'overview' | 'analytics' | 'revenue' | 'behavior' | 'messages'>('overview');
+  const [view,        setView]        = useState<'overview' | 'analytics' | 'revenue' | 'behavior' | 'messages' | 'videos'>('overview');
   const [msgFilter,   setMsgFilter]   = useState<'all' | 'contact' | 'support' | 'unread'>('all');
   const [expandedMsg, setExpandedMsg] = useState<string | null>(null);
   const [marking,     setMarking]     = useState<string | null>(null);
@@ -738,6 +739,7 @@ export function DashboardTab() {
           { id: 'revenue',   label: 'LS Revenue', icon: <DollarSign className="w-3.5 h-3.5" /> },
           { id: 'behavior',  label: 'Behavior',   icon: <Activity className="w-3.5 h-3.5" /> },
           { id: 'messages',  label: 'Messages',   icon: <Inbox className="w-3.5 h-3.5" />, badge: unreadCount },
+          { id: 'videos',    label: 'Videos',     icon: <Play  className="w-3.5 h-3.5" /> },
         ] as const).map(tab => (
           <button
             key={tab.id}
@@ -1296,6 +1298,9 @@ export function DashboardTab() {
 
       {/* ══ BEHAVIOR VIEW ════════════════════════════════════════════════ */}
       {view === 'behavior' && <BehaviorTab />}
+
+      {/* ══ VIDEOS VIEW ══════════════════════════════════════════════════ */}
+      {view === 'videos' && <VideoStatsTab />}
 
       {/* ══ MESSAGES VIEW ════════════════════════════════════════════════ */}
       {view === 'messages' && (

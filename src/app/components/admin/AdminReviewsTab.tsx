@@ -221,7 +221,7 @@ export function AdminReviewsTab() {
     ? reviews.filter((r) => r.toolId === filterToolId)
     : reviews;
 
-  /* ── render ──────────────────────────────��──────────────────────────────── */
+  /* ── render ────────────────────────────────────────────────────────────── */
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -351,12 +351,12 @@ export function AdminReviewsTab() {
               <Button
                 onClick={handleSave}
                 disabled={saving}
-                className="cursor-pointer bg-purple-600 hover:bg-purple-500 text-white"
+                className="cursor-pointer bg-violet-600 hover:bg-violet-500 text-white"
               >
                 <Save className="w-4 h-4 mr-2" />
                 {saving ? 'Saving…' : 'Save Review'}
               </Button>
-              <Button variant="outline" onClick={closeForm} className="cursor-pointer">
+              <Button variant="outline" onClick={closeForm} className="cursor-pointer border-border hover:bg-accent hover:border-border/50 dark:border-white/30 dark:text-white dark:hover:bg-white/10 dark:hover:border-white/50">
                 <X className="w-4 h-4 mr-2" />Cancel
               </Button>
             </div>
@@ -426,7 +426,7 @@ export function AdminReviewsTab() {
                       variant="outline"
                       size="sm"
                       onClick={() => openEdit(review)}
-                      className="hover:bg-white/10 group/btn cursor-pointer h-8 w-8 p-0"
+                      className="hover:bg-white/10 group/btn cursor-pointer h-8 w-8 p-0 border-white/20 text-white"
                     >
                       <Pencil className="w-3.5 h-3.5 text-white group-hover/btn:text-purple-400 transition-colors" />
                     </Button>
@@ -435,7 +435,7 @@ export function AdminReviewsTab() {
                       size="sm"
                       onClick={() => handleDelete(review)}
                       disabled={deletingId === review.id}
-                      className="cursor-pointer hover:bg-red-600/20 group/btn h-8 w-8 p-0"
+                      className="cursor-pointer hover:bg-red-600/20 group/btn h-8 w-8 p-0 text-white"
                     >
                       <Trash2 className="w-3.5 h-3.5 group-hover/btn:text-red-400 transition-colors" />
                     </Button>

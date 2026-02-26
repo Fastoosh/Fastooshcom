@@ -26,7 +26,7 @@ export function NeonButton({
   const baseClasses = "relative px-8 py-4 rounded-xl overflow-hidden transition-all duration-300 inline-flex items-center";
   
   const variantClasses = {
-    primary: "bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-500 hover:to-blue-500",
+    primary: "bg-gradient-to-r from-violet-600 to-purple-600 text-white hover:from-violet-500 hover:to-fuchsia-500",
     secondary: "backdrop-blur-xl bg-white/5 border border-white/20 text-white hover:bg-white/10"
   };
 
@@ -52,7 +52,7 @@ export function NeonButton({
       
       {variant === "primary" && (
         <motion.div
-          className="absolute inset-0 bg-gradient-to-r from-purple-400 to-blue-400 opacity-0"
+          className="absolute inset-0 bg-gradient-to-r from-violet-400 to-purple-400 opacity-0"
           whileHover={!reduceMotion ? { opacity: 0.3 } : undefined}
           transition={{ duration: 0.3 }}
         />

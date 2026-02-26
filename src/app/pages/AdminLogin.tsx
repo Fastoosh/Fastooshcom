@@ -210,7 +210,7 @@ export function AdminLogin() {
             </div>
           )}
 
-          <Button type="submit" className="w-full" disabled={loading}>
+          <Button type="submit" className="w-full bg-violet-600 hover:bg-violet-500 text-white" disabled={loading}>
             {loading ? 'Please wait...' : mode === 'login' ? 'Sign In' : 'Create Account'}
           </Button>
         </form>

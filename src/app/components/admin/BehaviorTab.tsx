@@ -320,10 +320,10 @@ function HeatmapPanel() {
                           <span className="text-cyan-400 text-xs font-bold tabular-nums">{pct}%</span>
                         </div>
                       </div>
-                      <div className="h-2 rounded-full bg-white/5">
+                      <div className="h-2 rounded-full bg-white/5 overflow-hidden">
                         <motion.div
                           initial={{ width: 0 }}
-                          animate={{ width: `${pct}%` }}
+                          animate={{ width: `${Math.min(pct, 100)}%` }}
                           transition={{ duration: 0.7, delay: percent / 400 }}
                           className="h-2 rounded-full"
                           style={{

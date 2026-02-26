@@ -10,10 +10,26 @@ import {
   faBehance, 
   faTiktok 
 } from '@fortawesome/free-brands-svg-icons';
-import fastooshLogo from "figma:asset/146d4e74197e43854d1765af396281d8ee56010c.png";
 import { projectId, publicAnonKey } from '/utils/supabase/info';
+import { useLogo } from '../../context/LogoContext';
 
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-e07959ec`;
+
+/** Retries a fetch up to `retries` times with exponential back-off. */
+async function retryFetch(url: string, options: RequestInit, retries = 3, delay = 1200): Promise<Response> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fetch(url, options);
+    } catch (err) {
+      if (attempt < retries) {
+        await new Promise(r => setTimeout(r, delay * (attempt + 1)));
+      } else {
+        throw err;
+      }
+    }
+  }
+  throw new Error('retryFetch: unreachable');
+}
 
 interface SocialLinks {
   linkedin?: string;
@@ -27,6 +43,7 @@ interface SocialLinks {
 export function Footer() {
   const [socialLinks, setSocialLinks] = useState<SocialLinks>({});
   const [contactEmail, setContactEmail] = useState('');
+  const { activeLogoUrl, logoText, logoHeight } = useLogo();
 
   useEffect(() => {
     fetchSettings();
@@ -34,10 +51,8 @@ export function Footer() {
 
   const fetchSettings = async () => {
     try {
-      const response = await fetch(`${API_BASE}/settings`, {
-        headers: {
-          'Authorization': `Bearer ${publicAnonKey}`,
-        },
+      const response = await retryFetch(`${API_BASE}/settings`, {
+        headers: { 'Authorization': `Bearer ${publicAnonKey}` },
       });
 
       if (response.ok) {
@@ -96,17 +111,27 @@ export function Footer() {
   const activeSocialLinks = socialMediaConfig.filter(social => social.url && social.url.trim() !== '');
 
   return (
-    <footer className="border-t border-white/5 bg-black/30 backdrop-blur-2xl">
+    <footer
+      className="border-t border-white/5 backdrop-blur-2xl"
+      style={{ backgroundColor: 'var(--fastoosh-footer-bg, rgba(0,0,0,0.30))' }}
+    >
       <div className="max-w-7xl mx-auto px-6 py-16">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-12">
           {/* Brand */}
           <div className="space-y-4">
-            <div className="text-2xl tracking-tight">
-              <img 
-                src={fastooshLogo} 
-                alt="Fastoosh" 
-                className="h-8 w-auto object-contain"
-              />
+            <div className="tracking-tight">
+              {activeLogoUrl ? (
+                <img
+                  src={activeLogoUrl}
+                  alt={logoText}
+                  style={{ height: `${logoHeight}px` }}
+                  className="w-auto object-contain"
+                />
+              ) : (
+                <span className="text-2xl font-bold bg-gradient-to-r from-violet-400 via-purple-300 to-pink-400 bg-clip-text text-transparent">
+                  {logoText}
+                </span>
+              )}
             </div>
             <p className="text-white/60 text-sm">
               Premium motion design studio.

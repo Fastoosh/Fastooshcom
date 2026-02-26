@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import React from 'react';
 import { useNavigate } from 'react-router';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { GlassCard } from '../components/shared/GlassCard';
@@ -15,6 +16,9 @@ import { HomeTab } from '../components/admin/HomeTab';
 import { AdminReviewsTab } from '../components/admin/AdminReviewsTab';
 import { DashboardTab } from '../components/admin/DashboardTab';
 import { invalidateSiteSettingsCache } from '../components/shared/SeoHead';
+import { StyleTab } from '../components/admin/StyleTab';
+
+import { ScrollingGradientBackground } from '../components/shared/ScrollingGradientBackground';
 
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-e07959ec`;
 
@@ -249,6 +253,8 @@ export function Admin() {
       setTools(toolsData.data || []);
       setTeam(teamData.data || []);
       const serverSettings = settingsData.data || {};
+      // NOTE: Admin never applies the site style to itself — only the public Layout does.
+      // Applying it here would overwrite the admin panel's own fixed purple/dark theme.
       setSettings({
         projectCategories: ['Motion Design', 'Branding', '3D Animation', 'Video Editing', 'VFX', 'UI/UX Animation', 'Other'],
         toolCategories: ['Automation', 'Animation', 'Workflow', 'Effects', 'Plugins'],
@@ -517,52 +523,67 @@ export function Admin() {
 
   if (authChecking) {
     return (
-      <div className="min-h-screen bg-black/90 backdrop-blur-3xl flex items-center justify-center p-6">
-        <GlassCard className="p-8">
-          <p className="text-white">Checking authentication...</p>
-        </GlassCard>
-      </div>
+      <>
+        <ScrollingGradientBackground />
+        <div className="min-h-screen bg-black/85 flex items-center justify-center p-6"
+          style={{ '--fastoosh-card-bg': 'rgba(255,255,255,0.03)', '--fastoosh-card-dark': 'rgba(0,0,0,0.95)' } as React.CSSProperties}>
+          <GlassCard className="p-8">
+            <p className="text-white">Checking authentication...</p>
+          </GlassCard>
+        </div>
+      </>
     );
   }
 
   if (networkError) {
     return (
-      <div className="min-h-screen bg-black/90 backdrop-blur-3xl flex items-center justify-center p-6">
-        <GlassCard className="p-8 text-center max-w-sm">
-          <p className="text-red-400 font-semibold mb-2">Connection Error</p>
-          <p className="text-white/60 text-sm mb-4">
-            Could not reach the server. The service may be starting up — please try again in a moment.
-          </p>
-          <Button
-            onClick={() => { setNetworkError(false); setAuthChecking(true); checkAuth(0); }}
-            className="bg-purple-600 hover:bg-purple-500 text-white"
-          >
-            Retry
-          </Button>
-        </GlassCard>
-      </div>
+      <>
+        <ScrollingGradientBackground />
+        <div className="min-h-screen bg-black/85 flex items-center justify-center p-6"
+          style={{ '--fastoosh-card-bg': 'rgba(255,255,255,0.03)', '--fastoosh-card-dark': 'rgba(0,0,0,0.95)' } as React.CSSProperties}>
+          <GlassCard className="p-8 text-center max-w-sm">
+            <p className="text-red-400 font-semibold mb-2">Connection Error</p>
+            <p className="text-white/60 text-sm mb-4">
+              Could not reach the server. The service may be starting up — please try again in a moment.
+            </p>
+            <Button
+              onClick={() => { setNetworkError(false); setAuthChecking(true); checkAuth(0); }}
+              className="bg-purple-600 hover:bg-purple-500 text-white"
+            >
+              Retry
+            </Button>
+          </GlassCard>
+        </div>
+      </>
     );
   }
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-black/90 backdrop-blur-3xl flex items-center justify-center p-6">
-        <GlassCard className="p-8">
-          <p className="text-white">Loading admin panel...</p>
-        </GlassCard>
-      </div>
+      <>
+        <ScrollingGradientBackground />
+        <div className="min-h-screen bg-black/85 flex items-center justify-center p-6"
+          style={{ '--fastoosh-card-bg': 'rgba(255,255,255,0.03)', '--fastoosh-card-dark': 'rgba(0,0,0,0.95)' } as React.CSSProperties}>
+          <GlassCard className="p-8">
+            <p className="text-white">Loading admin panel...</p>
+          </GlassCard>
+        </div>
+      </>
     );
   }
 
   return (
-    <div className="min-h-screen bg-black/90 backdrop-blur-3xl p-6">
+    <>
+      <ScrollingGradientBackground />
+      <div className="min-h-screen bg-black/80 p-6"
+        style={{ '--fastoosh-card-bg': 'rgba(255,255,255,0.03)', '--fastoosh-card-dark': 'rgba(0,0,0,0.95)' } as React.CSSProperties}>
       <div className="max-w-7xl mx-auto">
         <div className="mb-8 flex justify-between items-center">
           <div>
             <h1 className="text-4xl font-bold text-white mb-2">Admin Panel</h1>
             <p className="text-gray-400">Manage your Fastoosh content</p>
           </div>
-          <Button onClick={handleSignOut} variant="outline">
+          <Button onClick={handleSignOut} variant="outline" className="bg-black text-white hover:bg-white hover:text-black dark:bg-white dark:text-black dark:hover:bg-black dark:hover:text-white border-transparent">
             <LogOut className="w-4 h-4 mr-2" />
             Sign Out
           </Button>
@@ -576,6 +597,7 @@ export function Admin() {
             <TabsTrigger value="team">Team</TabsTrigger>
             <TabsTrigger value="home">Home</TabsTrigger>
             <TabsTrigger value="settings">Settings</TabsTrigger>
+            <TabsTrigger value="style">Style</TabsTrigger>
             <TabsTrigger value="leads">Leads</TabsTrigger>
             <TabsTrigger value="reviews">Reviews</TabsTrigger>
             <TabsTrigger value="seo">SEO</TabsTrigger>
@@ -611,7 +633,7 @@ export function Admin() {
                       screenshots: [],
                     })
                   }
-                  className="cursor-pointer"
+                  className="cursor-pointer bg-violet-600 hover:bg-violet-500 text-white"
                 >
                   <Plus className="w-4 h-4 mr-2" />
                   Add Project
@@ -644,15 +666,15 @@ export function Admin() {
                         variant="outline"
                         size="sm"
                         onClick={() => setEditingProject(project)}
-                        className="hover:bg-white/10 group cursor-pointer"
+                        className="bg-black text-white hover:bg-white hover:text-black dark:bg-white dark:text-black dark:hover:bg-black dark:hover:text-white border-transparent group cursor-pointer"
                       >
-                        <Pencil className="w-4 h-4 text-white group-hover:text-purple-400 transition-colors" />
+                        <Pencil className="w-4 h-4 group-hover:text-purple-400 transition-colors" />
                       </Button>
                       <Button
                         variant="destructive"
                         size="sm"
                         onClick={() => deleteProject(project.id)}
-                        className="cursor-pointer hover:bg-red-600/20 group"
+                        className="cursor-pointer hover:bg-red-600/20 group text-white"
                       >
                         <Trash2 className="w-4 h-4 group-hover:text-red-400 transition-colors" />
                       </Button>
@@ -682,7 +704,7 @@ export function Admin() {
                       versions: [],
                     })
                   }
-                  className="cursor-pointer"
+                  className="cursor-pointer bg-violet-600 hover:bg-violet-500 text-white"
                 >
                   <Plus className="w-4 h-4 mr-2" />
                   Add Tool
@@ -715,15 +737,15 @@ export function Admin() {
                         variant="outline"
                         size="sm"
                         onClick={() => setEditingTool(tool)}
-                        className="hover:bg-white/10 group cursor-pointer"
+                        className="bg-black text-white hover:bg-white hover:text-black dark:bg-white dark:text-black dark:hover:bg-black dark:hover:text-white border-transparent group cursor-pointer"
                       >
-                        <Pencil className="w-4 h-4 text-white group-hover:text-purple-400 transition-colors" />
+                        <Pencil className="w-4 h-4 group-hover:text-purple-400 transition-colors" />
                       </Button>
                       <Button
                         variant="destructive"
                         size="sm"
                         onClick={() => deleteTool(tool.id)}
-                        className="cursor-pointer hover:bg-red-600/20 group"
+                        className="cursor-pointer hover:bg-red-600/20 group text-white"
                       >
                         <Trash2 className="w-4 h-4 group-hover:text-red-400 transition-colors" />
                       </Button>
@@ -750,7 +772,7 @@ export function Admin() {
                       socialLinks: {},
                     })
                   }
-                  className="cursor-pointer"
+                  className="cursor-pointer bg-violet-600 hover:bg-violet-500 text-white"
                 >
                   <Plus className="w-4 h-4 mr-2" />
                   Add Team Member
@@ -780,15 +802,15 @@ export function Admin() {
                         variant="outline"
                         size="sm"
                         onClick={() => setEditingTeamMember(member)}
-                        className="hover:bg-white/10 group cursor-pointer"
+                        className="bg-black text-white hover:bg-white hover:text-black dark:bg-white dark:text-black dark:hover:bg-black dark:hover:text-white border-transparent group cursor-pointer"
                       >
-                        <Pencil className="w-4 h-4 text-white group-hover:text-purple-400 transition-colors" />
+                        <Pencil className="w-4 h-4 group-hover:text-purple-400 transition-colors" />
                       </Button>
                       <Button
                         variant="destructive"
                         size="sm"
                         onClick={() => deleteTeamMember(member.id)}
-                        className="cursor-pointer hover:bg-red-600/20 group"
+                        className="cursor-pointer hover:bg-red-600/20 group text-white"
                       >
                         <Trash2 className="w-4 h-4 group-hover:text-red-400 transition-colors" />
                       </Button>
@@ -806,7 +828,7 @@ export function Admin() {
                 <h2 className="text-2xl font-bold text-white">Settings</h2>
                 <Button
                   onClick={() => setEditingSettings(true)}
-                  className="cursor-pointer"
+                  className="cursor-pointer bg-violet-600 hover:bg-violet-500 text-white"
                 >
                   <Plus className="w-4 h-4 mr-2" />
                   Edit Settings
@@ -992,9 +1014,15 @@ export function Admin() {
             </GlassCard>
           </TabsContent>
 
+          {/* STYLE TAB */}
+          <TabsContent value="style">
+            <StyleTab />
+          </TabsContent>
+
         </Tabs>
       </div>
     </div>
+    </>
   );
 }
 
@@ -1357,7 +1385,16 @@ function ProjectForm({
             placeholder="Enter project title"
             value={formData.title || ''}
             onChange={(e) => {
-              setFormData({ ...formData, title: e.target.value });
+              const newTitle = e.target.value;
+              // Auto-update slug from title unless user has manually customised it
+              const currentSlug = formData.slug || '';
+              const prevAutoSlug = createSlug(formData.title || '');
+              const slugWasAutoGenerated = !currentSlug || currentSlug === prevAutoSlug;
+              setFormData({
+                ...formData,
+                title: newTitle,
+                slug: slugWasAutoGenerated ? createSlug(newTitle) : currentSlug,
+              });
               setErrors(prev => ({ ...prev, title: '' }));
             }}
             className={`bg-black/30 backdrop-blur-xl border-white/20 text-white ${errors.title ? 'border-red-500' : ''}`}
@@ -1365,13 +1402,35 @@ function ProjectForm({
           {errors.title && (
             <p className="text-red-400 text-sm mt-1">{errors.title}</p>
           )}
-          {/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(formData.id) && (
-            <p className="text-xs text-purple-400 mt-1">
-              URL: /projects/{formData.id}
-            </p>
-          )}
         </div>
-        
+
+        {/* Slug field — auto-filled from title, editable for custom overrides */}
+        <div>
+          <label className="block text-sm font-medium text-gray-300 mb-2">
+            URL Slug
+            <span className="ml-2 text-xs text-white/40 font-normal">(auto-generated from title — edit to customise)</span>
+          </label>
+          <div className="flex items-center gap-2">
+            <span className="text-white/40 text-sm shrink-0">/projects/</span>
+            <Input
+              placeholder="url-friendly-slug"
+              value={formData.slug || createSlug(formData.title || '')}
+              onChange={(e) => {
+                const raw = e.target.value
+                  .toLowerCase()
+                  .replace(/[^\w\s-]/g, '')
+                  .replace(/\s+/g, '-')
+                  .replace(/--+/g, '-');
+                setFormData({ ...formData, slug: raw });
+              }}
+              className="bg-black/30 backdrop-blur-xl border-white/20 text-white font-mono text-sm"
+            />
+          </div>
+          <p className="text-xs text-purple-400/70 mt-1">
+            Final URL: /projects/{formData.slug || createSlug(formData.title || '')}
+          </p>
+        </div>
+
         <div>
           <label className="block text-sm font-medium text-gray-300 mb-2">
             Short Description *
@@ -2020,7 +2079,7 @@ function ProjectForm({
                           onClick={() => removeScreenshot(index)}
                           variant="destructive"
                           size="sm"
-                          className="cursor-pointer"
+                          className="cursor-pointer text-white"
                         >
                           <Trash2 className="w-3 h-3" />
                         </Button>
@@ -2056,12 +2115,12 @@ function ProjectForm({
         )}
 
         <div className="flex gap-2">
-          <Button onClick={handleSave} disabled={saving} className="cursor-pointer hover:bg-white/10 group text-white hover:text-purple-400 disabled:opacity-50">
-            <Save className="w-4 h-4 mr-2 text-white group-hover:text-purple-400 transition-colors" />
+          <Button onClick={handleSave} disabled={saving} className="cursor-pointer bg-violet-600 hover:bg-violet-500 text-white disabled:opacity-50">
+            <Save className="w-4 h-4 mr-2" />
             {saving ? 'Saving…' : 'Save'}
           </Button>
-          <Button variant="outline" onClick={onCancel} className="hover:bg-white/10 group text-white hover:text-purple-400 cursor-pointer">
-            <X className="w-4 h-4 mr-2 text-white group-hover:text-purple-400 transition-colors" />
+          <Button variant="outline" onClick={onCancel} className="bg-black text-white hover:bg-white hover:text-black dark:bg-white dark:text-black dark:hover:bg-black dark:hover:text-white border-transparent cursor-pointer">
+            <X className="w-4 h-4 mr-2" />
             Cancel
           </Button>
         </div>
@@ -2512,12 +2571,12 @@ function TeamMemberForm({
         )}
 
         <div className="flex gap-2">
-          <Button onClick={handleSave} disabled={saving} className="cursor-pointer hover:bg-white/10 group text-white hover:text-purple-400 disabled:opacity-50">
-            <Save className="w-4 h-4 mr-2 text-white group-hover:text-purple-400 transition-colors" />
+          <Button onClick={handleSave} disabled={saving} className="cursor-pointer bg-violet-600 hover:bg-violet-500 text-white disabled:opacity-50">
+            <Save className="w-4 h-4 mr-2" />
             {saving ? 'Saving…' : 'Save'}
           </Button>
-          <Button variant="outline" onClick={onCancel} className="hover:bg-white/10 group text-white hover:text-purple-400 cursor-pointer">
-            <X className="w-4 h-4 mr-2 text-white group-hover:text-purple-400 transition-colors" />
+          <Button variant="outline" onClick={onCancel} className="bg-black text-white hover:bg-white hover:text-black dark:bg-white dark:text-black dark:hover:bg-black dark:hover:text-white border-transparent cursor-pointer">
+            <X className="w-4 h-4 mr-2" />
             Cancel
           </Button>
         </div>
@@ -3042,12 +3101,12 @@ function SettingsForm({
         </div>
 
         <div className="flex gap-2 pt-4 border-t border-white/10">
-          <Button onClick={() => onSave(formData)} className="cursor-pointer hover:bg-white/10 group text-white hover:text-purple-400">
-            <Save className="w-4 h-4 mr-2 text-white group-hover:text-purple-400 transition-colors" />
+          <Button onClick={() => onSave(formData)} className="cursor-pointer bg-violet-600 hover:bg-violet-500 text-white">
+            <Save className="w-4 h-4 mr-2" />
             Save
           </Button>
-          <Button variant="outline" onClick={onCancel} className="hover:bg-white/10 group text-white hover:text-purple-400 cursor-pointer">
-            <X className="w-4 h-4 mr-2 text-white group-hover:text-purple-400 transition-colors" />
+          <Button variant="outline" onClick={onCancel} className="bg-black text-white hover:bg-white hover:text-black dark:bg-white dark:text-black dark:hover:bg-black dark:hover:text-white border-transparent cursor-pointer">
+            <X className="w-4 h-4 mr-2" />
             Cancel
           </Button>
         </div>

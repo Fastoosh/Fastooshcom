@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { NeonButton } from "../components/shared/NeonButton";
 import { GlassCard } from "../components/shared/GlassCard";
 import { AvailabilityBadge } from "../components/shared/AvailabilityBadge";
@@ -6,9 +6,28 @@ import { SeoHead } from "../components/shared/SeoHead";
 import { DEFAULT_HOME_CONTENT, ICON_MAP, type HomeContent } from "../components/admin/HomeTab";
 import { ArrowRight, CheckCircle2, Clock } from "lucide-react";
 import { motion } from "motion/react";
+import Player from '@vimeo/player';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-e07959ec`;
+
+/** Retries a fetch up to `retries` times with exponential back-off.
+ *  Handles cold-start failures (TypeError: Failed to fetch) from Supabase edge functions. */
+async function retryFetch(url: string, options: RequestInit, retries = 3, delay = 1200): Promise<Response> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(url, options);
+      return res;
+    } catch (err) {
+      if (attempt < retries) {
+        await new Promise(r => setTimeout(r, delay * (attempt + 1)));
+      } else {
+        throw err;
+      }
+    }
+  }
+  throw new Error('retryFetch: unreachable');
+}
 
 export function Home() {
   const [homeContent, setHomeContent] = useState<HomeContent>(DEFAULT_HOME_CONTENT);
@@ -28,7 +47,7 @@ export function Home() {
 
   const fetchHomeContent = async () => {
     try {
-      const res = await fetch(`${API_BASE}/home-content`, {
+      const res = await retryFetch(`${API_BASE}/home-content`, {
         headers: { Authorization: `Bearer ${publicAnonKey}` },
       });
       const result = await res.json();
@@ -42,7 +61,7 @@ export function Home() {
 
   const fetchFeaturedProjects = async () => {
     try {
-      const res = await fetch(`${API_BASE}/projects`, {
+      const res = await retryFetch(`${API_BASE}/projects`, {
         headers: { Authorization: `Bearer ${publicAnonKey}` },
       });
       const result = await res.json();
@@ -64,7 +83,9 @@ export function Home() {
       const videoId = url.includes('youtu.be')
         ? url.split('youtu.be/')[1]?.split('?')[0]
         : url.split('v=')[1]?.split('&')[0];
-      return videoId ? `https://www.youtube.com/embed/${videoId}` : url;
+      return videoId
+        ? `https://www.youtube.com/embed/${videoId}?enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}`
+        : url;
     }
     if (url.includes('vimeo.com')) {
       const videoId = url.split('vimeo.com/')[1]?.split('?')[0]?.split('/').pop();
@@ -75,6 +96,98 @@ export function Home() {
 
   const c = homeContent;
   const embedUrl = getEmbedUrl(c.showreelUrl);
+
+  // ── Showreel video tracking ────────────────────────────────────────────────
+  const showreelIframeRef  = useRef<HTMLIFrameElement>(null);
+  const srPlayStartRef     = useRef<number | null>(null);
+  const srIsPlayingRef     = useRef(false);
+  const srViewRecordedRef  = useRef(false);
+
+  const postShowreelWatch = useCallback((secs: number) => {
+    if (secs <= 0) return;
+    console.log(`[ShowreelTrack] sending ${secs}s`);
+    fetch(`${API_BASE}/showreel/video-view`, {
+      method:    'POST',
+      headers:   { 'Authorization': `Bearer ${publicAnonKey}`, 'Content-Type': 'application/json' },
+      body:      JSON.stringify({ addView: false, watchSeconds: secs }),
+      keepalive: true,
+    }).catch(err => console.warn('[ShowreelTrack] send failed:', err));
+  }, []);
+
+  const srDrainTimer = useCallback((keepRunning: boolean) => {
+    if (srPlayStartRef.current === null) return;
+    const elapsed = Math.floor((Date.now() - srPlayStartRef.current) / 1000);
+    srPlayStartRef.current = keepRunning ? Date.now() : null;
+    postShowreelWatch(elapsed);
+  }, [postShowreelWatch]);
+
+  // Bind Vimeo / YouTube player events when the embed URL is ready
+  useEffect(() => {
+    if (!embedUrl || !showreelIframeRef.current) return;
+
+    const onPlay = () => {
+      srIsPlayingRef.current = true;
+      srPlayStartRef.current = Date.now();
+      if (!srViewRecordedRef.current) {
+        srViewRecordedRef.current = true;
+        fetch(`${API_BASE}/showreel/video-view`, {
+          method:  'POST',
+          headers: { 'Authorization': `Bearer ${publicAnonKey}`, 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ addView: true, watchSeconds: 0 }),
+        }).catch(err => console.warn('[ShowreelTrack] view record failed:', err));
+      }
+    };
+    const onPause = () => { srIsPlayingRef.current = false; srDrainTimer(false); };
+    const onEnded = () => { srIsPlayingRef.current = false; srDrainTimer(false); };
+
+    // Vimeo
+    if (c.showreelUrl?.includes('vimeo.com') || embedUrl.includes('player.vimeo')) {
+      const vp = new Player(showreelIframeRef.current);
+      vp.on('play',  onPlay);
+      vp.on('pause', onPause);
+      vp.on('ended', onEnded);
+      return () => { vp.off('play', onPlay); vp.off('pause', onPause); vp.off('ended', onEnded); };
+    }
+
+    // YouTube
+    if (c.showreelUrl?.includes('youtube.com') || c.showreelUrl?.includes('youtu.be')) {
+      const onMsg = (e: MessageEvent) => {
+        if (!e.origin.includes('youtube.com')) return;
+        try {
+          const data  = JSON.parse(typeof e.data === 'string' ? e.data : JSON.stringify(e.data));
+          const state = data?.info?.playerState;
+          if (state === 1)            onPlay();
+          else if (state === 2 || state === 0) onPause();
+        } catch { /* ignore */ }
+      };
+      window.addEventListener('message', onMsg);
+      const ping = setTimeout(() => {
+        showreelIframeRef.current?.contentWindow?.postMessage(
+          JSON.stringify({ event: 'listening', id: 2 }), 'https://www.youtube.com'
+        );
+      }, 800);
+      return () => { window.removeEventListener('message', onMsg); clearTimeout(ping); };
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [embedUrl]);
+
+  // 10-second heartbeat
+  useEffect(() => {
+    if (!embedUrl) return;
+    const hb = setInterval(() => srDrainTimer(true), 10_000);
+    return () => clearInterval(hb);
+  }, [embedUrl, srDrainTimer]);
+
+  // Pause timer on tab hide
+  useEffect(() => {
+    const onVis = () => { if (document.hidden && srIsPlayingRef.current) srDrainTimer(false); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [srDrainTimer]);
+
+  // Final flush on unmount
+  useEffect(() => { return () => srDrainTimer(false); }, []); // eslint-disable-line
+  // ──────────────────────────────────────────────────────────────────────────
 
   return (
     <div className="relative">
@@ -113,7 +226,7 @@ export function Home() {
           <motion.div initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, delay: 0.5 }} className="pt-12">
             <GlassCard neonBorder className="aspect-video overflow-hidden">
               {c.showreelUrl ? (
-                <iframe src={embedUrl} className="w-full h-full" allow="autoplay; fullscreen; picture-in-picture" allowFullScreen title="Fastoosh Showreel" />
+                <iframe ref={showreelIframeRef} src={embedUrl} className="w-full h-full" allow="autoplay; fullscreen; picture-in-picture" allowFullScreen title="Fastoosh Showreel" />
               ) : (
                 <div className="w-full h-full bg-gradient-to-br from-purple-900/20 to-blue-900/20 flex items-center justify-center">
                   <div className="text-center space-y-4">
@@ -153,12 +266,12 @@ export function Home() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {featuredProjects.map((project, index) => (
-              <motion.a key={project.id} href={`/projects/${project.id}`} initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.5, delay: index * 0.1 }}>
-                <GlassCard hover neonBorder className="overflow-hidden group">
+              <motion.a key={project.id} href={`/projects/${project.slug || project.id}`} initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.5, delay: index * 0.1 }}>
+                <GlassCard hover neonBorder className="overflow-hidden group h-full flex flex-col">
                   <div className="aspect-video overflow-hidden">
                     <img src={project.thumbnail} alt={project.title} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
                   </div>
-                  <div className="p-6">
+                  <div className="p-6 flex-1">
                     <h3 className="text-xl mb-2">{project.title}</h3>
                     <p className="text-white/60 text-sm">{project.outcome}</p>
                   </div>
@@ -215,7 +328,7 @@ export function Home() {
                     </div>
                     <div className="flex items-start gap-4">
                       <div className="md:hidden w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center flex-shrink-0">{step.number}</div>
-                      <div>
+                      <div className="flex-1 pl-2">
                         <h3 className="text-2xl mb-2">{step.title}</h3>
                         <p className="text-white/60">{step.description}</p>
                       </div>

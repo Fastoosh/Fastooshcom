@@ -954,12 +954,12 @@ export function ToolFormNew({
           </div>
         )}
         <div className="flex gap-2">
-          <Button onClick={handleSave} disabled={saving} className="cursor-pointer hover:bg-white/10 group text-white hover:text-purple-400 disabled:opacity-50">
-            <Save className="w-4 h-4 mr-2 text-white group-hover:text-purple-400 transition-colors" />
+          <Button onClick={handleSave} disabled={saving} className="cursor-pointer bg-violet-600 hover:bg-violet-500 text-white disabled:opacity-50">
+            <Save className="w-4 h-4 mr-2" />
             {saving ? 'Saving…' : 'Save Tool'}
           </Button>
-          <Button variant="outline" onClick={onCancel} className="hover:bg-white/10 group text-white hover:text-purple-400 cursor-pointer">
-            <X className="w-4 h-4 mr-2 text-white group-hover:text-purple-400 transition-colors" />
+          <Button variant="outline" onClick={onCancel} className="bg-black text-white hover:bg-white hover:text-black dark:bg-white dark:text-black dark:hover:bg-black dark:hover:text-white border-transparent cursor-pointer">
+            <X className="w-4 h-4 mr-2" />
             Cancel
           </Button>
         </div>
@@ -1004,9 +1004,9 @@ export function ToolFormNew({
               <Button
                 variant="outline"
                 onClick={() => setDuplicateModalOpen(false)}
-                className="cursor-pointer hover:bg-white/10 group text-white hover:text-purple-400"
+                className="cursor-pointer border-white/30 text-white hover:bg-white/10 hover:border-white/50"
               >
-                <X className="w-4 h-4 mr-2 text-white group-hover:text-purple-400 transition-colors" />
+                <X className="w-4 h-4 mr-2" />
                 Cancel
               </Button>
             </div>
@@ -1091,7 +1091,7 @@ function VersionEditor({
             onClick={onDuplicate}
             size="sm"
             variant="outline"
-            className="cursor-pointer hover:bg-white/10 group text-white hover:text-purple-400"
+            className="cursor-pointer hover:bg-white/10 group text-white hover:text-purple-400 border-white/20"
           >
             <Copy className="w-4 h-4 mr-1 text-white group-hover:text-purple-400 transition-colors" />
             Duplicate
@@ -1101,7 +1101,7 @@ function VersionEditor({
             onClick={onDelete}
             size="sm"
             variant="outline"
-            className="cursor-pointer hover:bg-white/10 group text-white hover:text-red-400"
+            className="cursor-pointer hover:bg-white/10 group text-white hover:text-red-400 border-white/20"
           >
             <Trash2 className="w-4 h-4 text-white group-hover:text-red-400 transition-colors" />
           </Button>

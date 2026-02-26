@@ -471,7 +471,7 @@ function HeroSection({ content, setContent }: { content: HomeContent; setContent
               variant="outline"
               onClick={() => document.getElementById('homeShowreelUpload')?.click()}
               disabled={uploading}
-              className="w-full text-sm"
+              className="w-full text-sm border-white/25 text-white hover:bg-white/10 hover:border-white/40 bg-transparent"
             >
               {uploading ? <><Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />Uploading…</> : 'Choose video file to upload'}
             </Button>

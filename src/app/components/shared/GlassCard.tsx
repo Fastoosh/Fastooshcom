@@ -13,10 +13,12 @@ export function GlassCard({ children, className = "", hover = false, neonBorder 
 
   return (
     <motion.div
-      className={`relative rounded-2xl backdrop-blur-xl bg-white/[0.02] border border-white/10 shadow-2xl ${className}`}
+      className={`relative rounded-2xl backdrop-blur-xl border border-white/10 shadow-2xl ${className}`}
+      {...(neonBorder ? { 'data-fastoosh-dark': 'true' } : {})}
       style={{
-        backgroundImage: neonBorder 
-          ? 'linear-gradient(rgba(0, 0, 0, 0.95), rgba(0, 0, 0, 0.95)), linear-gradient(135deg, #a855f7, #3b82f6)'
+        backgroundColor: neonBorder ? undefined : 'var(--fastoosh-card-bg, rgba(255,255,255,0.02))',
+        backgroundImage: neonBorder
+          ? 'linear-gradient(var(--fastoosh-card-dark, rgba(0,0,0,0.95)), var(--fastoosh-card-dark, rgba(0,0,0,0.95))), linear-gradient(135deg, var(--color-purple-500, #a855f7), var(--color-violet-500, #3b82f6))'
           : undefined,
         backgroundOrigin: 'border-box',
         backgroundClip: neonBorder ? 'padding-box, border-box' : undefined,
@@ -26,7 +28,7 @@ export function GlassCard({ children, className = "", hover = false, neonBorder 
       whileHover={hover && !reduceMotion ? { 
         scale: 1.02,
         boxShadow: neonBorder 
-          ? '0 0 40px rgba(168, 85, 247, 0.3), 0 0 80px rgba(59, 130, 246, 0.2)'
+          ? '0 0 40px color-mix(in srgb, var(--color-purple-500, #a855f7) 30%, transparent), 0 0 80px color-mix(in srgb, var(--color-violet-600, #3b82f6) 20%, transparent)'
           : '0 25px 50px -12px rgba(0, 0, 0, 0.5)'
       } : undefined}
       transition={{ duration: 0.3, ease: 'easeOut' }}

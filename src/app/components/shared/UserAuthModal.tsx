@@ -198,8 +198,8 @@ export function UserAuthModal({
                 <div className="relative w-12 h-12 rounded-full border border-purple-500/40
                   bg-purple-500/15 flex items-center justify-center">
                   <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none">
-                    <path d="M12 2L2 7l10 5 10-5-10-5z" stroke="#c084fc" strokeWidth="1.5" strokeLinejoin="round"/>
-                    <path d="M2 17l10 5 10-5M2 12l10 5 10-5" stroke="#a855f7" strokeWidth="1.5" strokeLinejoin="round"/>
+                    <path d="M12 2L2 7l10 5 10-5-10-5z" stroke="var(--color-violet-300, #c084fc)" strokeWidth="1.5" strokeLinejoin="round"/>
+                    <path d="M2 17l10 5 10-5M2 12l10 5 10-5" stroke="var(--color-violet-500, #a855f7)" strokeWidth="1.5" strokeLinejoin="round"/>
                   </svg>
                 </div>
               </div>

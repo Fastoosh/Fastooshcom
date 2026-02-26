@@ -480,7 +480,7 @@ export function LeadsTab() {
           </p>
         </div>
         <div className="flex gap-2 flex-shrink-0">
-          <Button variant="outline" size="sm" onClick={loadLeads} disabled={loading} className="cursor-pointer">
+          <Button variant="outline" size="sm" onClick={loadLeads} disabled={loading} className="cursor-pointer border-white/30 text-white hover:bg-white/10 hover:border-white/50">
             <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
             Refresh
           </Button>

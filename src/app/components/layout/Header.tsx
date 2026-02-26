@@ -1,11 +1,11 @@
-import { motion, AnimatePresence } from "motion/react";
 import { Link, useLocation, useNavigate } from "react-router";
+import { motion, AnimatePresence } from "motion/react";
 import { NeonButton } from "../shared/NeonButton";
 import { UserAuthModal } from "../shared/UserAuthModal";
 import { useUserAuth } from "../../hooks/useUserAuth";
 import { useState, useRef, useEffect } from "react";
 import { X, User, ShoppingBag, LogOut } from "lucide-react";
-import fastooshLogo from "figma:asset/146d4e74197e43854d1765af396281d8ee56010c.png";
+import { useLogo } from "../../context/LogoContext";
 
 export function Header() {
   const location = useLocation();
@@ -15,6 +15,7 @@ export function Header() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
+  const { activeLogoUrl, logoText, logoHeight } = useLogo();
 
   const { user, loading, signInWithEmail, signUpWithEmail, forgotPassword, signOut } = useUserAuth();
 
@@ -48,19 +49,31 @@ export function Header() {
 
   return (
     <>
-      <header className="sticky top-0 z-50 backdrop-blur-2xl bg-black/10 border-b border-white/5">
+      <header
+        className="sticky top-0 z-50 backdrop-blur-2xl border-b border-white/5"
+        style={{ backgroundColor: 'var(--fastoosh-header-bg, rgba(0,0,0,0.10))' }}
+      >
         <nav className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           {/* Logo */}
           <Link to="/" onClick={() => setMobileMenuOpen(false)}>
             <motion.div
-              className="text-2xl tracking-tight"
+              className="tracking-tight"
               whileHover={!reduceMotion ? { scale: 1.05 } : undefined}
             >
-              <img
-                src={fastooshLogo}
-                alt="Fastoosh"
-                className="h-8 w-auto object-contain"
-              />
+              {activeLogoUrl ? (
+                <img
+                  src={activeLogoUrl}
+                  alt={logoText}
+                  style={{ height: `${logoHeight}px` }}
+                  className="w-auto object-contain"
+                />
+              ) : (
+                <span
+                  className="text-2xl font-bold bg-gradient-to-r from-violet-400 via-purple-300 to-pink-400 bg-clip-text text-transparent"
+                >
+                  {logoText}
+                </span>
+              )}
             </motion.div>
           </Link>
 
@@ -72,7 +85,8 @@ export function Header() {
                 <Link
                   key={item.path}
                   to={item.path}
-                  className="relative px-4 py-2 text-white/70 hover:text-white transition-colors"
+                  data-active={isActive ? 'true' : 'false'}
+                  className="fastoosh-nav-link relative px-4 py-2 transition-colors"
                 >
                   <span className="relative z-10">{item.label}</span>
                   {isActive && (
@@ -98,7 +112,8 @@ export function Header() {
                       onClick={() => setUserMenuOpen(!userMenuOpen)}
                       className="flex items-center gap-2 px-3 py-1.5 rounded-full
                         border border-white/10 hover:border-purple-500/40
-                        bg-white/5 hover:bg-purple-500/10 transition-all group"
+                        hover:bg-purple-500/10 transition-all group"
+                      style={{ backgroundColor: 'var(--fastoosh-signin-bg, rgba(255,255,255,0.05))' }}
                       aria-label="User menu"
                     >
                       {avatarUrl ? (
@@ -113,7 +128,7 @@ export function Header() {
                           {initials}
                         </div>
                       )}
-                      <span className="text-white/70 text-sm group-hover:text-white max-w-24 truncate">
+                      <span className="fastoosh-nav-link text-sm max-w-24 truncate">
                         {displayName}
                       </span>
                     </button>
@@ -127,7 +142,7 @@ export function Header() {
                           exit={{ opacity: 0, y: 8, scale: 0.95 }}
                           transition={{ duration: 0.15 }}
                           className="absolute right-0 top-full mt-2 w-52 rounded-xl
-                            bg-[#0d0d14]/95 backdrop-blur-xl border border-white/10
+                            bg-black/95 backdrop-blur-xl border border-white/10
                             shadow-2xl shadow-black/60 overflow-hidden z-50"
                         >
                           {/* User info header */}
@@ -174,8 +189,9 @@ export function Header() {
                     onClick={() => setAuthModalOpen(true)}
                     className="flex items-center gap-2 px-4 py-2 rounded-xl
                       border border-white/10 hover:border-purple-500/40
-                      text-white/60 hover:text-white text-sm
-                      bg-white/5 hover:bg-purple-500/10 transition-all"
+                      fastoosh-nav-link text-sm
+                      hover:bg-purple-500/10 transition-all"
+                    style={{ backgroundColor: 'var(--fastoosh-signin-bg, rgba(255,255,255,0.05))' }}
                   >
                     <User className="w-4 h-4" />
                     Sign in
@@ -209,7 +225,8 @@ export function Header() {
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
-            className="md:hidden border-t border-white/5 bg-black/70 backdrop-blur-2xl"
+            className="md:hidden border-t border-white/5 backdrop-blur-2xl"
+            style={{ backgroundColor: 'var(--fastoosh-header-bg, rgba(0,0,0,0.70))' }}
           >
             <div className="px-6 py-4 space-y-4">
               {navItems.map((item) => (
@@ -217,9 +234,8 @@ export function Header() {
                   key={item.path}
                   to={item.path}
                   onClick={() => setMobileMenuOpen(false)}
-                  className={`block py-2 transition-colors ${
-                    location.pathname === item.path ? 'text-white' : 'text-white/70'
-                  }`}
+                  data-active={location.pathname === item.path ? 'true' : 'false'}
+                  className="fastoosh-nav-link block py-2 transition-colors"
                 >
                   {item.label}
                 </Link>
@@ -231,7 +247,7 @@ export function Header() {
                     <Link
                       to="/account"
                       onClick={() => setMobileMenuOpen(false)}
-                      className="flex items-center gap-2 py-2 text-white/70 hover:text-white transition-colors"
+                      className="fastoosh-nav-link flex items-center gap-2 py-2 transition-colors"
                     >
                       {avatarUrl ? (
                         <img src={avatarUrl} alt={displayName}
@@ -252,7 +268,7 @@ export function Header() {
                 ) : (
                   <button
                     onClick={() => { setAuthModalOpen(true); setMobileMenuOpen(false); }}
-                    className="flex items-center gap-2 py-2 text-white/70 hover:text-white transition-colors"
+                    className="fastoosh-nav-link flex items-center gap-2 py-2 transition-colors"
                   >
                     <User className="w-5 h-5" />
                     Sign in
