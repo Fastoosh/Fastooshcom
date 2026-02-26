@@ -29,11 +29,16 @@ export function GlassCard({ children, className = "", hover = false, neonBorder 
       } : undefined}
       transition={{ duration: 0.3, ease: 'easeOut' }}
     >
-      {/* Neon gradient border */}
+      {children}
+
+      {/* Neon gradient border — MUST come after {children} and carry a high z-index
+          so it always paints on top of images or any child that forms its own
+          stacking context (e.g. <img>, transformed elements, overflow:hidden wrappers). */}
       {neonBorder && (
-        <div 
+        <div
           className="absolute inset-0 rounded-2xl pointer-events-none"
           style={{
+            zIndex: 10,
             padding: '2px',
             background: 'linear-gradient(135deg, var(--color-purple-500, #a855f7), var(--color-violet-500, #3b82f6))',
             WebkitMask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
@@ -42,15 +47,6 @@ export function GlassCard({ children, className = "", hover = false, neonBorder 
           }}
         />
       )}
-      
-      {/* Subtle noise texture overlay */}
-      <div 
-        className="inset-0 rounded-2xl opacity-[0.015] pointer-events-none"
-        style={{
-          backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='3.5' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E\")`,
-        }}
-      />
-      {children}
     </motion.div>
   );
 }
