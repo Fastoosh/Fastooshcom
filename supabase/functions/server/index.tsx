@@ -232,8 +232,15 @@ const normalizeTool = (tool: Record<string, any>): Record<string, any> => {
       if (stepEntries.length > 0) {
         v.activationSteps = stepEntries.map((f: string) => f.replace('🔑 ', ''));
       }
+      // Decode rich features with screenshots (🎨 JSON)
+      const richFeatEntries = v.features.filter((f: string) => typeof f === 'string' && f.startsWith('🎨 '));
+      if (richFeatEntries.length > 0) {
+        v.richFeatures = richFeatEntries.map((f: string) => {
+          try { return JSON.parse(f.replace('🎨 ', '')); } catch { return null; }
+        }).filter(Boolean);
+      }
       v.features = v.features.filter(
-        (f: string) => typeof f === 'string' && !f.startsWith('💰 ') && !f.startsWith('📦 ') && !f.startsWith('🔑 ')
+        (f: string) => typeof f === 'string' && !f.startsWith('💰 ') && !f.startsWith('📦 ') && !f.startsWith('🔑 ') && !f.startsWith('🎨 ')
       );
       return v;
     });
@@ -685,6 +692,87 @@ ${schemaLines}}`;
   } catch (error) {
     console.log('Error in generate-tool-content:', error);
     return c.json({ success: false, error: `Content generation failed: ${String(error)}` }, 500);
+  }
+});
+
+// ========== AI RICH FEATURES GENERATION ==========
+
+app.post("/make-server-e07959ec/admin/generate-rich-features", requireAuth, async (c) => {
+  try {
+    const { toolName, category, description, versionType, instruction, count = 5 } = await c.req.json();
+
+    const apiKey = Deno.env.get('GEMINI_API_KEY');
+    if (!apiKey) return c.json({ success: false, error: 'GEMINI_API_KEY not configured' }, 500);
+    if (!toolName?.trim()) return c.json({ success: false, error: 'toolName is required' }, 400);
+
+    const instructionLine = instruction?.trim() ? `\nInstruction: "${instruction.trim()}"` : '';
+    const descLine = description?.trim() ? `\nTool description: "${description.trim()}"` : '';
+    const tierHint = versionType === 'Free' ? 'basic/limited capabilities'
+      : versionType === 'Pro' ? 'full professional feature set'
+      : 'all features plus team/studio extras';
+
+    const prompt = `You are a professional copywriter for Fastoosh, a premium motion design studio (After Effects plugins & scripts).
+
+Generate exactly ${count} feature items for the "${versionType ?? 'Pro'}" tier of the tool "${toolName}" (category: ${category ?? 'After Effects'}).${descLine}${instructionLine}
+
+Tier context: ${tierHint}
+
+Rules:
+- title: 3-7 words, capability-focused, specific to this tool (e.g. "Batch Process 500+ Layers at Once")
+- description: max 100 characters, benefit-focused, starts with an action verb, no filler
+- Make each feature distinct — no repetition
+- Tailor everything specifically to "${toolName}", not generic
+
+Return ONLY valid JSON:
+{
+  "richFeatures": [
+    { "title": "...", "description": "..." },
+    { "title": "...", "description": "..." }
+  ]
+}`;
+
+    const geminiRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { responseMimeType: 'application/json', temperature: 0.8, maxOutputTokens: 2048 },
+        }),
+      }
+    );
+
+    if (!geminiRes.ok) {
+      const err = await geminiRes.text();
+      return c.json({ success: false, error: `Gemini API error: ${err}` }, 500);
+    }
+
+    const geminiData = await geminiRes.json();
+    const rawText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!rawText) return c.json({ success: false, error: 'Empty response from Gemini' }, 500);
+
+    let parsed: any;
+    try {
+      const repaired = repairJson(rawText);
+      parsed = JSON.parse(repaired);
+    } catch (e) {
+      return c.json({ success: false, error: `Invalid JSON from AI: ${String(e)}` }, 500);
+    }
+
+    const richFeatures = (parsed.richFeatures ?? []).map((f: any) => ({
+      id: `feat-${crypto.randomUUID()}`,
+      title: (f.title ?? '').slice(0, 80),
+      description: (f.description ?? '').slice(0, 100),
+      screenshots: [],
+    }));
+
+    console.log(`✅ Generated ${richFeatures.length} rich features for "${toolName}" [${versionType}]`);
+    return c.json({ success: true, richFeatures });
+
+  } catch (error) {
+    console.log('Error in generate-rich-features:', error);
+    return c.json({ success: false, error: `Feature generation failed: ${String(error)}` }, 500);
   }
 });
 
@@ -1743,6 +1831,7 @@ app.post("/make-server-e07959ec/tools", requireAuth, async (c) => {
           lifetimePrice,
           whatsIncluded,
           activationSteps,
+          richFeatures,
           demoUrl: _vDemoUrl,
           pricingDisplay: _pd,
           ...vRest
@@ -1763,6 +1852,7 @@ app.post("/make-server-e07959ec/tools", requireAuth, async (c) => {
           ...(priceSentinel ? [`💰 ${priceSentinel}`] : []),
           ...((whatsIncluded ?? []) as string[]).filter(Boolean).map((item: string) => `📦 ${item}`),
           ...((activationSteps ?? []) as string[]).filter(Boolean).map((step: string) => `🔑 ${step}`),
+          ...((richFeatures ?? []) as any[]).filter(Boolean).map((f: any) => `🎨 ${JSON.stringify(f)}`),
           ...(vRest.features ?? []),
         ];
 
@@ -1867,6 +1957,7 @@ app.put("/make-server-e07959ec/tools/:id", requireAuth, async (c) => {
             lifetimePrice,
             whatsIncluded,
             activationSteps,
+            richFeatures,
             demoUrl: _vDemoUrl,
             pricingDisplay: _pd,
             ...vRest
@@ -1887,6 +1978,7 @@ app.put("/make-server-e07959ec/tools/:id", requireAuth, async (c) => {
             ...(priceSentinel ? [`💰 ${priceSentinel}`] : []),
             ...((whatsIncluded ?? []) as string[]).filter(Boolean).map((item: string) => `📦 ${item}`),
             ...((activationSteps ?? []) as string[]).filter(Boolean).map((step: string) => `🔑 ${step}`),
+            ...((richFeatures ?? []) as any[]).filter(Boolean).map((f: any) => `🎨 ${JSON.stringify(f)}`),
             ...(vRest.features ?? []),
           ];
 

@@ -10,9 +10,11 @@ import { projectId, publicAnonKey } from '/utils/supabase/info';
 import {
   ArrowLeft, Check, Download, Play, ChevronDown, ChevronUp,
   Monitor, Zap, Star, ExternalLink, Sparkles, ShoppingCart, Quote,
+  ChevronLeft, ChevronRight,
 } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import useEmblaCarousel from 'embla-carousel-react';
 import { useTracker } from '../hooks/useTracker';
 
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-e07959ec`;
@@ -35,6 +37,13 @@ const DEFAULT_STATUSES = [
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+interface RichFeature {
+  id: string;
+  title: string;
+  description: string;
+  screenshots: string[];
+}
+
 interface ToolVersion {
   id: string;
   versionType: 'Free' | 'Pro' | 'Studio';
@@ -45,6 +54,7 @@ interface ToolVersion {
   downloadUrl: string;
   lemonSqueezyVariantId?: string;
   features?: string[];
+  richFeatures?: RichFeature[];
 }
 
 interface Tool {
@@ -79,37 +89,120 @@ function parseYouTube(url: string): { embedUrl: string; videoId: string } | null
   };
 }
 
-function parsePricing(version: ToolVersion): { priceLabel: string; cleanFeatures: string[] } {
+interface ParsedPricing {
+  /** Big number shown in the card, e.g. "$9", "$49", "Free" */
+  mainPrice: string;
+  /** Period shown inline next to mainPrice, e.g. "/ mo", "/ yr", "" */
+  period: string;
+  /** Small muted line below the price */
+  subLabel: string;
+  /** Compact string for the CTA button, e.g. "$9 / mo" */
+  ctaPrice: string;
+  cleanFeatures: string[];
+}
+
+function parsePricing(version: ToolVersion, billingCycle: 'monthly' | 'yearly' = 'monthly'): ParsedPricing {
   const raw = version.features ?? [];
-  let priceLabel = '';
   const cleanFeatures: string[] = [];
+
+  // Add $ prefix if value is a bare number (admin may omit currency symbol)
+  const fmt = (s: string): string => {
+    if (!s || s === 'Free') return s;
+    return /^\d/.test(s.trim()) ? `$${s.trim()}` : s.trim();
+  };
+
+  // Extract raw price fields from sentinel or direct version fields
+  let model   = version.pricingModel ?? 'lifetime';
+  let monthly = version.monthlyPrice  ?? '';
+  let yearly  = version.yearlyPrice   ?? '';
+  let lifetime = version.lifetimePrice ?? '';
+  let sentinelFound = false;
+
   for (const item of raw) {
-    if (item.startsWith('💰 ') && !priceLabel) {
+    if (item.startsWith('💰 ') && !sentinelFound) {
+      sentinelFound = true;
       const sentinel = item.replace('💰 ', '');
       if (sentinel === 'Free') {
-        priceLabel = 'Free';
-      } else if (sentinel.startsWith('subscription|') || sentinel.startsWith('lifetime|')) {
-        const [model, p1, p2] = sentinel.split('|');
-        if (model === 'subscription') {
-          priceLabel = [p1, p2 ? p2 + '/yr' : ''].filter(Boolean).join(' / ');
-        } else {
-          priceLabel = p1 || '';
-        }
+        // handled below
+      } else if (sentinel.startsWith('subscription|')) {
+        const [, p1, p2] = sentinel.split('|');
+        model   = 'subscription';
+        monthly = p1 ?? '';
+        yearly  = p2 ?? '';
+      } else if (sentinel.startsWith('lifetime|')) {
+        const [, p1] = sentinel.split('|');
+        model    = 'lifetime';
+        lifetime = p1 ?? '';
       } else {
-        // Legacy plain-text sentinel
-        priceLabel = sentinel;
+        // Legacy plain-text sentinel — treat as lifetime label
+        lifetime = sentinel;
       }
     } else {
       cleanFeatures.push(item);
     }
   }
-  if (!priceLabel) {
-    if (version.versionType === 'Free') priceLabel = 'Free';
-    else if (version.pricingModel === 'subscription')
-      priceLabel = [version.monthlyPrice, version.yearlyPrice ? version.yearlyPrice + '/yr' : ''].filter(Boolean).join(' / ');
-    else priceLabel = version.lifetimePrice ?? '';
+
+  // ── Free ──
+  if (version.versionType === 'Free') {
+    return { mainPrice: 'Free', period: '', subLabel: 'forever free', ctaPrice: 'Free', cleanFeatures };
   }
-  return { priceLabel, cleanFeatures };
+
+  // ── Lifetime ──
+  if (model === 'lifetime') {
+    const price = fmt(lifetime) || '—';
+    return {
+      mainPrice: price,
+      period: '',
+      subLabel: 'one-time payment',
+      ctaPrice: price,
+      cleanFeatures,
+    };
+  }
+
+  // ── Subscription ──
+  // Normalise: strip leading "$" for math, re-add for display
+  const toNum = (s: string) => parseFloat(s.replace(/[^0-9.]/g, '')) || 0;
+  const hasMo = monthly.trim() !== '';
+  const hasYr = yearly.trim()  !== '';
+
+  if (hasMo && hasYr) {
+    const yrNum = toNum(yearly);
+    const fmtMo = fmt(monthly);
+    const fmtYr = fmt(yearly);
+
+    if (billingCycle === 'yearly') {
+      const perMonth = yrNum / 12;
+      const perMonthStr = perMonth % 1 === 0
+        ? `$${perMonth}`
+        : `$${perMonth.toFixed(2)}`;
+      return {
+        mainPrice: perMonthStr,
+        period: '/ mo',
+        subLabel: `billed ${fmtYr} / yr`,
+        ctaPrice: fmtYr,
+        cleanFeatures,
+      };
+    }
+
+    // monthly
+    return {
+      mainPrice: fmtMo,
+      period: '/ mo',
+      subLabel: 'billed monthly',
+      ctaPrice: `${fmtMo} / mo`,
+      cleanFeatures,
+    };
+  }
+  if (hasMo) {
+    const fmtMo = fmt(monthly);
+    return { mainPrice: fmtMo, period: '/ mo', subLabel: 'billed monthly', ctaPrice: `${fmtMo} / mo`, cleanFeatures };
+  }
+  if (hasYr) {
+    const fmtYr = fmt(yearly);
+    return { mainPrice: fmtYr, period: '/ yr', subLabel: 'billed annually', ctaPrice: `${fmtYr} / yr`, cleanFeatures };
+  }
+
+  return { mainPrice: '—', period: '', subLabel: '', ctaPrice: '', cleanFeatures };
 }
 
 // ── DemoPlayer ────────────────────────────────────────────────────────────────
@@ -209,6 +302,7 @@ function PricingCard({
   onFreeDownload,
   onBuyClick,
   sessionId,
+  billingCycle,
 }: {
   version: ToolVersion;
   index: number;
@@ -218,10 +312,15 @@ function PricingCard({
   onFreeDownload: (v: ToolVersion) => void;
   onBuyClick?: (v: ToolVersion) => void;
   sessionId?: string;
+  billingCycle?: 'monthly' | 'yearly';
 }) {
-  const { priceLabel, cleanFeatures } = parsePricing(version);
+  const { mainPrice, period, subLabel, ctaPrice, cleanFeatures } = parsePricing(version, billingCycle ?? 'monthly');
   const isPro = version.versionType === 'Pro';
   const isFree = version.versionType === 'Free';
+  // Prefer rich feature titles if available, otherwise fall back to plain features
+  const displayFeatures = (version.richFeatures ?? []).length > 0
+    ? (version.richFeatures ?? []).map(f => f.title).filter(Boolean)
+    : cleanFeatures;
 
   const config = {
     Free:   { accent: 'text-emerald-400', dot: 'bg-emerald-400', ring: '' },
@@ -284,20 +383,32 @@ function PricingCard({
 
         {/* Price */}
         <div className="mb-6">
-          <div className={`text-4xl font-black ${isFree ? 'text-emerald-400' : 'text-white'}`}>
-            {isFree ? 'Free' : priceLabel || '—'}
-          </div>
-          {!isFree && (
-            <p className="text-white/30 text-xs mt-1">
-              {version.pricingModel === 'subscription' ? 'per month' : 'one-time'}
-            </p>
+          {isFree ? (
+            <>
+              <div className="text-4xl font-black text-emerald-400">Free</div>
+              <p className="text-white/30 text-xs mt-1">forever free</p>
+            </>
+          ) : (
+            <>
+              {/* Main price + period on one line */}
+              <div className="flex items-baseline gap-2">
+                <span className="text-4xl font-black text-white">{mainPrice || '—'}</span>
+                {period && (
+                  <span className="text-base font-medium text-white/40">{period}</span>
+                )}
+              </div>
+              {/* Sub-label: e.g. "$90 / yr · save 17%" or "one-time payment" */}
+              {subLabel && (
+                <p className="text-white/30 text-xs mt-1">{subLabel}</p>
+              )}
+            </>
           )}
         </div>
 
         {/* Feature list */}
-        {cleanFeatures.length > 0 && (
+        {displayFeatures.length > 0 && (
           <ul className="space-y-2.5 flex-grow mb-7">
-            {cleanFeatures.map((item, i) => (
+            {displayFeatures.map((item, i) => (
               <li key={i} className="flex items-start gap-2.5">
                 <Check className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 ${config.accent}`} />
                 <span className="text-white/60 text-sm leading-snug">{item}</span>
@@ -333,7 +444,7 @@ function PricingCard({
             >
               <ShoppingCart className="w-3.5 h-3.5" />
               {user
-                ? `Buy Now${priceLabel ? ` · ${priceLabel}` : ''}`
+                ? `Buy Now${ctaPrice ? ` · ${ctaPrice}` : ''}`
                 : `Get ${version.versionType} — Sign in`}
             </button>
           )}
@@ -389,6 +500,246 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
+// ── ScreenshotCarousel ────────────────────────────────────────────────────────
+
+function ScreenshotCarousel({ screenshots }: { screenshots: string[] }) {
+  const [emblaRef, emblaApi] = useEmblaCarousel({ loop: true, dragFree: false });
+  const [current, setCurrent] = useState(0);
+
+  const onSelect = useCallback(() => {
+    if (!emblaApi) return;
+    setCurrent(emblaApi.selectedScrollSnap());
+  }, [emblaApi]);
+
+  useEffect(() => {
+    if (!emblaApi) return;
+    emblaApi.on('select', onSelect);
+    return () => { emblaApi.off('select', onSelect); };
+  }, [emblaApi, onSelect]);
+
+  const validShots = screenshots.filter(Boolean);
+  if (validShots.length === 0) return null;
+
+  if (validShots.length === 1) {
+    return (
+      <div className="relative rounded-2xl overflow-hidden border border-white/10 bg-black/30 shadow-2xl">
+        <img
+          src={validShots[0]}
+          alt="Feature screenshot"
+          className="w-full h-auto object-contain max-h-[420px]"
+          onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0'; }}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative rounded-2xl overflow-hidden border border-white/10 bg-black/30 shadow-2xl group">
+      {/* Slides */}
+      <div ref={emblaRef} className="overflow-hidden">
+        <div className="flex touch-pan-y">
+          {validShots.map((src, i) => (
+            <div key={i} className="flex-[0_0_100%] min-w-0">
+              <img
+                src={src}
+                alt={`Screenshot ${i + 1}`}
+                className="w-full h-auto object-contain max-h-[420px]"
+                onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0'; }}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Prev / Next arrows */}
+      <button
+        onClick={() => emblaApi?.scrollPrev()}
+        className="absolute left-3 top-1/2 -translate-y-1/2 z-10
+          w-9 h-9 rounded-full bg-black/60 border border-white/10 backdrop-blur-md
+          flex items-center justify-center text-white/60
+          hover:bg-black/80 hover:text-white opacity-0 group-hover:opacity-100
+          transition-all duration-200"
+        aria-label="Previous screenshot"
+      >
+        <ChevronLeft className="w-4 h-4" />
+      </button>
+      <button
+        onClick={() => emblaApi?.scrollNext()}
+        className="absolute right-3 top-1/2 -translate-y-1/2 z-10
+          w-9 h-9 rounded-full bg-black/60 border border-white/10 backdrop-blur-md
+          flex items-center justify-center text-white/60
+          hover:bg-black/80 hover:text-white opacity-0 group-hover:opacity-100
+          transition-all duration-200"
+        aria-label="Next screenshot"
+      >
+        <ChevronRight className="w-4 h-4" />
+      </button>
+
+      {/* Dots */}
+      <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-1.5 pointer-events-none">
+        {validShots.map((_, i) => (
+          <button
+            key={i}
+            onClick={() => emblaApi?.scrollTo(i)}
+            className={`pointer-events-auto rounded-full transition-all duration-300 ${
+              i === current
+                ? 'w-5 h-1.5 bg-white'
+                : 'w-1.5 h-1.5 bg-white/30 hover:bg-white/60'
+            }`}
+            aria-label={`Go to slide ${i + 1}`}
+          />
+        ))}
+      </div>
+
+      {/* Slide counter badge */}
+      <div className="absolute top-3 right-3 px-2 py-0.5 rounded-full bg-black/60 backdrop-blur-md border border-white/10 text-white/50 text-[10px] font-mono">
+        {current + 1} / {validShots.length}
+      </div>
+    </div>
+  );
+}
+
+// ── FeaturesShowcase ──────────────────────────────────────────────────────────
+
+function FeaturesShowcase({
+  versions,
+  user,
+  sessionId,
+  onFreeDownload,
+  onSignInRequired,
+  onBuyClick,
+}: {
+  versions: ToolVersion[];
+  user: ReturnType<typeof useUserAuth>['user'];
+  sessionId?: string;
+  onFreeDownload: (v: ToolVersion) => void;
+  onSignInRequired: (msg?: string) => void;
+  onBuyClick?: (v: ToolVersion) => void;
+}) {
+  // Use Pro version features first, then Free, then first version
+  const proVersion = versions.find(v => v.versionType === 'Pro');
+  const freeVersion = versions.find(v => v.versionType === 'Free');
+  const primaryVersion = proVersion ?? freeVersion ?? versions[0];
+
+  const richFeatures = (primaryVersion?.richFeatures ?? []).filter(f => f.title?.trim());
+  if (richFeatures.length === 0) return null;
+
+  const isFree = primaryVersion?.versionType === 'Free';
+
+  const buildCheckoutUrl = () => {
+    if (!primaryVersion?.downloadUrl) return '/work-with-us';
+    try {
+      const url = new URL(primaryVersion.downloadUrl);
+      if (user?.email) url.searchParams.set('checkout[email]', user.email);
+      if (user?.id)    url.searchParams.set('checkout[custom][user_id]', user.id);
+      url.searchParams.set('checkout[custom][tool_version_id]', primaryVersion.id);
+      if (sessionId) url.searchParams.set('checkout[custom][session_id]', sessionId);
+      return url.toString();
+    } catch { return primaryVersion?.downloadUrl ?? '#'; }
+  };
+
+  const handleCTA = () => {
+    if (!primaryVersion) return;
+    if (isFree) {
+      onFreeDownload(primaryVersion);
+    } else {
+      if (!user) { onSignInRequired('Sign in to purchase and access your license key.'); return; }
+      onBuyClick?.(primaryVersion);
+      window.open(buildCheckoutUrl(), '_blank', 'noopener,noreferrer');
+    }
+  };
+
+  return (
+    <motion.section
+      initial={{ opacity: 0, y: 20 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true }}
+      className="mb-24"
+    >
+      <SectionLabel>What you can do</SectionLabel>
+
+      <div className="space-y-20 md:space-y-28">
+        {richFeatures.map((feature, index) => {
+          const isReversed = index % 2 === 1;
+          const hasScreenshots = (feature.screenshots ?? []).filter(Boolean).length > 0;
+
+          return (
+            <motion.div
+              key={feature.id ?? index}
+              initial={{ opacity: 0, y: 24 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: '-60px' }}
+              transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+              className="grid grid-cols-1 md:grid-cols-2 gap-10 md:gap-16 items-center"
+            >
+              {/* ── Text side ── */}
+              <div className={`flex flex-col justify-center ${isReversed ? 'md:order-2' : 'md:order-1'}`}>
+                {/* Feature number */}
+                <div className="flex items-center gap-3 mb-4">
+                  <span className="text-[11px] font-bold tracking-[0.2em] uppercase text-purple-400/60">
+                    {String(index + 1).padStart(2, '0')}
+                  </span>
+                  <div className="h-px flex-1 bg-gradient-to-r from-purple-500/30 to-transparent max-w-[60px]" />
+                </div>
+
+                {/* Title */}
+                <h3 className="text-2xl sm:text-3xl font-bold text-white mb-4 leading-tight">
+                  {feature.title}
+                </h3>
+
+                {/* Description */}
+                {feature.description?.trim() && (
+                  <p className="text-white/50 text-base leading-relaxed mb-8">
+                    {feature.description}
+                  </p>
+                )}
+
+                {/* CTA button */}
+                <div>
+                  <button
+                    onClick={handleCTA}
+                    className={`inline-flex items-center gap-2.5 px-6 py-3 rounded-xl
+                      text-sm font-semibold transition-all duration-200 active:scale-[0.97]
+                      ${isFree
+                        ? 'bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 hover:text-emerald-200'
+                        : 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white shadow-lg shadow-purple-900/40 hover:shadow-purple-500/30'
+                      }`}
+                  >
+                    {isFree
+                      ? <Download className="w-4 h-4" />
+                      : <ShoppingCart className="w-4 h-4" />}
+                    {isFree
+                      ? 'Download Free'
+                      : `Get ${primaryVersion?.versionType ?? 'Pro'}`}
+                  </button>
+                </div>
+              </div>
+
+              {/* ── Media side ── */}
+              <div className={`${isReversed ? 'md:order-1' : 'md:order-2'}`}>
+                {hasScreenshots ? (
+                  <ScreenshotCarousel screenshots={feature.screenshots ?? []} />
+                ) : (
+                  /* Placeholder card when no screenshots yet */
+                  <div className="relative rounded-2xl overflow-hidden border border-white/8 bg-gradient-to-br from-purple-950/60 to-slate-950/60 aspect-video flex flex-col items-center justify-center gap-3 p-8 text-center">
+                    {/* Decorative glow */}
+                    <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-blue-500/5" />
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 rounded-full bg-purple-600/10 blur-3xl" />
+                    <div className="relative text-5xl font-black text-white/5 select-none leading-none">
+                      {String(index + 1).padStart(2, '0')}
+                    </div>
+                    <p className="relative text-white/20 text-sm font-medium">{feature.title}</p>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          );
+        })}
+      </div>
+    </motion.section>
+  );
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 export function ToolDetail() {
@@ -406,6 +757,8 @@ export function ToolDetail() {
   const [freeDownloadVersion, setFreeDownloadVersion] = useState<ToolVersion | null>(null);
   const [userPurchasedProductNames, setUserPurchasedProductNames] = useState<string[]>([]);
   const [reviews, setReviews] = useState<any[]>([]);
+  // Billing cycle toggle — only relevant when a subscription version has both prices
+  const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
 
   useEffect(() => { loadTool(); }, [slug]);
 
@@ -697,6 +1050,71 @@ export function ToolDetail() {
             className="mb-20"
           >
             <SectionLabel>Choose your version</SectionLabel>
+
+            {/* ── Billing cycle toggle — shown only for tools with subscription + both prices ── */}
+            {tool.versions?.some(v =>
+              v.pricingModel === 'subscription' && v.monthlyPrice?.trim() && v.yearlyPrice?.trim()
+            ) && (
+              <div className="flex justify-center mb-10">
+                <div className="flex flex-col items-center gap-3">
+                  {/* "Best value" badge floats above, dims when Monthly is active */}
+                  <motion.div
+                    animate={{ opacity: billingCycle === 'yearly' ? 1 : 0.3 }}
+                    transition={{ duration: 0.2 }}
+                    className="flex items-center gap-1.5 px-3 py-1 rounded-full
+                      bg-gradient-to-r from-emerald-500/15 to-teal-500/10
+                      border border-emerald-500/25 text-emerald-400 text-[11px] font-bold tracking-wide"
+                  >
+                    <span>✦</span>
+                    Best value
+                  </motion.div>
+
+                  {/* Toggle pill — fixed-width buttons so the sliding bg is always accurate */}
+                  <div className="relative flex p-1 rounded-xl bg-white/5 border border-white/10">
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: 4,
+                        bottom: 4,
+                        left: billingCycle === 'monthly' ? 4 : 'calc(50% + 2px)',
+                        right: billingCycle === 'yearly' ? 4 : 'calc(50% + 2px)',
+                        borderRadius: 10,
+                        border: '1px solid',
+                        background: billingCycle === 'yearly'
+                          ? 'linear-gradient(135deg,rgba(16,185,129,.18),rgba(20,184,166,.10))'
+                          : 'rgba(255,255,255,.09)',
+                        borderColor: billingCycle === 'yearly'
+                          ? 'rgba(16,185,129,.28)'
+                          : 'rgba(255,255,255,.13)',
+                        transition: [
+                          'left 0.38s cubic-bezier(0.34,1.56,0.64,1)',
+                          'right 0.38s cubic-bezier(0.34,1.56,0.64,1)',
+                          'background 0.25s ease',
+                          'border-color 0.25s ease',
+                        ].join(', '),
+                      }}
+                    />
+                    <button
+                      onClick={() => setBillingCycle('monthly')}
+                      className={`relative z-10 w-28 py-2.5 text-sm font-semibold rounded-[10px] transition-colors duration-200 ${
+                        billingCycle === 'monthly' ? 'text-white' : 'text-white/35 hover:text-white/65'
+                      }`}
+                    >
+                      Monthly
+                    </button>
+                    <button
+                      onClick={() => setBillingCycle('yearly')}
+                      className={`relative z-10 w-28 py-2.5 text-sm font-semibold rounded-[10px] transition-colors duration-200 ${
+                        billingCycle === 'yearly' ? 'text-emerald-300' : 'text-white/35 hover:text-white/65'
+                      }`}
+                    >
+                      Yearly
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className={`grid grid-cols-1 gap-5 ${
               tool.versions.length === 2 ? 'sm:grid-cols-2 max-w-2xl mx-auto' : 'sm:grid-cols-3'
             }`}>
@@ -712,8 +1130,9 @@ export function ToolDetail() {
                   sessionId={sessionId}
                   onBuyClick={(ver) => track('buy_click', {
                     toolId: tool.id, toolName: tool.name, toolSlug: tool.slug ?? '',
-                    versionType: ver.versionType, price: parsePricing(ver).priceLabel,
+                    versionType: ver.versionType, price: parsePricing(ver).ctaPrice,
                   })}
+                  billingCycle={billingCycle}
                 />
               ))}
             </div>
@@ -736,6 +1155,21 @@ export function ToolDetail() {
               </motion.p>
             )}
           </motion.section>
+        )}
+
+        {/* ── Features showcase ─────────────────────────────────────────────── */}
+        {tool.versions && tool.versions.length > 0 && (
+          <FeaturesShowcase
+            versions={tool.versions}
+            user={user}
+            sessionId={sessionId}
+            onFreeDownload={handleFreeDownload}
+            onSignInRequired={openAuthModal}
+            onBuyClick={(ver) => track('buy_click', {
+              toolId: tool.id, toolName: tool.name, toolSlug: tool.slug ?? '',
+              versionType: ver.versionType, price: parsePricing(ver).ctaPrice,
+            })}
+          />
         )}
 
         {/* ── How it works ──────────────────────────────────────────────────── */}

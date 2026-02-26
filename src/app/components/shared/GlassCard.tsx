@@ -32,7 +32,7 @@ export function GlassCard({ children, className = "", hover = false, neonBorder 
       {/* Neon gradient border */}
       {neonBorder && (
         <div 
-          className="absolute inset-0 rounded-2xl pointer-events-none z-10"
+          className="absolute inset-0 rounded-2xl pointer-events-none"
           style={{
             padding: '2px',
             background: 'linear-gradient(135deg, var(--color-purple-500, #a855f7), var(--color-violet-500, #3b82f6))',
