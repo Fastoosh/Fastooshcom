@@ -13,16 +13,12 @@ export function GlassCard({ children, className = "", hover = false, neonBorder 
 
   return (
     <motion.div
-      className={`relative rounded-2xl backdrop-blur-xl border border-white/10 shadow-2xl ${className}`}
+      className={`relative rounded-2xl backdrop-blur-xl shadow-2xl ${neonBorder ? '' : 'border border-white/10'} ${className}`}
       {...(neonBorder ? { 'data-fastoosh-dark': 'true' } : {})}
       style={{
-        backgroundColor: neonBorder ? undefined : 'var(--fastoosh-card-bg, rgba(255,255,255,0.02))',
-        backgroundImage: neonBorder
-          ? 'linear-gradient(var(--fastoosh-card-dark, rgba(0,0,0,0.95)), var(--fastoosh-card-dark, rgba(0,0,0,0.95))), linear-gradient(135deg, var(--color-purple-500, #a855f7), var(--color-violet-500, #3b82f6))'
-          : undefined,
-        backgroundOrigin: 'border-box',
-        backgroundClip: neonBorder ? 'padding-box, border-box' : undefined,
-        borderWidth: neonBorder ? '2px' : '1px',
+        backgroundColor: neonBorder 
+          ? 'var(--fastoosh-card-dark, rgba(255,255,255,0.02))'
+          : 'var(--fastoosh-card-bg, rgba(255,255,255,0.02))',
       }}
       initial={false}
       whileHover={hover && !reduceMotion ? { 
@@ -33,11 +29,25 @@ export function GlassCard({ children, className = "", hover = false, neonBorder 
       } : undefined}
       transition={{ duration: 0.3, ease: 'easeOut' }}
     >
+      {/* Neon gradient border */}
+      {neonBorder && (
+        <div 
+          className="absolute inset-0 rounded-2xl pointer-events-none z-10"
+          style={{
+            padding: '2px',
+            background: 'linear-gradient(135deg, var(--color-purple-500, #a855f7), var(--color-violet-500, #3b82f6))',
+            WebkitMask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
+            WebkitMaskComposite: 'xor',
+            maskComposite: 'exclude',
+          }}
+        />
+      )}
+      
       {/* Subtle noise texture overlay */}
       <div 
         className="inset-0 rounded-2xl opacity-[0.015] pointer-events-none"
         style={{
-          backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='3.5' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")`,
+          backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='3.5' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E\")`,
         }}
       />
       {children}

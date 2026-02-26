@@ -512,8 +512,8 @@ function SurfacesCard({
             onChange={v => onChange({ cardBg: v })}
           />
           <ColorAlphaField
-            label="Card dark fill (neon-border)"
-            hint="Inner fill of accent cards — project cards, pricing cards, video embeds"
+            label="Glass card background"
+            hint="Base fill color/opacity for all glass cards — project cards, pricing cards, video embeds"
             value={cardDark}
             onChange={v => onChange({ cardDarkFill: v })}
           />
