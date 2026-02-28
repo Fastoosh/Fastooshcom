@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { InlineWidget } from "react-calendly";
 import { GlassCard } from "../components/shared/GlassCard";
@@ -18,17 +18,24 @@ type Path = "choose" | "call" | "brief";
 type CallStage = "prescreen" | "calendly";
 
 export function WorkWithUs() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { isRTL } = useLanguage();
 
-  // Translated arrays (re-evaluated on language change)
-  const callSteps    = t('workWithUs.callSteps',    { returnObjects: true }) as Array<{ title: string; body: string }>;
-  const briefSteps   = t('workWithUs.briefSteps',   { returnObjects: true }) as Array<{ title: string; body: string }>;
-  const projectTypes = t('workWithUs.projectTypes', { returnObjects: true }) as string[];
-  const budgetRanges = t('workWithUs.budgetRanges', { returnObjects: true }) as string[];
-  const timelines    = t('workWithUs.timelines',    { returnObjects: true }) as string[];
-  const trustBadges  = t('workWithUs.trustBadges',  { returnObjects: true }) as string[];
-  const trustSignalsData = t('workWithUs.trustSignals', { returnObjects: true }) as Array<{ title: string; body: string }>;
+  // Translated arrays — memoised per language so they only recompute when the
+  // language actually changes, not on every unrelated render (Option 4).
+  const {
+    callSteps, briefSteps, projectTypes,
+    budgetRanges, timelines, trustBadges, trustSignalsData,
+  } = useMemo(() => ({
+    callSteps:       t('workWithUs.callSteps',    { returnObjects: true }) as Array<{ title: string; body: string }>,
+    briefSteps:      t('workWithUs.briefSteps',   { returnObjects: true }) as Array<{ title: string; body: string }>,
+    projectTypes:    t('workWithUs.projectTypes', { returnObjects: true }) as string[],
+    budgetRanges:    t('workWithUs.budgetRanges', { returnObjects: true }) as string[],
+    timelines:       t('workWithUs.timelines',    { returnObjects: true }) as string[],
+    trustBadges:     t('workWithUs.trustBadges',  { returnObjects: true }) as string[],
+    trustSignalsData:t('workWithUs.trustSignals', { returnObjects: true }) as Array<{ title: string; body: string }>,
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [i18n.language]);
 
   // ── Calendly URL from settings ──────────────────────────────────────────
   const [calendlyUrl,     setCalendlyUrl]     = useState<string>("");

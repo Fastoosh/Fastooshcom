@@ -73,6 +73,13 @@ export function AvailabilityBadge({
     return date.toLocaleDateString(i18n.language, { month: 'long' });
   };
 
+  // Build a fully-localized "next available" label from the months array
+  // so the month name renders in the active language (FR, AR, etc.)
+  const firstAvailableMonth = months.find(m => m.status === 'available');
+  const localizedFirstAvailable = firstAvailableMonth
+    ? `${getLocalizedMonth(firstAvailableMonth)} ${firstAvailableMonth.year}`
+    : firstAvailable ?? null;
+
   return (
     <div 
       className="relative inline-flex"
@@ -158,7 +165,7 @@ export function AvailabilityBadge({
                 <>
                   {firstAvailable && (
                     <div className={`text-sm text-white/70 mb-3 text-center ${isRTL ? 'text-right' : 'text-left'}`}>
-                      <span className="text-green-400 font-medium">{t('availability.nextAvailable')}:</span> {firstAvailable}
+                      <span className="text-green-400 font-medium">{t('availability.nextAvailable')}:</span> {localizedFirstAvailable}
                     </div>
                   )}
                   <button

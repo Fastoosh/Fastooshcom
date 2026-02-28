@@ -89,11 +89,26 @@ export function useUserAuth(): UserAuth {
   /* ── Forgot / reset password ────────────────────────────────────────────── */
 
   const forgotPassword = useCallback(async (email: string) => {
-    const supabase = getSupabaseClient();
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: RESET_REDIRECT,
+    // Route through our server so the email is sent from @fastoosh.com via
+    // Resend rather than Supabase's shared email infrastructure.
+    const res = await fetch(`${API_BASE}/auth/forgot-password`, {
+      method:  'POST',
+      headers: {
+        'Content-Type':  'application/json',
+        'Authorization': `Bearer ${publicAnonKey}`,
+      },
+      body: JSON.stringify({
+        email,
+        redirectTo: RESET_REDIRECT,
+      }),
     });
-    if (error) throw new Error(error.message);
+    if (!res.ok) {
+      // Non-200 is unexpected — the route always returns 200 on success
+      const text = await res.text().catch(() => '');
+      throw new Error(`Failed to send reset email: ${text || res.status}`);
+    }
+    // Always resolves successfully (server returns 200 even for unknown emails
+    // to prevent enumeration — the UI shows "check your inbox" regardless)
   }, []);
 
   const updatePassword = useCallback(async (newPassword: string) => {

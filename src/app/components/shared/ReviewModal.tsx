@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Star, X, Trash2, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 import { GlassCard } from './GlassCard';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
+import { useTranslation } from 'react-i18next';
 
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-e07959ec`;
 
@@ -35,8 +36,16 @@ function StarPicker({
   value: number;
   onChange: (v: number) => void;
 }) {
+  const { t } = useTranslation();
   const [hover, setHover] = useState(0);
-  const labels = ['', 'Terrible', 'Poor', 'Okay', 'Good', 'Excellent'];
+  const labels = [
+    '',
+    t('review.starLabels.terrible'),
+    t('review.starLabels.poor'),
+    t('review.starLabels.okay'),
+    t('review.starLabels.good'),
+    t('review.starLabels.excellent'),
+  ];
   const active = hover || value;
 
   return (
@@ -88,6 +97,7 @@ export function ReviewModal({
   onSaved,
   onDeleted,
 }: ReviewModalProps) {
+  const { t } = useTranslation();
   const [rating, setRating] = useState(existingReview?.rating ?? 0);
   const [comment, setComment] = useState(existingReview?.comment ?? '');
   const [loading, setLoading] = useState(false);
@@ -98,7 +108,7 @@ export function ReviewModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!rating) { setError('Please select a star rating.'); return; }
+    if (!rating) { setError(t('review.ratingRequired')); return; }
     setLoading(true);
     setError('');
     try {
@@ -178,7 +188,7 @@ export function ReviewModal({
                   )}
                   <div>
                     <h2 className="text-white font-bold text-base leading-tight">
-                      {existingReview ? 'Edit your review' : 'Write a review'}
+                      {existingReview ? t('review.editReview') : t('review.writeReview')}
                     </h2>
                     <p className="text-white/40 text-xs mt-0.5">{toolName}</p>
                   </div>
@@ -201,33 +211,36 @@ export function ReviewModal({
                   <div className="w-14 h-14 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center">
                     <CheckCircle className="w-7 h-7 text-emerald-400" />
                   </div>
-                  <p className="text-white font-semibold">Review saved!</p>
-                  <p className="text-white/40 text-sm">Thank you for your feedback.</p>
+                  <p className="text-white font-semibold">{t('review.saved')}</p>
+                  <p className="text-white/40 text-sm">{t('review.thankYou')}</p>
                 </motion.div>
               ) : (
                 <form onSubmit={handleSubmit} className="space-y-5">
                   {/* Star picker */}
                   <div>
-                    <p className="text-white/50 text-xs font-semibold mb-3 uppercase tracking-widest">Your rating</p>
+                    <p className="text-white/50 text-xs font-semibold mb-3 uppercase tracking-widest">
+                      {t('review.yourRating')}
+                    </p>
                     <StarPicker value={rating} onChange={setRating} />
                   </div>
 
                   {/* Comment */}
                   <div>
                     <p className="text-white/50 text-xs font-semibold mb-2 uppercase tracking-widest">
-                      Your review <span className="text-white/25 normal-case font-normal">(optional)</span>
+                      {t('review.yourReview')}{' '}
+                      <span className="text-white/25 normal-case font-normal">{t('review.optional')}</span>
                     </p>
                     <textarea
                       value={comment}
                       onChange={(e) => setComment(e.target.value)}
-                      placeholder="Share your experience with this tool…"
+                      placeholder={t('review.placeholder')}
                       rows={4}
                       maxLength={600}
                       className="w-full rounded-xl border border-white/10 bg-white/5 focus-within:border-purple-500/50
                         text-white text-sm placeholder:text-white/25 px-4 py-3 resize-none focus:outline-none
                         focus:border-purple-500/50 transition-colors"
                     />
-                    <p className="text-white/20 text-xs text-right mt-1">{comment.length}/600</p>
+                    <p className="text-white/20 text-xs text-right mt-1 rtl:text-left">{comment.length}/600</p>
                   </div>
 
                   {/* Error */}
@@ -249,7 +262,7 @@ export function ReviewModal({
                           bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition-all"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
-                        Delete
+                        {t('review.delete')}
                       </button>
                     )}
 
@@ -263,7 +276,7 @@ export function ReviewModal({
                           bg-red-500/25 hover:bg-red-500/35 text-red-300 border border-red-500/40 transition-all disabled:opacity-60"
                       >
                         {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                        {deleting ? 'Deleting…' : 'Confirm delete'}
+                        {deleting ? t('review.deleting') : t('review.confirmDelete')}
                       </button>
                     )}
 
@@ -274,7 +287,7 @@ export function ReviewModal({
                         className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-white/5 hover:bg-white/10
                           text-white/50 border border-white/10 transition-all"
                       >
-                        Cancel
+                        {t('review.cancel')}
                       </button>
                     )}
 
@@ -288,8 +301,8 @@ export function ReviewModal({
                           text-white shadow-lg shadow-purple-500/20 transition-all disabled:opacity-50"
                       >
                         {loading
-                          ? <><Loader2 className="w-4 h-4 animate-spin" />Saving…</>
-                          : existingReview ? 'Update review' : 'Submit review'
+                          ? <><Loader2 className="w-4 h-4 animate-spin" />{t('review.saving')}</>
+                          : existingReview ? t('review.update') : t('review.submit')
                         }
                       </button>
                     )}

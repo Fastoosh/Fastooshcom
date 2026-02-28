@@ -7,6 +7,17 @@ html {
   scroll-behavior: smooth;
 }
 
+/* ── Language-switch fade transition ────────────────────────────────────────
+   The #fastoosh-site wrapper fades out (100 ms) while the new language loads,
+   then fades back in.  The existing prefers-reduced-motion block already
+   overrides transition-duration to 0.01 ms for users who opt out. */
+#fastoosh-site {
+  transition: opacity 100ms ease;
+}
+html.lang-switching #fastoosh-site {
+  opacity: 0;
+}
+
 /* Disable smooth scrolling for users who prefer reduced motion */
 @media (prefers-reduced-motion: reduce) {
   html {

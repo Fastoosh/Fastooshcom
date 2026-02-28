@@ -74,59 +74,42 @@ export function Projects() {
   const [loading, setLoading] = useState(true);
   const [categoryTranslations, setCategoryTranslations] = useState<Record<string, string>>({});
 
-  useEffect(() => {
-    loadProjects();
-  }, []);
+  // Covers initial mount AND language changes — fetches data + translations in
+  // one Promise.all so the grid always renders translated content on first paint.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { loadProjects(i18n.language); }, [i18n.language]);
 
-  // Apply dynamic translations when language changes
-  useEffect(() => {
-    const applyTranslations = async () => {
-      // Always reload base English projects first
-      await loadProjects();
-      
-      // If not English, fetch and merge translations
-      if (i18n.language !== 'en') {
-        const [projectTrans, categoryTrans] = await Promise.all([
-          fetchTranslations(i18n.language, 'projects'),
-          fetchTranslations(i18n.language, 'categories'),
-        ]);
-        
-        // Apply project translations
-        if (Object.keys(projectTrans).length > 0) {
-          setProjects(prev => prev.map(p => ({
-            ...p,
-            ...(projectTrans[p.id] ? deepMergeTranslations(p, projectTrans[p.id]) : {}),
-          })));
-        }
-        
-        // Store category translations
-        if (Object.keys(categoryTrans).length > 0) {
-          // Support both the new structured format { projectCategories: {...} }
-          // and the old flat format { "Motion Design": "..." }
-          const flatMap: Record<string, string> =
-            categoryTrans.projectCategories && typeof categoryTrans.projectCategories === 'object'
-              ? (categoryTrans.projectCategories as Record<string, string>)
-              : (categoryTrans as Record<string, string>);
-          setCategoryTranslations(flatMap);
-        }
-      } else {
-        // Reset category translations for English
-        setCategoryTranslations({});
-      }
-    };
-    
-    applyTranslations();
-  }, [i18n.language]);
-
-  const loadProjects = async () => {
+  const loadProjects = async (lang = i18n.language) => {
     try {
-      const response = await api.getProjects();
+      // Fetch projects + translations in one go — no English flash.
+      const [response, projectTrans, categoryTrans] = await Promise.all([
+        api.getProjects(),
+        lang !== 'en' ? fetchTranslations(lang, 'projects')   : Promise.resolve({}),
+        lang !== 'en' ? fetchTranslations(lang, 'categories') : Promise.resolve({}),
+      ]);
+
       if (response.success && response.data && response.data.length > 0) {
-        setProjects(response.data);
+        const merged = response.data.map((p: any) => ({
+          ...p,
+          ...(lang !== 'en' && (projectTrans as Record<string, any>)[p.id]
+            ? deepMergeTranslations(p, (projectTrans as Record<string, any>)[p.id])
+            : {}),
+        }));
+        setProjects(merged);
+      }
+
+      if (lang !== 'en' && Object.keys(categoryTrans).length > 0) {
+        const flatMap: Record<string, string> =
+          (categoryTrans as any).projectCategories &&
+          typeof (categoryTrans as any).projectCategories === 'object'
+            ? (categoryTrans as any).projectCategories
+            : (categoryTrans as Record<string, string>);
+        setCategoryTranslations(flatMap);
+      } else {
+        setCategoryTranslations({});
       }
     } catch (error) {
       console.error('Error loading projects:', error);
-      // Keep fallback projects
     }
     setLoading(false);
   };

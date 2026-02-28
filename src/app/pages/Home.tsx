@@ -452,9 +452,9 @@ export function Home() {
               <h3 className="text-2xl mb-4">{c.deliverablesTitle}</h3>
               <ul className="space-y-3">
                 {c.deliverables.map((item, index) => (
-                  <li key={index} className="flex items-start gap-3 rtl:flex-row-reverse">
+                  <li key={index} className="flex items-start gap-3 flex-row-reverse">
                     <CheckCircle2 className="w-5 h-5 text-green-400 mt-0.5 flex-shrink-0" />
-                    <span className="text-white/70">{item}</span>
+                    <span className="text-white/70 flex-1">{item}</span>
                   </li>
                 ))}
               </ul>

@@ -16,6 +16,7 @@ import { HomeTab } from '../components/admin/HomeTab';
 import { AdminReviewsTab } from '../components/admin/AdminReviewsTab';
 import { DashboardTab } from '../components/admin/DashboardTab';
 import { invalidateSiteSettingsCache } from '../components/shared/SeoHead';
+import { bustApiCache } from '../utils/api';
 import { StyleTab } from '../components/admin/StyleTab';
 import { TranslationTab } from '../components/admin/TranslationTab';
 
@@ -108,6 +109,7 @@ interface Settings {
   defaultOgImage?: string;
   calendlyUrl?: string;
   contactEmail?: string;
+  emailReplyTo?: string;
   projectCategories?: string[];
   toolCategories?: string[];
   toolStatuses?: { label: string; color: string }[];
@@ -363,6 +365,8 @@ export function Admin() {
       }
       
       if (result.success) {
+        bustApiCache('projects');
+        if (isEditing) bustApiCache(`project:${project.id}`);
         await loadData();
         return { success: true, message: isEditing ? 'Project updated successfully!' : 'Project created successfully!' };
       } else {
@@ -390,6 +394,8 @@ export function Admin() {
 
       const result = await response.json();
       if (result.success) {
+        bustApiCache('projects');
+        bustApiCache(`project:${id}`);
         await loadData();
       }
     } catch (error) {
@@ -435,6 +441,8 @@ export function Admin() {
       console.log('Response data:', result);
       
       if (result.success) {
+        bustApiCache('tools');
+        if (isEditing) bustApiCache(`tool:${tool.id}`);
         await loadData();
         return { success: true, message: isEditing ? 'Tool updated successfully!' : 'Tool created successfully!' };
       } else {
@@ -463,6 +471,8 @@ export function Admin() {
 
       const result = await response.json();
       if (result.success) {
+        bustApiCache('tools');
+        bustApiCache(`tool:${id}`);
         await loadData();
       }
     } catch (error) {
@@ -489,6 +499,7 @@ export function Admin() {
 
       const result = await response.json();
       if (result.success) {
+        bustApiCache('team');
         await loadData();
         return { success: true, message: isEditing ? 'Team member updated successfully!' : 'Team member added successfully!' };
       } else {
@@ -516,6 +527,7 @@ export function Admin() {
 
       const result = await response.json();
       if (result.success) {
+        bustApiCache('team');
         await loadData();
       }
     } catch (error) {
@@ -540,6 +552,7 @@ export function Admin() {
 
       const result = await response.json();
       if (result.success) {
+        bustApiCache('settings');
         invalidateSiteSettingsCache();
         await loadData();
         setEditingSettings(false);
@@ -1199,6 +1212,12 @@ export function Admin() {
                   <h3 className="text-white font-semibold mb-1">Contact Email</h3>
                   <p className="text-gray-400 text-sm">{settings.contactEmail || 'Not set'}</p>
                   <p className="text-gray-600 text-xs mt-0.5">Displayed in the footer and used as the public contact address.</p>
+                </div>
+
+                <div className="p-4 bg-white/5 rounded-lg border border-white/10">
+                  <h3 className="text-white font-semibold mb-1">Password Reset Reply-To</h3>
+                  <p className="text-gray-400 text-sm">{settings.emailReplyTo || 'Not set'}</p>
+                  <p className="text-gray-600 text-xs mt-0.5">Replies to the branded password-reset email will be forwarded to this address.</p>
                 </div>
 
                 <div className="p-4 bg-white/5 rounded-lg border border-white/10">
@@ -2989,6 +3008,25 @@ function SettingsForm({
             onChange={(e) => setFormData({ ...formData, contactEmail: e.target.value })}
             className="bg-black/50 border-white/20 text-white"
           />
+        </div>
+
+        {/* Password Reset Reply-To Section */}
+        <div className="mt-6 pt-6 border-t border-white/10">
+          <h4 className="text-lg font-semibold text-white mb-1">Password Reset Reply-To</h4>
+          <p className="text-sm text-gray-400 mb-3">
+            When a user receives the branded password-reset email and hits "Reply", their message
+            will be directed to this address. Leave blank to omit a reply-to header.
+          </p>
+          <Input
+            placeholder="support@fastoosh.com"
+            type="email"
+            value={formData.emailReplyTo || ''}
+            onChange={(e) => setFormData({ ...formData, emailReplyTo: e.target.value })}
+            className="bg-black/50 border-white/20 text-white"
+          />
+          <p className="text-xs text-gray-500 mt-1.5">
+            Example: <span className="text-gray-400">support@fastoosh.com</span> or your personal inbox
+          </p>
         </div>
 
         {/* Calendly URL Section */}

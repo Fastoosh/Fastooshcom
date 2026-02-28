@@ -1,5 +1,8 @@
 import { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useTranslation } from 'react-i18next';
+import { fetchTranslations, deepMergeTranslations } from '../utils/translations';
+import { api } from '../utils/api';
 import { ToolSupportModal } from '../components/shared/ToolSupportModal';
 import { Link, useNavigate } from 'react-router';
 import { GlassCard } from '../components/shared/GlassCard';
@@ -81,6 +84,7 @@ function mapPurchase(p: any): Purchase {
 /* LicenseKey                                                                  */
 /* -------------------------------------------------------------------------- */
 function LicenseKey({ value }: { value: string }) {
+  const { t } = useTranslation();
   const [visible, setVisible] = useState(false);
   const [copied,  setCopied]  = useState(false);
   const copy = () => {
@@ -92,16 +96,16 @@ function LicenseKey({ value }: { value: string }) {
       <div className="flex items-center gap-3 rtl:flex-row-reverse px-4 py-3">
         <Key className="w-4 h-4 text-purple-400 flex-shrink-0" />
         <code className="flex-1 text-xs font-mono text-white/70 truncate select-all">{visible ? value : masked}</code>
-        <button onClick={() => setVisible(v => !v)} className="text-white/30 hover:text-white/70 transition-colors flex-shrink-0" title={visible ? 'Hide key' : 'Reveal key'}>
+        <button onClick={() => setVisible(v => !v)} className="text-white/30 hover:text-white/70 transition-colors flex-shrink-0" title={visible ? t('account.hideKey') : t('account.revealKey')}>
           {visible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
         </button>
-        <button onClick={copy} className="text-white/30 hover:text-purple-400 transition-colors flex-shrink-0" title="Copy">
+        <button onClick={copy} className="text-white/30 hover:text-purple-400 transition-colors flex-shrink-0" title={t('account.copy')}>
           {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
         </button>
       </div>
       <div className="px-4 pb-3 flex items-center gap-2 rtl:flex-row-reverse">
-        <span className="text-[10px] text-white/25 uppercase font-semibold">License Key</span>
-        {copied && <motion.span initial={{ opacity: 0, x: -4 }} animate={{ opacity: 1, x: 0 }} className="text-[10px] text-emerald-400">✓ Copied!</motion.span>}
+        <span className="text-[10px] text-white/25 uppercase font-semibold">{t('account.licenseKey')}</span>
+        {copied && <motion.span initial={{ opacity: 0, x: -4 }} animate={{ opacity: 1, x: 0 }} className="text-[10px] text-emerald-400">✓ {t('account.keyCopied')}</motion.span>}
       </div>
     </div>
   );
@@ -111,12 +115,13 @@ function LicenseKey({ value }: { value: string }) {
 /* ActivationGuide                                                             */
 /* -------------------------------------------------------------------------- */
 function ActivationGuide({ versionType, activationSteps }: { versionType?: string; activationSteps?: string[] }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const defaultSteps = [
-    { n: 1, text: 'Download and install the plugin file in After Effects (File → Scripts → Install Script File).' },
-    { n: 2, text: 'Open the plugin panel (Window → Extensions → Plugin Name).' },
-    { n: 3, text: 'Paste your license key in the Activation field and click "Activate".' },
-    { n: 4, text: "Restart After Effects if prompted. You're ready to go!" },
+    { n: 1, text: t('account.activationStep1') },
+    { n: 2, text: t('account.activationStep2') },
+    { n: 3, text: t('account.activationStep3') },
+    { n: 4, text: t('account.activationStep4') },
   ];
   const steps = activationSteps && activationSteps.length > 0
     ? activationSteps.map((text, i) => ({ n: i + 1, text }))
@@ -124,10 +129,10 @@ function ActivationGuide({ versionType, activationSteps }: { versionType?: strin
   return (
     <div className="mt-3 rounded-xl border border-white/8 overflow-hidden">
       <button onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center justify-between rtl:flex-row-reverse px-4 py-3 text-white/40 hover:text-white/70 transition-colors text-left rtl:text-right">
-        <span className="flex items-center gap-2 rtl:flex-row-reverse text-xs font-semibold">
+        className="w-full flex items-center justify-between px-4 py-3 text-white/40 hover:text-white/70 transition-colors">
+        <span className="flex items-center gap-2 text-xs font-semibold">
           <Zap className="w-3.5 h-3.5 text-purple-400" />
-          How to activate {versionType && `(${versionType})`}
+          {t('account.howToActivate')}{versionType && ` (${versionType})`}
         </span>
         {open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
       </button>
@@ -136,7 +141,7 @@ function ActivationGuide({ versionType, activationSteps }: { versionType?: strin
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden">
             <ol className="px-4 pb-4 space-y-2.5">
               {steps.map(s => (
-                <li key={s.n} className="flex gap-3 items-start rtl:flex-row-reverse">
+                <li key={s.n} className="flex gap-3 items-start">
                   <span className="w-5 h-5 rounded-full bg-purple-500/20 text-purple-400 text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">{s.n}</span>
                   <p className="text-white/45 text-xs leading-relaxed">{s.text}</p>
                 </li>
@@ -177,8 +182,10 @@ function PurchaseCard({
   existingReview: ReviewData | null;
   onOpenReview: (toolId: string, toolName: string, toolImageUrl: string, review: ReviewData | null) => void;
 }) {
-  const status      = STATUS_CONFIG[purchase.status] ?? STATUS_CONFIG.active;
+  const { t } = useTranslation();
   const isActive    = purchase.status === 'active';
+  const statusCfg   = STATUS_CONFIG[purchase.status] ?? STATUS_CONFIG.active;
+  const statusLabel = t(`account.status.${purchase.status}` as any, { defaultValue: statusCfg.label });
   const tool        = purchase.toolVersions?.tools ?? null;
   const isFree      = purchase.toolVersions?.versionType === 'Free';
   const downloadUrl = purchase.toolVersions?.downloadUrl;
@@ -208,14 +215,14 @@ function PurchaseCard({
               <div>
                 <h3 className="text-white font-bold text-base leading-tight mb-1">{tool?.name || purchase.productName}</h3>
                 <div className="flex items-center gap-2 flex-wrap rtl:flex-row-reverse">
-                  <span className={`inline-flex items-center gap-1 rtl:flex-row-reverse px-2 py-0.5 rounded-full text-xs font-semibold border ${status.color}`}>{status.icon}{status.label}</span>
+                  <span className={`inline-flex items-center gap-1 rtl:flex-row-reverse px-2 py-0.5 rounded-full text-xs font-semibold border ${statusCfg.color}`}>{statusCfg.icon}{statusLabel}</span>
                   {purchase.toolVersions?.versionType && <span className={`px-2 py-0.5 rounded-full text-xs font-bold border ${variantColor}`}>{purchase.toolVersions.versionType}</span>}
                   {date && <span className="flex items-center gap-1 rtl:flex-row-reverse text-white/30 text-xs"><Calendar className="w-3 h-3" />{date}</span>}
                 </div>
               </div>
               <div className="flex items-center gap-3 flex-shrink-0 rtl:flex-row-reverse">
                 {purchase.amount != null && <span className="text-white/30 text-xs font-mono">{purchase.currency} {Number(purchase.amount).toFixed(2)}</span>}
-                {tool?.slug && <Link to={`/tools/${tool.slug}`} className="inline-flex items-center gap-1 rtl:flex-row-reverse text-xs font-semibold text-purple-400 hover:text-purple-300 transition-colors">View Tool <ArrowUpRight className="w-3 h-3" /></Link>}
+                {tool?.slug && <Link to={`/tools/${tool.slug}`} className="inline-flex items-center gap-1 rtl:flex-row-reverse text-xs font-semibold text-purple-400 hover:text-purple-300 transition-colors">{t('account.viewTool')} <ArrowUpRight className="w-3 h-3" /></Link>}
               </div>
             </div>
           </div>
@@ -226,13 +233,13 @@ function PurchaseCard({
           {expiryDate && (
             <p className={`text-xs flex items-center gap-1.5 rtl:flex-row-reverse ${isActive ? 'text-white/30' : 'text-yellow-400/70'}`}>
               <Clock className="w-3.5 h-3.5" />
-              {isActive ? 'Renews on' : 'Expired on'}:
+              {isActive ? t('account.renewsOn') : t('account.expiredOn')}:
               <span className={isActive ? 'text-white/50' : 'text-yellow-400'}>{expiryDate}</span>
             </p>
           )}
           {!expiryDate && isActive && (
             <p className="text-white/25 text-xs flex items-center gap-1.5 rtl:flex-row-reverse">
-              <CheckCircle className="w-3.5 h-3.5 text-emerald-400/70" />Lifetime license — never expires
+              <CheckCircle className="w-3.5 h-3.5 text-emerald-400/70" />{t('account.lifetimeLicense')}
             </p>
           )}
           {/* Expired / cancelled warning banner */}
@@ -240,8 +247,7 @@ function PurchaseCard({
             <div className="flex items-center gap-2 rtl:flex-row-reverse px-3 py-2 rounded-lg bg-yellow-400/8 border border-yellow-400/20">
               <AlertCircle className="w-3.5 h-3.5 text-yellow-400 flex-shrink-0" />
               <p className="text-yellow-400/80 text-xs flex-1">
-                {purchase.status === 'cancelled' ? 'Your subscription has been cancelled.' : 'Your subscription has expired.'}
-                {' '}Renew to regain access.
+                {purchase.status === 'cancelled' ? t('account.cancelledWarning') : t('account.expiredWarning')}
               </p>
             </div>
           )}
@@ -249,13 +255,13 @@ function PurchaseCard({
             {/* Free download — only when active */}
             {isFree && downloadUrl && isActive && (
               <a href={downloadUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rtl:flex-row-reverse px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/25 transition-all">
-                <Download className="w-3.5 h-3.5" />Download
+                <Download className="w-3.5 h-3.5" />{t('account.download')}
               </a>
             )}
             {/* Active paid — manage */}
             {!isFree && isActive && purchase.lemonSqueezyOrderId && (
               <a href="https://app.lemonsqueezy.com/my-orders/" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rtl:flex-row-reverse px-4 py-2 rounded-lg text-sm font-semibold bg-white/8 hover:bg-white/12 text-white/60 hover:text-white border border-white/10 transition-all">
-                <ExternalLink className="w-3.5 h-3.5" />Manage on Lemon Squeezy
+                <ExternalLink className="w-3.5 h-3.5" />{t('account.manageOnLS')}
               </a>
             )}
             {/* Expired / cancelled — renew CTA */}
@@ -265,7 +271,7 @@ function PurchaseCard({
                   to={`/tools/${tool.slug}`}
                   className="inline-flex items-center gap-2 rtl:flex-row-reverse px-4 py-2 rounded-lg text-sm font-semibold bg-yellow-400/15 hover:bg-yellow-400/25 text-yellow-300 border border-yellow-400/30 transition-all"
                 >
-                  <RefreshCw className="w-3.5 h-3.5" />Renew Subscription
+                  <RefreshCw className="w-3.5 h-3.5" />{t('account.renewSubscription')}
                 </Link>
               ) : (
                 <a
@@ -273,13 +279,13 @@ function PurchaseCard({
                   target="_blank" rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 rtl:flex-row-reverse px-4 py-2 rounded-lg text-sm font-semibold bg-yellow-400/15 hover:bg-yellow-400/25 text-yellow-300 border border-yellow-400/30 transition-all"
                 >
-                  <RefreshCw className="w-3.5 h-3.5" />Renew on Lemon Squeezy
+                  <RefreshCw className="w-3.5 h-3.5" />{t('account.renewOnLS')}
                 </a>
               )
             )}
             {tool?.slug && (
               <Link to={`/tools/${tool.slug}`} className="inline-flex items-center gap-2 rtl:flex-row-reverse px-4 py-2 rounded-lg text-sm font-semibold bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 border border-purple-500/25 transition-all">
-                <Sparkles className="w-3.5 h-3.5" />Open Tool Page
+                <Sparkles className="w-3.5 h-3.5" />{t('account.openToolPage')}
               </Link>
             )}
             {/* Review button — only when tool is known */}
@@ -295,12 +301,12 @@ function PurchaseCard({
                 {existingReview ? (
                   <>
                     <StarDisplay rating={existingReview.rating} size="xs" />
-                    Edit review
+                    {t('account.editReview')}
                   </>
                 ) : (
                   <>
                     <MessageSquarePlus className="w-3.5 h-3.5" />
-                    Write a review
+                    {t('account.writeReview')}
                   </>
                 )}
               </button>
@@ -325,6 +331,7 @@ function SecuritySection({
   updatePassword: (p: string) => Promise<void>;
   updateEmail: (e: string) => Promise<void>;
 }) {
+  const { t } = useTranslation();
   /* ── Password change ── */
   const [pwOpen,    setPwOpen]    = useState(false);
   const [newPw,     setNewPw]     = useState('');
@@ -344,9 +351,9 @@ function SecuritySection({
   const handlePwSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const errs: Record<string, string> = {};
-    if (!newPw)              errs.pw      = 'Required';
-    else if (newPw.length < 8) errs.pw   = 'At least 8 characters';
-    if (newPw !== confirmPw) errs.confirm = 'Passwords do not match';
+    if (!newPw)              errs.pw      = t('auth.required');
+    else if (newPw.length < 8) errs.pw   = t('auth.atLeast8');
+    if (newPw !== confirmPw) errs.confirm = t('auth.passwordsDoNotMatch');
     setPwErrors(errs);
     if (Object.keys(errs).length) return;
     setPwLoading(true);
@@ -356,7 +363,7 @@ function SecuritySection({
       setNewPw(''); setConfirmPw('');
       setTimeout(() => { setPwOk(false); setPwOpen(false); }, 2000);
     } catch (err: any) {
-      setPwErrors({ form: err.message || 'Failed to update password' });
+      setPwErrors({ form: err.message || t('account.failedUpdatePassword') });
     } finally {
       setPwLoading(false);
     }
@@ -365,15 +372,15 @@ function SecuritySection({
   const handleEmSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setEmError('');
-    if (!newEmail.trim() || !/\S+@\S+/.test(newEmail)) { setEmError('Valid email required'); return; }
-    if (newEmail.trim().toLowerCase() === userEmail.toLowerCase()) { setEmError('This is already your email'); return; }
+    if (!newEmail.trim() || !/\S+@\S+/.test(newEmail)) { setEmError(t('auth.validEmailRequired')); return; }
+    if (newEmail.trim().toLowerCase() === userEmail.toLowerCase()) { setEmError(t('account.alreadyYourEmail')); return; }
     setEmLoading(true);
     try {
       await updateEmail(newEmail.trim());
       setEmOk(true);
       setTimeout(() => { setEmOk(false); setEmOpen(false); setNewEmail(''); }, 4000);
     } catch (err: any) {
-      setEmError(err.message || 'Failed to update email');
+      setEmError(err.message || t('account.failedUpdateEmail'));
     } finally {
       setEmLoading(false);
     }
@@ -381,9 +388,9 @@ function SecuritySection({
 
   return (
     <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.18 }} className="mt-8">
-      <div className="flex items-center gap-3 rtl:flex-row-reverse mb-4">
+      <div className="flex items-center gap-3 mb-4">
         <Shield className="w-5 h-5 text-purple-400" />
-        <h2 className="text-xl font-bold text-white">Security</h2>
+        <h2 className="text-xl font-bold text-white">{t('account.security')}</h2>
       </div>
       <GlassCard className="divide-y divide-white/8">
 
@@ -391,13 +398,13 @@ function SecuritySection({
         <div>
           <button
             onClick={() => { setPwOpen(o => !o); setEmOpen(false); setPwErrors({}); setPwOk(false); }}
-            className="w-full flex items-center justify-between rtl:flex-row-reverse px-5 py-4 text-left rtl:text-right hover:bg-white/3 transition-colors"
+            className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/3 transition-colors"
           >
-            <div className="flex items-center gap-3 rtl:flex-row-reverse">
+            <div className="flex items-center gap-3">
               <KeyRound className="w-4 h-4 text-white/40" />
-              <div>
-                <p className="text-white/80 text-sm font-semibold">Change password</p>
-                <p className="text-white/30 text-xs mt-0.5">Update your account password</p>
+              <div className="rtl:text-right">
+                <p className="text-white/80 text-sm font-semibold">{t('account.changePassword')}</p>
+                <p className="text-white/30 text-xs mt-0.5">{t('account.updatePasswordDesc')}</p>
               </div>
             </div>
             {pwOpen ? <ChevronUp className="w-4 h-4 text-white/30" /> : <ChevronDown className="w-4 h-4 text-white/30" />}
@@ -407,14 +414,14 @@ function SecuritySection({
               <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden">
                 {pwOk ? (
                   <div className="px-5 pb-5 pt-1 flex items-center gap-2 rtl:flex-row-reverse text-emerald-400 text-sm">
-                    <CheckCircle className="w-4 h-4" />Password updated successfully!
+                    <CheckCircle className="w-4 h-4" />{t('account.passwordUpdated')}
                   </div>
                 ) : (
                   <form onSubmit={handlePwSubmit} className="px-5 pb-5 pt-1 space-y-3">
                     <div>
                       <div className={`relative flex items-center rounded-xl border transition-colors ${pwErrors.pw ? 'border-red-500/50 bg-red-500/5' : 'border-white/10 bg-white/5 focus-within:border-purple-500/50'}`}>
                         <Lock className="absolute left-3.5 rtl:left-auto rtl:right-3.5 w-4 h-4 text-white/30 pointer-events-none" />
-                        <input type={showPw ? 'text' : 'password'} placeholder="New password (min 8 chars)" value={newPw} autoComplete="new-password"
+                        <input type={showPw ? 'text' : 'password'} placeholder={t('auth.newPasswordMin8')} value={newPw} autoComplete="new-password"
                           onChange={e => setNewPw(e.target.value)}
                           className="w-full bg-transparent pl-10 rtl:pl-3 rtl:pr-10 pr-10 py-3 text-sm text-white placeholder:text-white/25 focus:outline-none" />
                         <button type="button" onClick={() => setShowPw(v => !v)} className="absolute right-3 rtl:right-auto rtl:left-3 text-white/25 hover:text-white/60 transition-colors">
@@ -426,7 +433,7 @@ function SecuritySection({
                     <div>
                       <div className={`relative flex items-center rounded-xl border transition-colors ${pwErrors.confirm ? 'border-red-500/50 bg-red-500/5' : 'border-white/10 bg-white/5 focus-within:border-purple-500/50'}`}>
                         <Lock className="absolute left-3.5 rtl:left-auto rtl:right-3.5 w-4 h-4 text-white/30 pointer-events-none" />
-                        <input type="password" placeholder="Confirm new password" value={confirmPw} autoComplete="new-password"
+                        <input type="password" placeholder={t('auth.confirmNewPassword')} value={confirmPw} autoComplete="new-password"
                           onChange={e => setConfirmPw(e.target.value)}
                           className="w-full bg-transparent pl-10 rtl:pl-4 rtl:pr-10 pr-4 py-3 text-sm text-white placeholder:text-white/25 focus:outline-none" />
                       </div>
@@ -440,7 +447,7 @@ function SecuritySection({
                     )}
                     <button type="submit" disabled={pwLoading}
                       className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-semibold text-sm transition-all shadow-lg shadow-purple-500/20 disabled:opacity-60 flex items-center gap-2 rtl:flex-row-reverse">
-                      {pwLoading ? <><Loader2 className="w-4 h-4 animate-spin" />Updating…</> : 'Update Password'}
+                      {pwLoading ? <><Loader2 className="w-4 h-4 animate-spin" />{t('account.updating')}</> : t('account.updatePassword')}
                     </button>
                   </form>
                 )}
@@ -453,13 +460,13 @@ function SecuritySection({
         <div>
           <button
             onClick={() => { setEmOpen(o => !o); setPwOpen(false); setEmError(''); setEmOk(false); }}
-            className="w-full flex items-center justify-between rtl:flex-row-reverse px-5 py-4 text-left rtl:text-right hover:bg-white/3 transition-colors"
+            className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/3 transition-colors"
           >
-            <div className="flex items-center gap-3 rtl:flex-row-reverse">
+            <div className="flex items-center gap-3">
               <Mail className="w-4 h-4 text-white/40" />
-              <div>
-                <p className="text-white/80 text-sm font-semibold">Change email</p>
-                <p className="text-white/30 text-xs mt-0.5">Current: {userEmail}</p>
+              <div className="rtl:text-right">
+                <p className="text-white/80 text-sm font-semibold">{t('account.changeEmail')}</p>
+                <p className="text-white/30 text-xs mt-0.5">{t('account.currentEmail', { email: userEmail })}</p>
               </div>
             </div>
             {emOpen ? <ChevronUp className="w-4 h-4 text-white/30" /> : <ChevronDown className="w-4 h-4 text-white/30" />}
@@ -470,25 +477,25 @@ function SecuritySection({
                 {emOk ? (
                   <div className="px-5 pb-5 pt-1 space-y-1">
                     <div className="flex items-center gap-2 rtl:flex-row-reverse text-emerald-400 text-sm">
-                      <CheckCircle className="w-4 h-4" />Confirmation sent!
+                      <CheckCircle className="w-4 h-4" />{t('account.confirmationSent')}
                     </div>
-                    <p className="text-white/35 text-xs pl-6 rtl:pl-0 rtl:pr-6">Check your new inbox — click the link to confirm the change.</p>
+                    <p className="text-white/35 text-xs pl-6 rtl:pl-0 rtl:pr-6">{t('account.emailChangeConfirm')}</p>
                   </div>
                 ) : (
                   <form onSubmit={handleEmSubmit} className="px-5 pb-5 pt-1 space-y-3">
                     <div>
                       <div className={`relative flex items-center rounded-xl border transition-colors ${emError ? 'border-red-500/50 bg-red-500/5' : 'border-white/10 bg-white/5 focus-within:border-purple-500/50'}`}>
                         <Mail className="absolute left-3.5 rtl:left-auto rtl:right-3.5 w-4 h-4 text-white/30 pointer-events-none" />
-                        <input type="email" placeholder="New email address" value={newEmail} autoComplete="email"
+                        <input type="email" placeholder={t('account.newEmailAddress')} value={newEmail} autoComplete="email"
                           onChange={e => setNewEmail(e.target.value)}
                           className="w-full bg-transparent pl-10 rtl:pl-4 rtl:pr-10 pr-4 py-3 text-sm text-white placeholder:text-white/25 focus:outline-none" />
                       </div>
                       {emError && <p className="text-xs text-red-400 mt-1 flex items-center gap-1 rtl:flex-row-reverse"><AlertCircle className="w-3 h-3" />{emError}</p>}
                     </div>
-                    <p className="text-white/25 text-xs">A confirmation link will be sent to the new address.</p>
+                    <p className="text-white/25 text-xs">{t('account.confirmationLinkHint')}</p>
                     <button type="submit" disabled={emLoading}
                       className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-semibold text-sm transition-all shadow-lg shadow-purple-500/20 disabled:opacity-60 flex items-center gap-2 rtl:flex-row-reverse">
-                      {emLoading ? <><Loader2 className="w-4 h-4 animate-spin" />Sending…</> : 'Send Confirmation'}
+                      {emLoading ? <><Loader2 className="w-4 h-4 animate-spin" />{t('auth.sending')}</> : t('account.sendConfirmation')}
                     </button>
                   </form>
                 )}
@@ -503,9 +510,45 @@ function SecuritySection({
 }
 
 /* -------------------------------------------------------------------------- */
+/* applyActivationStepTranslations — module-level so no stale-closure issues  */
+/* -------------------------------------------------------------------------- */
+async function applyActivationStepTranslations(raw: Purchase[], lang: string): Promise<Purchase[]> {
+  if (lang === 'en' || raw.length === 0) return raw;
+  try {
+    const [trans, toolsRes] = await Promise.all([
+      fetchTranslations(lang, 'tools'),
+      api.getTools(),
+    ]);
+    const toolsList: any[] = toolsRes.data || [];
+    if (Object.keys(trans).length === 0 || toolsList.length === 0) return raw;
+    return raw.map(p => {
+      const toolId    = p.toolVersions?.tools?.id;
+      const versionId = p.toolVersions?.id;
+      if (!toolId || !versionId || !trans[toolId]) return p;
+      const fullTool = toolsList.find((tl: any) => tl.id === toolId);
+      if (!fullTool?.versions) return p;
+      const versionIndex = fullTool.versions.findIndex((v: any) => v.id === versionId);
+      if (versionIndex === -1) return p;
+      const translatedSteps: string[] | undefined = trans[toolId]?.versions?.[versionIndex]?.activationSteps;
+      const hasTranslatedSteps = Array.isArray(translatedSteps) && translatedSteps.some((s: string) => s?.trim());
+      if (!hasTranslatedSteps) return p;
+      const englishSteps = p.toolVersions!.activationSteps ?? [];
+      const finalSteps = englishSteps.length > 0
+        ? (deepMergeTranslations(englishSteps, translatedSteps) as string[])
+        : translatedSteps.filter((s: string) => s?.trim());
+      return { ...p, toolVersions: { ...p.toolVersions!, activationSteps: finalSteps } };
+    });
+  } catch (err) {
+    console.warn('[Account] Could not apply activation step translations:', err);
+    return raw;
+  }
+}
+
+/* -------------------------------------------------------------------------- */
 /* Main Account page                                                           */
 /* -------------------------------------------------------------------------- */
 export function Account() {
+  const { t, i18n } = useTranslation();
   const { user, session, loading, signInWithEmail, signUpWithEmail, signInWithOAuth, forgotPassword, updatePassword, updateEmail, signOut } = useUserAuth();
   const navigate = useNavigate();
 
@@ -544,7 +587,8 @@ export function Account() {
   };
 
   const [syncedCount, setSyncedCount] = useState(0);
-  const didSync = useRef(false);
+  const didSync        = useRef(false);
+  const rawPurchasesRef = useRef<Purchase[]>([]);  // English purchases from server, never overwritten
 
   useEffect(() => {
     if (session?.access_token) {
@@ -557,6 +601,13 @@ export function Account() {
       }
     }
   }, [session]);
+
+  // Re-apply translations instantly whenever the user switches language
+  useEffect(() => {
+    if (rawPurchasesRef.current.length === 0) return;
+    applyActivationStepTranslations(rawPurchasesRef.current, i18n.language)
+      .then(setPurchases);
+  }, [i18n.language]);
 
   const syncAndFetch = async (token: string) => {
     try {
@@ -610,8 +661,14 @@ export function Account() {
         },
       });
       const data = await res.json();
-      if (data.success) setPurchases((data.data || []).map(mapPurchase));
-      else setPurchasesError(data.error || 'Failed to load purchases');
+      if (data.success) {
+        const raw: Purchase[] = (data.data || []).map(mapPurchase);
+        rawPurchasesRef.current = raw;                                    // store English source
+        const mapped = await applyActivationStepTranslations(raw, i18n.language);
+        setPurchases(mapped);
+      } else {
+        setPurchasesError(data.error || 'Failed to load purchases');
+      }
     } catch (err) {
       console.error('Error fetching purchases:', err);
       setPurchasesError('Could not load your purchases. Please try again.');
@@ -625,35 +682,35 @@ export function Account() {
   const handleSignInEmail = async (e: React.FormEvent) => {
     e.preventDefault();
     const errs: Record<string, string> = {};
-    if (!authEmail.trim()) errs.email = 'Required'; else if (!/\S+@\S+/.test(authEmail)) errs.email = 'Invalid email';
-    if (!authPass) errs.password = 'Required';
+    if (!authEmail.trim()) errs.email = t('auth.emailRequired'); else if (!/\S+@\S+/.test(authEmail)) errs.email = t('auth.invalidEmail');
+    if (!authPass) errs.password = t('auth.passwordRequired');
     setAuthErrors(errs); if (Object.keys(errs).length) return;
     setAuthLoading(true);
     try { await signInWithEmail(authEmail.trim(), authPass); }
-    catch (err: any) { setAuthErrors({ form: err.message || 'Invalid email or password' }); }
+    catch (err: any) { setAuthErrors({ form: err.message || t('auth.invalidEmailOrPassword') }); }
     finally { setAuthLoading(false); }
   };
 
   const handleSignUpEmail = async (e: React.FormEvent) => {
     e.preventDefault();
     const errs: Record<string, string> = {};
-    if (!authEmail.trim()) errs.email = 'Required'; else if (!/\S+@\S+/.test(authEmail)) errs.email = 'Invalid email';
-    if (!authPass) errs.password = 'Required'; else if (authPass.length < 8) errs.password = 'At least 8 characters';
-    if (authPass !== authConfirm) errs.confirm = 'Passwords do not match';
+    if (!authEmail.trim()) errs.email = t('auth.emailRequired'); else if (!/\S+@\S+/.test(authEmail)) errs.email = t('auth.invalidEmail');
+    if (!authPass) errs.password = t('auth.passwordRequired'); else if (authPass.length < 8) errs.password = t('auth.atLeast8');
+    if (authPass !== authConfirm) errs.confirm = t('auth.passwordsDoNotMatch');
     setAuthErrors(errs); if (Object.keys(errs).length) return;
     setAuthLoading(true);
     try { await signUpWithEmail(authEmail.trim(), authPass, authName.trim() || undefined); setAuthSuccess(true); }
-    catch (err: any) { setAuthErrors({ form: err.message || 'Failed to create account' }); }
+    catch (err: any) { setAuthErrors({ form: err.message || t('auth.failedCreateAccount') }); }
     finally { setAuthLoading(false); }
   };
 
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthErrors({});
-    if (!authEmail.trim() || !/\S+@\S+/.test(authEmail)) { setAuthErrors({ email: 'Valid email required' }); return; }
+    if (!authEmail.trim() || !/\S+@\S+/.test(authEmail)) { setAuthErrors({ email: t('auth.validEmailRequired') }); return; }
     setAuthLoading(true);
     try { await forgotPassword(authEmail.trim()); setFpSent(true); }
-    catch (err: any) { setAuthErrors({ form: err.message || 'Failed to send reset link' }); }
+    catch (err: any) { setAuthErrors({ form: err.message || t('auth.failedSendReset') }); }
     finally { setAuthLoading(false); }
   };
 
@@ -681,20 +738,20 @@ export function Account() {
                 </div>
               </div>
               <h1 className="text-xl font-bold text-white mb-1">
-                {authTab === 'forgot' ? 'Reset password' : 'My Account'}
+                {authTab === 'forgot' ? t('auth.resetPassword') : t('account.title')}
               </h1>
               <p className="text-white/40 text-xs">
-                {authTab === 'forgot' ? "We'll send a link to your email" : 'Purchases, licenses & downloads'}
+                {authTab === 'forgot' ? t('auth.secureLink') : t('account.subtitle')}
               </p>
             </div>
 
             {/* Tab switcher — hidden on forgot panel */}
             {authTab !== 'forgot' && (
               <div className="mx-6 mb-5 flex rounded-xl bg-white/5 border border-white/8 p-1">
-                {(['signin', 'signup'] as const).map(t => (
-                  <button key={t} onClick={() => { setAuthTab(t); setAuthErrors({}); }}
-                    className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${authTab === t ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/20' : 'text-white/40 hover:text-white/70'}`}>
-                    {t === 'signin' ? 'Sign In' : 'Create Account'}
+                {(['signin', 'signup'] as const).map(tab => (
+                  <button key={tab} onClick={() => { setAuthTab(tab); setAuthErrors({}); }}
+                    className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${authTab === tab ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/20' : 'text-white/40 hover:text-white/70'}`}>
+                    {tab === 'signin' ? t('auth.signInTab') : t('auth.createAccountTab')}
                   </button>
                 ))}
               </div>
@@ -718,35 +775,35 @@ export function Account() {
                             : p === 'google'
                               ? <svg viewBox="0 0 24 24" className="w-4 h-4"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
                               : <svg viewBox="0 0 24 24" className="w-4 h-4"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z" fill="#5865F2"/></svg>}
-                          <span>Continue with {p.charAt(0).toUpperCase() + p.slice(1)}</span>
+                          <span>{t('auth.continueWith', { provider: p.charAt(0).toUpperCase() + p.slice(1) })}</span>
                         </button>
                       ))}
                     </div>
                     {oauthError && <p className="text-xs text-red-400 flex items-center gap-1 rtl:flex-row-reverse"><AlertCircle className="w-3 h-3 shrink-0"/>{oauthError}</p>}
-                    <div className="flex items-center gap-3"><div className="flex-1 h-px bg-white/8"/><span className="text-white/25 text-xs">or</span><div className="flex-1 h-px bg-white/8"/></div>
+                    <div className="flex items-center gap-3"><div className="flex-1 h-px bg-white/8"/><span className="text-white/25 text-xs">{t('auth.or')}</span><div className="flex-1 h-px bg-white/8"/></div>
 
                     <form onSubmit={handleSignInEmail} className="space-y-3">
                     <div className={`relative flex items-center rounded-xl border transition-colors ${authErrors.email ? 'border-red-500/50 bg-red-500/5' : 'border-white/10 bg-white/5 focus-within:border-purple-500/50'}`}>
                       <Mail className="absolute left-3.5 rtl:left-auto rtl:right-3.5 w-4 h-4 text-white/30 pointer-events-none" />
-                      <input type="email" placeholder="Email" value={authEmail} autoComplete="email" onChange={e => setAuthEmail(e.target.value)} className="w-full bg-transparent pl-10 rtl:pl-4 rtl:pr-10 pr-4 py-3 text-sm text-white placeholder:text-white/25 focus:outline-none" />
+                      <input type="email" placeholder={t('auth.emailLabel')} value={authEmail} autoComplete="email" onChange={e => setAuthEmail(e.target.value)} className="w-full bg-transparent pl-10 rtl:pl-4 rtl:pr-10 pr-4 py-3 text-sm text-white placeholder:text-white/25 focus:outline-none" />
                     </div>
                     {authErrors.email && <p className="text-xs text-red-400 -mt-1 flex items-center gap-1 rtl:flex-row-reverse"><AlertCircle className="w-3 h-3"/>{authErrors.email}</p>}
                     <div>
                       <div className={`relative flex items-center rounded-xl border transition-colors ${authErrors.password ? 'border-red-500/50 bg-red-500/5' : 'border-white/10 bg-white/5 focus-within:border-purple-500/50'}`}>
                         <Lock className="absolute left-3.5 rtl:left-auto rtl:right-3.5 w-4 h-4 text-white/30 pointer-events-none" />
-                        <input type={authShowPw ? 'text' : 'password'} placeholder="Password" value={authPass} autoComplete="current-password" onChange={e => setAuthPass(e.target.value)} className="w-full bg-transparent pl-10 rtl:pl-3 rtl:pr-10 pr-10 py-3 text-sm text-white placeholder:text-white/25 focus:outline-none" />
+                        <input type={authShowPw ? 'text' : 'password'} placeholder={t('auth.passwordLabel')} value={authPass} autoComplete="current-password" onChange={e => setAuthPass(e.target.value)} className="w-full bg-transparent pl-10 rtl:pl-3 rtl:pr-10 pr-10 py-3 text-sm text-white placeholder:text-white/25 focus:outline-none" />
                         <button type="button" onClick={() => setAuthShowPw(v => !v)} className="absolute right-3 rtl:right-auto rtl:left-3 text-white/25 hover:text-white/60 transition-colors">
                           {authShowPw ? <EyeOff className="w-4 h-4"/> : <Eye className="w-4 h-4"/>}
                         </button>
                       </div>
                       <div className="flex justify-end rtl:justify-start mt-1.5">
-                        <button type="button" onClick={() => { setAuthTab('forgot'); setAuthErrors({}); setFpSent(false); }} className="text-xs text-purple-400 hover:text-purple-300 transition-colors">Forgot password?</button>
+                        <button type="button" onClick={() => { setAuthTab('forgot'); setAuthErrors({}); setFpSent(false); }} className="text-xs text-purple-400 hover:text-purple-300 transition-colors">{t('auth.forgotPassword')}</button>
                       </div>
                     </div>
                     {authErrors.password && <p className="text-xs text-red-400 -mt-1 flex items-center gap-1 rtl:flex-row-reverse"><AlertCircle className="w-3 h-3"/>{authErrors.password}</p>}
                     {authErrors.form && <div className="flex items-center gap-2 rtl:flex-row-reverse p-3 rounded-xl bg-red-500/10 border border-red-500/20"><AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" /><p className="text-red-400 text-xs">{authErrors.form}</p></div>}
                     <button type="submit" disabled={authLoading || !!oauthLoading} className="w-full py-3 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-semibold text-sm transition-all shadow-lg shadow-purple-500/20 disabled:opacity-60 flex items-center justify-center gap-2 rtl:flex-row-reverse">
-                      {authLoading ? <><Loader2 className="w-4 h-4 animate-spin"/>Signing in…</> : 'Sign In'}
+                      {authLoading ? <><Loader2 className="w-4 h-4 animate-spin"/>{t('auth.signingIn')}</> : t('auth.signInTab')}
                     </button>
                     </form>
                   </motion.div>
@@ -765,34 +822,34 @@ export function Account() {
                               : p === 'google'
                                 ? <svg viewBox="0 0 24 24" className="w-4 h-4"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
                                 : <svg viewBox="0 0 24 24" className="w-4 h-4"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z" fill="#5865F2"/></svg>}
-                            <span>Sign up with {p.charAt(0).toUpperCase() + p.slice(1)}</span>
+                            <span>{t('auth.signUpWith', { provider: p.charAt(0).toUpperCase() + p.slice(1) })}</span>
                           </button>
                         ))}
                       </div>
                       {oauthError && <p className="text-xs text-red-400 flex items-center gap-1 rtl:flex-row-reverse"><AlertCircle className="w-3 h-3 shrink-0"/>{oauthError}</p>}
-                      <div className="flex items-center gap-3"><div className="flex-1 h-px bg-white/8"/><span className="text-white/25 text-xs">or</span><div className="flex-1 h-px bg-white/8"/></div>
+                      <div className="flex items-center gap-3"><div className="flex-1 h-px bg-white/8"/><span className="text-white/25 text-xs">{t('auth.or')}</span><div className="flex-1 h-px bg-white/8"/></div>
                     </>)}
                     <form onSubmit={handleSignUpEmail} className="space-y-3">
                     {authSuccess ? (
                       <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="py-8 text-center">
                         <div className="w-12 h-12 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center mx-auto mb-3"><Check className="w-6 h-6 text-emerald-400" /></div>
-                        <p className="text-white font-semibold">Account created!</p>
-                        <p className="text-white/45 text-xs mt-1">Signing you in…</p>
+                        <p className="text-white font-semibold">{t('auth.accountCreated')}</p>
+                        <p className="text-white/45 text-xs mt-1">{t('auth.signingYouIn')}</p>
                       </motion.div>
                     ) : (
                       <>
                         <div className="relative flex items-center rounded-xl border border-white/10 bg-white/5 focus-within:border-purple-500/50 transition-colors">
                           <User className="absolute left-3.5 rtl:left-auto rtl:right-3.5 w-4 h-4 text-white/30 pointer-events-none" />
-                          <input type="text" placeholder="Full name (optional)" value={authName} autoComplete="name" onChange={e => setAuthName(e.target.value)} className="w-full bg-transparent pl-10 rtl:pl-4 rtl:pr-10 pr-4 py-3 text-sm text-white placeholder:text-white/25 focus:outline-none" />
+                          <input type="text" placeholder={t('auth.fullNameOptional')} value={authName} autoComplete="name" onChange={e => setAuthName(e.target.value)} className="w-full bg-transparent pl-10 rtl:pl-4 rtl:pr-10 pr-4 py-3 text-sm text-white placeholder:text-white/25 focus:outline-none" />
                         </div>
                         <div className={`relative flex items-center rounded-xl border transition-colors ${authErrors.email ? 'border-red-500/50 bg-red-500/5' : 'border-white/10 bg-white/5 focus-within:border-purple-500/50'}`}>
                           <Mail className="absolute left-3.5 rtl:left-auto rtl:right-3.5 w-4 h-4 text-white/30 pointer-events-none" />
-                          <input type="email" placeholder="Email" value={authEmail} autoComplete="email" onChange={e => setAuthEmail(e.target.value)} className="w-full bg-transparent pl-10 rtl:pl-4 rtl:pr-10 pr-4 py-3 text-sm text-white placeholder:text-white/25 focus:outline-none" />
+                          <input type="email" placeholder={t('auth.emailLabel')} value={authEmail} autoComplete="email" onChange={e => setAuthEmail(e.target.value)} className="w-full bg-transparent pl-10 rtl:pl-4 rtl:pr-10 pr-4 py-3 text-sm text-white placeholder:text-white/25 focus:outline-none" />
                         </div>
                         {authErrors.email && <p className="text-xs text-red-400 -mt-1 flex items-center gap-1 rtl:flex-row-reverse"><AlertCircle className="w-3 h-3"/>{authErrors.email}</p>}
                         <div className={`relative flex items-center rounded-xl border transition-colors ${authErrors.password ? 'border-red-500/50 bg-red-500/5' : 'border-white/10 bg-white/5 focus-within:border-purple-500/50'}`}>
                           <Lock className="absolute left-3.5 rtl:left-auto rtl:right-3.5 w-4 h-4 text-white/30 pointer-events-none" />
-                          <input type={authShowPw ? 'text' : 'password'} placeholder="Password (min 8 chars)" value={authPass} autoComplete="new-password" onChange={e => setAuthPass(e.target.value)} className="w-full bg-transparent pl-10 rtl:pl-3 rtl:pr-10 pr-10 py-3 text-sm text-white placeholder:text-white/25 focus:outline-none" />
+                          <input type={authShowPw ? 'text' : 'password'} placeholder={t('auth.passwordMin8')} value={authPass} autoComplete="new-password" onChange={e => setAuthPass(e.target.value)} className="w-full bg-transparent pl-10 rtl:pl-3 rtl:pr-10 pr-10 py-3 text-sm text-white placeholder:text-white/25 focus:outline-none" />
                           <button type="button" onClick={() => setAuthShowPw(v => !v)} className="absolute right-3 rtl:right-auto rtl:left-3 text-white/25 hover:text-white/60 transition-colors">
                             {authShowPw ? <EyeOff className="w-4 h-4"/> : <Eye className="w-4 h-4"/>}
                           </button>
@@ -800,12 +857,12 @@ export function Account() {
                         {authErrors.password && <p className="text-xs text-red-400 -mt-1 flex items-center gap-1 rtl:flex-row-reverse"><AlertCircle className="w-3 h-3"/>{authErrors.password}</p>}
                         <div className={`relative flex items-center rounded-xl border transition-colors ${authErrors.confirm ? 'border-red-500/50 bg-red-500/5' : 'border-white/10 bg-white/5 focus-within:border-purple-500/50'}`}>
                           <Lock className="absolute left-3.5 rtl:left-auto rtl:right-3.5 w-4 h-4 text-white/30 pointer-events-none" />
-                          <input type="password" placeholder="Confirm password" value={authConfirm} autoComplete="new-password" onChange={e => setAuthConfirm(e.target.value)} className="w-full bg-transparent pl-10 rtl:pl-4 rtl:pr-10 pr-4 py-3 text-sm text-white placeholder:text-white/25 focus:outline-none" />
+                          <input type="password" placeholder={t('auth.confirmPassword')} value={authConfirm} autoComplete="new-password" onChange={e => setAuthConfirm(e.target.value)} className="w-full bg-transparent pl-10 rtl:pl-4 rtl:pr-10 pr-4 py-3 text-sm text-white placeholder:text-white/25 focus:outline-none" />
                         </div>
                         {authErrors.confirm && <p className="text-xs text-red-400 -mt-1 flex items-center gap-1 rtl:flex-row-reverse"><AlertCircle className="w-3 h-3"/>{authErrors.confirm}</p>}
                         {authErrors.form && <div className="flex items-center gap-2 rtl:flex-row-reverse p-3 rounded-xl bg-red-500/10 border border-red-500/20"><AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" /><p className="text-red-400 text-xs">{authErrors.form}</p></div>}
                         <button type="submit" disabled={authLoading || !!oauthLoading} className="w-full py-3 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-semibold text-sm transition-all shadow-lg shadow-purple-500/20 disabled:opacity-60 flex items-center justify-center gap-2 rtl:flex-row-reverse">
-                          {authLoading ? <><Loader2 className="w-4 h-4 animate-spin"/>Creating account…</> : 'Create Account'}
+                          {authLoading ? <><Loader2 className="w-4 h-4 animate-spin"/>{t('auth.creatingAccount')}</> : t('auth.createAccountTab')}
                         </button>
                       </>
                     )}
@@ -820,26 +877,26 @@ export function Account() {
                       <div className="py-6 text-center space-y-3">
                         <div className="w-14 h-14 rounded-full bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center mx-auto"><CheckCircle className="w-7 h-7 text-emerald-400" /></div>
                         <div>
-                          <p className="text-white font-semibold mb-1">Check your inbox</p>
-                          <p className="text-white/40 text-xs leading-relaxed">We sent a reset link to <span className="text-purple-300">{authEmail}</span>. It expires in 1 hour.</p>
+                          <p className="text-white font-semibold mb-1">{t('auth.checkYourInbox')}</p>
+                          <p className="text-white/40 text-xs leading-relaxed">{t('auth.resetLinkSentPre')} <span className="text-purple-300">{authEmail}</span>. {t('auth.resetLinkSentPost')}</p>
                         </div>
                         <button type="button" onClick={() => setAuthTab('signin')} className="flex items-center gap-1.5 rtl:flex-row-reverse mx-auto text-xs text-white/40 hover:text-white/70 transition-colors">
-                          <ArrowLeft className="w-3.5 h-3.5 rtl:rotate-180" />Back to sign in
+                          <ArrowLeft className="w-3.5 h-3.5 rtl:rotate-180" />{t('auth.backToSignIn')}
                         </button>
                       </div>
                     ) : (
                       <form onSubmit={handleForgotPassword} className="space-y-3">
                         <div className={`relative flex items-center rounded-xl border transition-colors ${authErrors.email ? 'border-red-500/50 bg-red-500/5' : 'border-white/10 bg-white/5 focus-within:border-purple-500/50'}`}>
                           <Mail className="absolute left-3.5 rtl:left-auto rtl:right-3.5 w-4 h-4 text-white/30 pointer-events-none" />
-                          <input type="email" placeholder="Your account email" value={authEmail} autoComplete="email" onChange={e => setAuthEmail(e.target.value)} className="w-full bg-transparent pl-10 rtl:pl-4 rtl:pr-10 pr-4 py-3 text-sm text-white placeholder:text-white/25 focus:outline-none" />
+                          <input type="email" placeholder={t('auth.yourAccountEmail')} value={authEmail} autoComplete="email" onChange={e => setAuthEmail(e.target.value)} className="w-full bg-transparent pl-10 rtl:pl-4 rtl:pr-10 pr-4 py-3 text-sm text-white placeholder:text-white/25 focus:outline-none" />
                         </div>
                         {authErrors.email && <p className="text-xs text-red-400 -mt-1 flex items-center gap-1 rtl:flex-row-reverse"><AlertCircle className="w-3 h-3"/>{authErrors.email}</p>}
                         {authErrors.form && <div className="flex items-center gap-2 rtl:flex-row-reverse p-3 rounded-xl bg-red-500/10 border border-red-500/20"><AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" /><p className="text-red-400 text-xs">{authErrors.form}</p></div>}
                         <button type="submit" disabled={authLoading} className="w-full py-3 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-semibold text-sm transition-all shadow-lg shadow-purple-500/20 disabled:opacity-60 flex items-center justify-center gap-2 rtl:flex-row-reverse">
-                          {authLoading ? <><Loader2 className="w-4 h-4 animate-spin"/>Sending…</> : 'Send Reset Link'}
+                          {authLoading ? <><Loader2 className="w-4 h-4 animate-spin"/>{t('auth.sending')}</> : t('auth.sendResetLink')}
                         </button>
                         <button type="button" onClick={() => setAuthTab('signin')} className="flex items-center gap-1.5 rtl:flex-row-reverse mx-auto text-xs text-white/35 hover:text-white/65 transition-colors pt-1">
-                          <ArrowLeft className="w-3.5 h-3.5 rtl:rotate-180" />Back to sign in
+                          <ArrowLeft className="w-3.5 h-3.5 rtl:rotate-180" />{t('auth.backToSignIn')}
                         </button>
                       </form>
                     )}
@@ -868,7 +925,7 @@ export function Account() {
 
         <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}>
           <Link to="/tools" className="inline-flex items-center gap-1.5 rtl:flex-row-reverse text-sm text-white/40 hover:text-white/80 transition-colors mb-10">
-            <ArrowLeft className="w-3.5 h-3.5 rtl:rotate-180" />Back to Tools
+            <ArrowLeft className="w-3.5 h-3.5 rtl:rotate-180" />{t('account.backToTools')}
           </Link>
         </motion.div>
 
@@ -887,10 +944,10 @@ export function Account() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-emerald-300 font-semibold text-sm">
-                    {syncedCount === 1 ? '1 purchase' : `${syncedCount} purchases`} linked to your account!
+                    {syncedCount} {syncedCount === 1 ? t('account.purchases') : t('account.purchases')} linked!
                   </p>
                   <p className="text-emerald-400/60 text-xs mt-0.5">
-                    Purchases made before creating your account have been automatically claimed.
+                    {t('account.signInDesc')}
                   </p>
                 </div>
                 <button onClick={() => setSyncedCount(0)} className="text-emerald-500/40 hover:text-emerald-400 transition-colors flex-shrink-0">
@@ -923,22 +980,22 @@ export function Account() {
                     <p className="text-white font-bold text-lg leading-tight">{displayName}</p>
                     <p className="text-white/40 text-sm">{user.email}</p>
                     <span className="inline-flex items-center gap-1 rtl:flex-row-reverse mt-1.5 px-2 py-0.5 rounded-full bg-purple-500/15 border border-purple-500/25 text-purple-300 text-[10px] font-semibold">
-                      <Star className="w-2.5 h-2.5" />Fastoosh Member
+                      <Star className="w-2.5 h-2.5" />{t('account.memberBadge')}
                     </span>
                   </div>
                 </div>
                 <button onClick={handleSignOut} className="flex items-center gap-2 rtl:flex-row-reverse px-4 py-2 rounded-xl text-sm text-white/50 hover:text-white/80 border border-white/10 hover:border-white/20 bg-white/5 hover:bg-white/8 transition-all">
-                  <LogOut className="w-4 h-4" />Sign out
+                  <LogOut className="w-4 h-4" />{t('nav.signOut')}
                 </button>
               </div>
 
               {/* Stats row */}
               <div className="mt-5 pt-5 border-t border-white/8 grid grid-cols-2 sm:grid-cols-4 gap-4">
                 {[
-                  { label: 'Active licenses', value: activeCount,       icon: <Key className="w-3.5 h-3.5" />,      color: 'text-white',        glow: '' },
-                  { label: 'Lifetime',         value: lifetimeCount,     icon: <CheckCircle className="w-3.5 h-3.5" />, color: 'text-emerald-400', glow: 'drop-shadow-[0_0_6px_rgba(52,211,153,0.5)]' },
-                  { label: 'Subscriptions',    value: subscriptionCount, icon: <RefreshCw className="w-3.5 h-3.5" />,  color: 'text-purple-400',  glow: 'drop-shadow-[0_0_6px_rgba(168,85,247,0.5)]' },
-                  { label: 'Total spent',      value: `$${totalSpent.toFixed(0)}`, icon: <ShoppingBag className="w-3.5 h-3.5" />, color: 'text-sky-400', glow: 'drop-shadow-[0_0_6px_rgba(56,189,248,0.5)]' },
+                  { label: t('account.activeLicenses'),    value: activeCount,                  icon: <Key className="w-3.5 h-3.5" />,         color: 'text-white',       glow: '' },
+                  { label: t('account.lifetimeLabel'),     value: lifetimeCount,                icon: <CheckCircle className="w-3.5 h-3.5" />, color: 'text-emerald-400', glow: 'drop-shadow-[0_0_6px_rgba(52,211,153,0.5)]' },
+                  { label: t('account.subscriptionsLabel'),value: subscriptionCount,             icon: <RefreshCw className="w-3.5 h-3.5" />,   color: 'text-purple-400',  glow: 'drop-shadow-[0_0_6px_rgba(168,85,247,0.5)]' },
+                  { label: t('account.totalSpentLabel'),   value: `$${totalSpent.toFixed(0)}`,  icon: <ShoppingBag className="w-3.5 h-3.5" />, color: 'text-sky-400',     glow: 'drop-shadow-[0_0_6px_rgba(56,189,248,0.5)]' },
                 ].map(stat => (
                   <div key={stat.label} className="text-center p-3 rounded-xl bg-white/3 border border-white/6">
                     <div className={`flex items-center justify-center gap-1.5 ${stat.color} ${stat.glow} mb-1`}>
@@ -955,12 +1012,12 @@ export function Account() {
 
         {/* ── Licenses ── */}
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}>
-          <div className="flex items-center justify-between rtl:flex-row-reverse mb-5">
-            <div className="flex items-center gap-3 rtl:flex-row-reverse">
+          <div className="flex items-center justify-between mb-5">
+            <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg bg-purple-500/15 border border-purple-500/25 flex items-center justify-center">
                 <ShoppingBag className="w-4 h-4 text-purple-400" />
               </div>
-              <h2 className="text-xl font-bold text-white">My Licenses</h2>
+              <h2 className="text-xl font-bold text-white">{t('account.purchases')}</h2>
               {purchases.length > 0 && (
                 <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">{purchases.length}</span>
               )}
@@ -969,11 +1026,11 @@ export function Account() {
               <button
                 onClick={() => syncAndFetch(session.access_token)}
                 disabled={purchasesLoading}
-                className="flex items-center gap-1.5 rtl:flex-row-reverse text-xs text-white/30 hover:text-white/60 transition-colors disabled:opacity-50 px-3 py-1.5 rounded-lg border border-white/8 hover:border-white/15 bg-white/3 hover:bg-white/6"
-                title="Refresh & sync purchases"
+                className="flex items-center gap-1.5 text-xs text-white/30 hover:text-white/60 transition-colors disabled:opacity-50 px-3 py-1.5 rounded-lg border border-white/8 hover:border-white/15 bg-white/3 hover:bg-white/6"
+                title={t('account.syncTitle')}
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${purchasesLoading ? 'animate-spin' : ''}`} />
-                Sync
+                {t('account.syncButton')}
               </button>
             )}
           </div>
@@ -981,7 +1038,7 @@ export function Account() {
           {purchasesLoading && (
             <div className="flex items-center gap-3 py-20 justify-center">
               <div className="w-5 h-5 border-2 border-purple-400/40 border-t-purple-400 rounded-full animate-spin" />
-              <span className="text-white/40 text-sm">Loading your licenses…</span>
+              <span className="text-white/40 text-sm">{t('account.loading')}</span>
             </div>
           )}
 
@@ -990,10 +1047,10 @@ export function Account() {
               <div className="flex items-start gap-3 rtl:flex-row-reverse">
                 <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
                 <div>
-                  <p className="text-red-400 text-sm font-semibold mb-1">Could not load purchases</p>
+                  <p className="text-red-400 text-sm font-semibold mb-1">{t('account.couldNotLoad')}</p>
                   <p className="text-red-400/60 text-xs">{purchasesError}</p>
                   <button onClick={() => session && fetchPurchases(session.access_token)} className="mt-3 text-sm text-purple-400 hover:text-purple-300 underline">
-                    Try again
+                    {t('account.tryAgain')}
                   </button>
                 </div>
               </div>
@@ -1009,13 +1066,13 @@ export function Account() {
                     <ShoppingBag className="w-9 h-9 text-white/15" />
                   </div>
                 </div>
-                <h3 className="text-white/70 font-bold text-xl mb-2">No licenses yet</h3>
+                <h3 className="text-white/70 font-bold text-xl mb-2">{t('account.noPurchases')}</h3>
                 <p className="text-white/30 text-sm mb-8 max-w-xs mx-auto leading-relaxed">
-                  Once you purchase a tool, your license keys, downloads and activation instructions will appear here.
+                  {t('account.noPurchasesDesc')}
                 </p>
                 <div className="flex flex-wrap justify-center gap-3">
                   <NeonButton href="/tools" variant="primary">
-                    <Sparkles className="w-4 h-4 mr-2 rtl:mr-0 rtl:ml-2" />Browse Tools
+                    <Sparkles className="w-4 h-4 mr-2 rtl:mr-0 rtl:ml-2" />{t('account.browseTools')}
                   </NeonButton>
                 </div>
               </div>
@@ -1023,7 +1080,7 @@ export function Account() {
               <div className="border-t border-white/6 px-6 py-4 flex items-start gap-3 rtl:flex-row-reverse bg-white/2">
                 <Info className="w-4 h-4 text-white/25 flex-shrink-0 mt-0.5" />
                 <p className="text-white/25 text-xs leading-relaxed">
-                  Purchased a tool before creating your account? Hit the <strong className="text-white/40">Sync</strong> button above — we'll automatically link it to your email.
+                  {t('account.syncHint')}
                 </p>
               </div>
             </GlassCard>
@@ -1052,14 +1109,14 @@ export function Account() {
                   <Bell className="w-4 h-4 text-purple-400" />
                 </div>
                 <div>
-                  <p className="text-white font-semibold text-sm">Need help with a tool?</p>
-                  <p className="text-white/35 text-xs mt-0.5">We reply to all license & activation issues within 24h.</p>
+                  <p className="text-white font-semibold text-sm">{t('account.needHelp')}</p>
+                  <p className="text-white/35 text-xs mt-0.5">{t('account.needHelpDesc')}</p>
                 </div>
                 <button
                   onClick={() => setSupportOpen(true)}
                   className="inline-flex items-center gap-2 rtl:flex-row-reverse px-4 py-2 rounded-xl text-sm font-semibold bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 hover:text-purple-200 border border-purple-500/25 hover:border-purple-500/40 transition-all"
                 >
-                  <Send className="w-3.5 h-3.5" />Get Support
+                  <Send className="w-3.5 h-3.5" />{t('account.getSupport')}
                 </button>
               </GlassCard>
             </motion.div>

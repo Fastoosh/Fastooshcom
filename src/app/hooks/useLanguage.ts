@@ -8,12 +8,28 @@ export const SUPPORTED_LANGUAGES = [
 
 export type LangCode = (typeof SUPPORTED_LANGUAGES)[number]['code'];
 
+/** Duration of the fade-out in ms.  Must match the CSS transition. */
+const FADE_DURATION = 100;
+
 export function useLanguage() {
   const { i18n } = useTranslation();
 
   const changeLanguage = (lang: LangCode) => {
-    i18n.changeLanguage(lang);
-    try { localStorage.setItem('fastoosh_lang', lang); } catch { /* ignore */ }
+    // 1. Fade out — CSS sees .lang-switching on <html>
+    document.documentElement.classList.add('lang-switching');
+
+    // 2. After the fade-out completes, swap the language
+    setTimeout(() => {
+      i18n.changeLanguage(lang);
+      try { localStorage.setItem('fastoosh_lang', lang); } catch { /* ignore */ }
+
+      // 3. Let React flush the re-render, then fade back in
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          document.documentElement.classList.remove('lang-switching');
+        });
+      });
+    }, FADE_DURATION);
   };
 
   const isRTL     = i18n.language === 'ar';

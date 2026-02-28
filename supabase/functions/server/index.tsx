@@ -306,7 +306,7 @@ async function sendBruteForceAlert(ip: string, attemptedEmail: string) {
     const now    = new Date().toUTCString();
 
     await resend.emails.send({
-      from: 'Fastoosh Security <security@fastoosh.com>',
+      from: 'Fastoosh Security <security@contact.fastoosh.com>',
       to:   adminEmail,
       subject: '🚨 Admin Login — 5 Failed Attempts Detected',
       html: `
@@ -3143,7 +3143,7 @@ app.post("/make-server-e07959ec/contact", async (c) => {
     `;
 
     const { data, error } = await resend.emails.send({
-      from: 'Fastoosh Contact Form <onboarding@resend.dev>',
+      from: 'Fastoosh <contact@contact.fastoosh.com>',
       to: ['youssefdari7@gmail.com'],
       subject: `New Contact: ${name} - ${projectType || 'General Inquiry'}`,
       html: emailHtml,
@@ -3247,7 +3247,7 @@ app.post("/make-server-e07959ec/tool-support", async (c) => {
     `;
 
     const { data, error } = await resend.emails.send({
-      from: 'Fastoosh Tools <onboarding@resend.dev>',
+      from: 'Fastoosh Tools <support@contact.fastoosh.com>',
       to: ['youssefdari7@gmail.com'],
       subject: `[${inquiryType}] ${toolName} — ${name}`,
       html: emailHtml,
@@ -5264,6 +5264,224 @@ ${JSON.stringify(fields, null, 2)}`;
   } catch (err) {
     console.log('[translate] error:', err);
     return c.json({ success: false, error: `Translation failed: ${String(err)}` }, 500);
+  }
+});
+
+// ========== BRANDED PASSWORD RESET EMAIL ==========
+
+// Generates a cryptographically random 8-char alphanumeric ID for short links.
+function generateShortId(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  const bytes = crypto.getRandomValues(new Uint8Array(8));
+  return Array.from(bytes).map(b => chars[b % chars.length]).join('');
+}
+
+// GET /r/:id — resolves a short reset link and redirects to the full Supabase URL.
+// The entry is single-use and expires after 1 hour.
+app.get('/make-server-e07959ec/r/:id', async (c) => {
+  const id = c.req.param('id');
+  const fallback = 'https://www.fastoosh.com/auth/reset-password?error=link_expired';
+  try {
+    const entry = await kv.get(`r:${id}`);
+    if (!entry || !entry.url) return c.redirect(fallback, 302);
+    if (Date.now() > entry.expiresAt) {
+      await kv.del(`r:${id}`);
+      return c.redirect(fallback, 302);
+    }
+    // Single-use: delete before redirecting
+    await kv.del(`r:${id}`);
+    return c.redirect(entry.url, 302);
+  } catch (err) {
+    console.log('[short-link] Error resolving short link:', err);
+    return c.redirect(fallback, 302);
+  }
+});
+
+// POST /auth/forgot-password
+// Generates a Supabase recovery link via the admin API and delivers it through
+// a fully-branded Resend email so it arrives from @contact.fastoosh.com, not Supabase.
+// Always returns 200 to prevent email enumeration.
+app.post('/make-server-e07959ec/auth/forgot-password', async (c) => {
+  try {
+    const { email, redirectTo } = await c.req.json();
+
+    if (!email || typeof email !== 'string' || !/\S+@\S+\.\S+/.test(email)) {
+      // Return 200 even for invalid input to prevent enumeration
+      return c.json({ success: true });
+    }
+
+    const safeEmail = email.trim().toLowerCase();
+
+    // The reset URL to embed in the email link — supplied by the frontend so
+    // it works in both dev and production environments.
+    const resetRedirect = redirectTo || 'https://www.fastoosh.com/auth/reset-password';
+
+    // Generate the actual Supabase magic link (admin API, bypasses email sending)
+    const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
+      type: 'recovery',
+      email: safeEmail,
+      options: { redirectTo: resetRedirect },
+    });
+
+    if (linkError) {
+      // User not found — still return 200 silently
+      console.log(`[forgot-password] generateLink skipped for ${safeEmail}: ${linkError.message}`);
+      return c.json({ success: true });
+    }
+
+    const resetLink = linkData?.properties?.action_link;
+    if (!resetLink) {
+      console.log(`[forgot-password] No action_link returned for ${safeEmail}`);
+      return c.json({ success: true });
+    }
+
+    // Shorten the link: store full URL in KV and expose a tiny redirect URL
+    const shortId  = generateShortId();
+    const baseUrl  = Deno.env.get('SUPABASE_URL') ?? '';
+    const shortUrl = `${baseUrl}/functions/v1/make-server-e07959ec/r/${shortId}`;
+    await kv.set(`r:${shortId}`, { url: resetLink, expiresAt: Date.now() + 3600 * 1000 });
+
+    // Send via Resend
+    const resendKey = Deno.env.get('RESEND_API_KEY');
+    if (!resendKey) {
+      console.warn('[forgot-password] RESEND_API_KEY not set — falling back silently');
+      return c.json({ success: true });
+    }
+
+    // Fetch optional reply-to address from site settings
+    const { data: replyToRow } = await supabase
+      .from('site_settings')
+      .select('value')
+      .eq('key', 'emailReplyTo')
+      .maybeSingle();
+    const replyToAddress = replyToRow?.value as string | undefined;
+
+    const resend = new Resend(resendKey);
+    const year   = new Date().getFullYear();
+
+    const { error: sendError } = await resend.emails.send({
+      from:    'Fastoosh <noreply@contact.fastoosh.com>',
+      to:      safeEmail,
+      subject: 'Reset your Fastoosh password',
+      ...(replyToAddress ? { replyTo: replyToAddress } : {}),
+      html: `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#09090b;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#09090b;padding:40px 16px;">
+    <tr><td align="center">
+      <table width="100%" style="max-width:520px;" cellpadding="0" cellspacing="0">
+
+        <!-- Logo / brand header -->
+        <tr>
+          <td align="center" style="padding-bottom:32px;">
+            <span style="font-size:22px;font-weight:800;letter-spacing:-0.5px;color:#fff;">
+              fast<span style="background:linear-gradient(90deg,#a855f7,#6366f1);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">oosh</span>
+            </span>
+          </td>
+        </tr>
+
+        <!-- Card -->
+        <tr>
+          <td style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:16px;overflow:hidden;">
+
+            <!-- Gradient stripe -->
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td style="height:4px;background:linear-gradient(90deg,#a855f7,#6366f1,#3b82f6);"></td>
+              </tr>
+            </table>
+
+            <!-- Body -->
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td style="padding:36px 36px 28px;">
+
+                  <!-- Icon -->
+                  <table cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
+                    <tr>
+                      <td style="width:48px;height:48px;background:rgba(168,85,247,0.12);border:1px solid rgba(168,85,247,0.25);border-radius:12px;text-align:center;vertical-align:middle;">
+                        <span style="font-size:22px;">🔑</span>
+                      </td>
+                    </tr>
+                  </table>
+
+                  <h1 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#fff;line-height:1.3;">
+                    Reset your password
+                  </h1>
+                  <p style="margin:0 0 24px;font-size:15px;color:rgba(255,255,255,0.5);line-height:1.6;">
+                    We received a request to reset the password for your Fastoosh account
+                    associated with <strong style="color:rgba(255,255,255,0.75);">${safeEmail}</strong>.
+                  </p>
+
+                  <!-- CTA button -->
+                  <table cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
+                    <tr>
+                      <td style="background:linear-gradient(135deg,#a855f7,#6366f1);border-radius:10px;">
+                        <a href="${shortUrl}"
+                           style="display:inline-block;padding:14px 32px;font-size:15px;font-weight:700;color:#fff;text-decoration:none;letter-spacing:0.01em;">
+                          Reset my password →
+                        </a>
+                      </td>
+                    </tr>
+                  </table>
+
+                  <!-- Fallback URL -->
+                  <p style="margin:0 0 6px;font-size:12px;color:rgba(255,255,255,0.3);">
+                    Button not working? Copy and paste this link into your browser:
+                  </p>
+                  <p style="margin:0 0 28px;font-size:11px;word-break:break-all;">
+                    <a href="${shortUrl}" style="color:#a78bfa;text-decoration:none;">${shortUrl}</a>
+                  </p>
+
+                  <!-- Warning box -->
+                  <table width="100%" cellpadding="0" cellspacing="0">
+                    <tr>
+                      <td style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:16px 18px;">
+                        <p style="margin:0;font-size:13px;color:rgba(255,255,255,0.4);line-height:1.6;">
+                          ⏱ This link <strong style="color:rgba(255,255,255,0.6);">expires in 1 hour</strong>.
+                          If you didn't request a password reset, you can safely ignore this email —
+                          your account remains secure.
+                        </p>
+                      </td>
+                    </tr>
+                  </table>
+
+                </td>
+              </tr>
+            </table>
+
+          </td>
+        </tr>
+
+        <!-- Footer -->
+        <tr>
+          <td align="center" style="padding-top:28px;">
+            <p style="margin:0;font-size:12px;color:rgba(255,255,255,0.2);line-height:1.7;">
+              © ${year} Fastoosh · Premium Motion Design Studio<br>
+              <a href="https://www.fastoosh.com" style="color:rgba(255,255,255,0.25);text-decoration:none;">www.fastoosh.com</a>
+            </p>
+          </td>
+        </tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`,
+    });
+
+    if (sendError) {
+      console.log(`[forgot-password] Resend error for ${safeEmail}:`, sendError);
+    } else {
+      console.log(`✅ [forgot-password] Branded reset email sent to ${safeEmail}`);
+    }
+
+    return c.json({ success: true });
+  } catch (err) {
+    console.log('[forgot-password] Unexpected error:', err);
+    // Always 200 to prevent enumeration
+    return c.json({ success: true });
   }
 });
 

@@ -31,7 +31,7 @@ async function retryFetch(url: string, options: RequestInit, retries = 3, delay 
 
 function useDynamicFavicon() {
   const { setSiteStyle }          = useSiteStyle();
-  const { setLogo, setSiteMode }  = useLogo();
+  const { setSiteMode }           = useLogo();
 
   useEffect(() => {
     retryFetch(`${API_BASE}/settings`, {
@@ -47,13 +47,6 @@ function useDynamicFavicon() {
         if (data?.activeStyleMode === 'light' || data?.activeStyleMode === 'dark') {
           setSiteMode(data.activeStyleMode);
         }
-        // Apply logos (dark + light variants)
-        setLogo(
-          data?.logoDarkUrl  || data?.logoUrl || null,
-          data?.logoLightUrl || null,
-          data?.logoText  || 'Fastoosh',
-          Number(data?.logoHeight) || 32,
-        );
         // Apply favicon
         const url = data?.faviconUrl;
         if (!url) return;

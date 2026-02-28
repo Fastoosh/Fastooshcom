@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Loader2, Eye, EyeOff, Mail, Lock, User, AlertCircle, ArrowLeft, CheckCircle } from 'lucide-react';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { GlassCard } from './GlassCard';
 
 /* -------------------------------------------------------------------------- */
@@ -62,10 +63,11 @@ function OAuthButton({
 /* -------------------------------------------------------------------------- */
 
 function OrDivider() {
+  const { t } = useTranslation();
   return (
     <div className="flex items-center gap-3 my-1">
       <div className="flex-1 h-px bg-white/8" />
-      <span className="text-white/25 text-xs">or</span>
+      <span className="text-white/25 text-xs">{t('auth.or')}</span>
       <div className="flex-1 h-px bg-white/8" />
     </div>
   );
@@ -143,6 +145,7 @@ export function UserAuthModal({
   defaultTab = 'signin',
   message,
 }: UserAuthModalProps) {
+  const { t } = useTranslation();
   const [panel, setPanel] = useState<Panel>(defaultTab);
 
   /* ── Sign in state ── */
@@ -179,7 +182,6 @@ export function UserAuthModal({
     setOauthLoading(provider);
     try {
       await onSignInOAuth(provider);
-      // Full-page redirect happens — code below never runs on success
     } catch (err: any) {
       setOauthError(err.message || `Failed to sign in with ${provider}`);
       setOauthLoading(null);
@@ -189,9 +191,9 @@ export function UserAuthModal({
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     const errs: Record<string, string> = {};
-    if (!siEmail.trim()) errs.email = 'Email is required';
-    else if (!/\S+@\S+/.test(siEmail)) errs.email = 'Invalid email';
-    if (!siPass) errs.password = 'Password is required';
+    if (!siEmail.trim()) errs.email = t('auth.emailRequired');
+    else if (!/\S+@\S+/.test(siEmail)) errs.email = t('auth.invalidEmail');
+    if (!siPass) errs.password = t('auth.passwordRequired');
     setSiErrors(errs);
     if (Object.keys(errs).length) return;
     setSiLoading(true);
@@ -199,7 +201,7 @@ export function UserAuthModal({
       await onSignInEmail(siEmail.trim(), siPass);
       onClose();
     } catch (err: any) {
-      setSiErrors({ form: err.message || 'Invalid email or password' });
+      setSiErrors({ form: err.message || t('auth.invalidEmailOrPassword') });
     } finally {
       setSiLoading(false);
     }
@@ -208,11 +210,11 @@ export function UserAuthModal({
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     const errs: Record<string, string> = {};
-    if (!suEmail.trim()) errs.email = 'Email is required';
-    else if (!/\S+@\S+/.test(suEmail)) errs.email = 'Invalid email';
-    if (!suPass) errs.password = 'Password is required';
-    else if (suPass.length < 8) errs.password = 'At least 8 characters';
-    if (suPass !== suConfirm) errs.confirm = 'Passwords do not match';
+    if (!suEmail.trim()) errs.email = t('auth.emailRequired');
+    else if (!/\S+@\S+/.test(suEmail)) errs.email = t('auth.invalidEmail');
+    if (!suPass) errs.password = t('auth.passwordRequired');
+    else if (suPass.length < 8) errs.password = t('auth.atLeast8');
+    if (suPass !== suConfirm) errs.confirm = t('auth.passwordsDoNotMatch');
     setSuErrors(errs);
     if (Object.keys(errs).length) return;
     setSuLoading(true);
@@ -221,7 +223,7 @@ export function UserAuthModal({
       setSuSuccess(true);
       setTimeout(onClose, 1400);
     } catch (err: any) {
-      setSuErrors({ form: err.message || 'Failed to create account' });
+      setSuErrors({ form: err.message || t('auth.failedCreateAccount') });
     } finally {
       setSuLoading(false);
     }
@@ -231,7 +233,7 @@ export function UserAuthModal({
     e.preventDefault();
     setFpError('');
     if (!fpEmail.trim() || !/\S+@\S+/.test(fpEmail)) {
-      setFpError('Please enter a valid email address');
+      setFpError(t('auth.validEmailRequired'));
       return;
     }
     setFpLoading(true);
@@ -239,7 +241,7 @@ export function UserAuthModal({
       await onForgotPassword(fpEmail.trim());
       setFpSent(true);
     } catch (err: any) {
-      setFpError(err.message || 'Failed to send reset email');
+      setFpError(err.message || t('auth.failedSendReset'));
     } finally {
       setFpLoading(false);
     }
@@ -290,16 +292,16 @@ export function UserAuthModal({
                 </div>
               </div>
               <h2 className="text-xl font-bold text-white">
-                {panel === 'signin'  ? 'Welcome back'        :
-                 panel === 'signup'  ? 'Create your account' :
-                                      'Reset your password'}
+                {panel === 'signin'  ? t('auth.welcomeBack')       :
+                 panel === 'signup'  ? t('auth.createYourAccount') :
+                                      t('auth.resetYourPassword')}
               </h2>
               {message && panel !== 'forgot' && (
                 <p className="text-white/45 text-xs mt-1.5 leading-relaxed">{message}</p>
               )}
               {panel === 'forgot' && !fpSent && (
                 <p className="text-white/40 text-xs mt-1.5 leading-relaxed">
-                  We'll send a secure link to your email.
+                  {t('auth.secureLink')}
                 </p>
               )}
             </div>
@@ -307,14 +309,14 @@ export function UserAuthModal({
             {/* Tab switcher — only for signin / signup */}
             {panel !== 'forgot' && (
               <div className="mx-7 mb-5 flex rounded-xl bg-white/5 border border-white/8 p-1">
-                {(['signin', 'signup'] as const).map(t => (
-                  <button key={t} onClick={() => setPanel(t)}
+                {(['signin', 'signup'] as const).map(tab => (
+                  <button key={tab} onClick={() => setPanel(tab)}
                     className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${
-                      panel === t
+                      panel === tab
                         ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/25'
                         : 'text-white/40 hover:text-white/70'
                     }`}>
-                    {t === 'signin' ? 'Sign In' : 'Create Account'}
+                    {tab === 'signin' ? t('auth.signInTab') : t('auth.createAccountTab')}
                   </button>
                 ))}
               </div>
@@ -333,10 +335,10 @@ export function UserAuthModal({
 
                     {/* OAuth buttons */}
                     <div className="space-y-2">
-                      <OAuthButton provider="google" label="Continue with Google"
+                      <OAuthButton provider="google" label={t('auth.continueWith', { provider: 'Google' })}
                         icon={GoogleIcon} loading={oauthLoading === 'google'}
                         onClick={() => handleOAuth('google')} />
-                      <OAuthButton provider="discord" label="Continue with Discord"
+                      <OAuthButton provider="discord" label={t('auth.continueWith', { provider: 'Discord' })}
                         icon={DiscordIcon} loading={oauthLoading === 'discord'}
                         onClick={() => handleOAuth('discord')} />
                     </div>
@@ -351,13 +353,13 @@ export function UserAuthModal({
                     <OrDivider />
 
                     <form onSubmit={handleSignIn} className="space-y-3">
-                      <FieldInput icon={Mail} type="email" placeholder="Email"
+                      <FieldInput icon={Mail} type="email" placeholder={t('auth.emailLabel')}
                         value={siEmail} onChange={setSiEmail}
                         error={siErrors.email} autoComplete="email" />
 
                       <div>
                         <FieldInput icon={Lock}
-                          type={siShowPw ? 'text' : 'password'} placeholder="Password"
+                          type={siShowPw ? 'text' : 'password'} placeholder={t('auth.passwordLabel')}
                           value={siPass} onChange={setSiPass}
                           error={siErrors.password} autoComplete="current-password"
                           rightSlot={
@@ -369,7 +371,7 @@ export function UserAuthModal({
                         <div className="flex justify-end rtl:justify-start mt-1.5">
                           <button type="button" onClick={goToForgot}
                             className="text-xs text-purple-400 hover:text-purple-300 transition-colors">
-                            Forgot password?
+                            {t('auth.forgotPassword')}
                           </button>
                         </div>
                       </div>
@@ -386,14 +388,16 @@ export function UserAuthModal({
                           hover:from-purple-500 hover:to-blue-500 text-white font-semibold text-sm
                           transition-all shadow-lg shadow-purple-500/20 disabled:opacity-60
                           flex items-center justify-center gap-2 rtl:flex-row-reverse">
-                        {siLoading ? <><Loader2 className="w-4 h-4 animate-spin" />Signing in…</> : 'Sign In'}
+                        {siLoading
+                          ? <><Loader2 className="w-4 h-4 animate-spin" />{t('auth.signingIn')}</>
+                          : t('auth.signInTab')}
                       </button>
 
                       <p className="text-center text-white/25 text-xs pt-2">
-                        No account?{' '}
+                        {t('auth.noAccount')}{' '}
                         <button type="button" onClick={() => setPanel('signup')}
                           className="text-purple-400 hover:text-purple-300 underline">
-                          Create one free
+                          {t('auth.createOneFree')}
                         </button>
                       </p>
                     </form>
@@ -411,10 +415,10 @@ export function UserAuthModal({
                       <>
                         {/* OAuth buttons */}
                         <div className="space-y-2">
-                          <OAuthButton provider="google" label="Sign up with Google"
+                          <OAuthButton provider="google" label={t('auth.signUpWith', { provider: 'Google' })}
                             icon={GoogleIcon} loading={oauthLoading === 'google'}
                             onClick={() => handleOAuth('google')} />
-                          <OAuthButton provider="discord" label="Sign up with Discord"
+                          <OAuthButton provider="discord" label={t('auth.signUpWith', { provider: 'Discord' })}
                             icon={DiscordIcon} loading={oauthLoading === 'discord'}
                             onClick={() => handleOAuth('discord')} />
                         </div>
@@ -441,18 +445,18 @@ export function UserAuthModal({
                               <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                             </svg>
                           </div>
-                          <p className="text-white font-semibold">Account created!</p>
-                          <p className="text-white/45 text-xs mt-1">Signing you in…</p>
+                          <p className="text-white font-semibold">{t('auth.accountCreated')}</p>
+                          <p className="text-white/45 text-xs mt-1">{t('auth.signingYouIn')}</p>
                         </motion.div>
                       ) : (
                         <>
-                          <FieldInput icon={User} type="text" placeholder="Full name (optional)"
+                          <FieldInput icon={User} type="text" placeholder={t('auth.fullNameOptional')}
                             value={suName} onChange={setSuName} autoComplete="name" />
-                          <FieldInput icon={Mail} type="email" placeholder="Email"
+                          <FieldInput icon={Mail} type="email" placeholder={t('auth.emailLabel')}
                             value={suEmail} onChange={setSuEmail}
                             error={suErrors.email} autoComplete="email" />
                           <FieldInput icon={Lock}
-                            type={suShowPw ? 'text' : 'password'} placeholder="Password (min 8 chars)"
+                            type={suShowPw ? 'text' : 'password'} placeholder={t('auth.passwordMin8')}
                             value={suPass} onChange={setSuPass}
                             error={suErrors.password} autoComplete="new-password"
                             rightSlot={
@@ -461,7 +465,7 @@ export function UserAuthModal({
                                 {suShowPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                               </button>
                             } />
-                          <FieldInput icon={Lock} type="password" placeholder="Confirm password"
+                          <FieldInput icon={Lock} type="password" placeholder={t('auth.confirmPassword')}
                             value={suConfirm} onChange={setSuConfirm}
                             error={suErrors.confirm} autoComplete="new-password" />
 
@@ -478,15 +482,15 @@ export function UserAuthModal({
                               transition-all shadow-lg shadow-purple-500/20 disabled:opacity-60
                               flex items-center justify-center gap-2 rtl:flex-row-reverse">
                             {suLoading
-                              ? <><Loader2 className="w-4 h-4 animate-spin" />Creating account…</>
-                              : 'Create Account'}
+                              ? <><Loader2 className="w-4 h-4 animate-spin" />{t('auth.creatingAccount')}</>
+                              : t('auth.createAccountTab')}
                           </button>
 
                           <p className="text-center text-white/25 text-xs pt-2">
-                            Already have an account?{' '}
+                            {t('auth.haveAccount')}{' '}
                             <button type="button" onClick={() => setPanel('signin')}
                               className="text-purple-400 hover:text-purple-300 underline">
-                              Sign in
+                              {t('auth.signInTab')}
                             </button>
                           </p>
                         </>
@@ -508,22 +512,23 @@ export function UserAuthModal({
                           <CheckCircle className="w-7 h-7 text-emerald-400" />
                         </div>
                         <div>
-                          <p className="text-white font-semibold mb-1">Check your inbox</p>
+                          <p className="text-white font-semibold mb-1">{t('auth.checkYourInbox')}</p>
                           <p className="text-white/40 text-xs leading-relaxed">
-                            We sent a reset link to <span className="text-purple-300">{fpEmail}</span>.
-                            It expires in 1 hour.
+                            {t('auth.resetLinkSentPre')}{' '}
+                            <span className="text-purple-300">{fpEmail}</span>.{' '}
+                            {t('auth.resetLinkSentPost')}
                           </p>
                         </div>
                         <button type="button" onClick={() => setPanel('signin')}
                           className="flex items-center gap-1.5 mx-auto text-xs text-white/40
                             hover:text-white/70 transition-colors mt-2">
                           <ArrowLeft className="w-3.5 h-3.5" />
-                          Back to sign in
+                          {t('auth.backToSignIn')}
                         </button>
                       </div>
                     ) : (
                       <form onSubmit={handleForgotPassword} className="space-y-3">
-                        <FieldInput icon={Mail} type="email" placeholder="Your account email"
+                        <FieldInput icon={Mail} type="email" placeholder={t('auth.yourAccountEmail')}
                           value={fpEmail} onChange={setFpEmail}
                           error={fpError} autoComplete="email" />
 
@@ -533,15 +538,15 @@ export function UserAuthModal({
                             transition-all shadow-lg shadow-purple-500/20 disabled:opacity-60
                             flex items-center justify-center gap-2">
                           {fpLoading
-                            ? <><Loader2 className="w-4 h-4 animate-spin" />Sending…</>
-                            : 'Send Reset Link'}
+                            ? <><Loader2 className="w-4 h-4 animate-spin" />{t('auth.sending')}</>
+                            : t('auth.sendResetLink')}
                         </button>
 
                         <button type="button" onClick={() => setPanel('signin')}
                           className="flex items-center gap-1.5 mx-auto text-xs text-white/35
                             hover:text-white/65 transition-colors pt-1">
                           <ArrowLeft className="w-3.5 h-3.5" />
-                          Back to sign in
+                          {t('auth.backToSignIn')}
                         </button>
                       </form>
                     )}

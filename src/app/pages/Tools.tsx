@@ -101,42 +101,14 @@ export function Tools() {
   // CMS category translations: toolStatuses sub-map { "New": "Nouveau", ... }
   const [cmsStatusTrans, setCmsStatusTrans] = useState<Record<string, string>>({});
 
-  useEffect(() => {
-    loadTools();
-    fetchRatings();
-  }, []);
+  // Ratings only need fetching once — they're language-independent
+  useEffect(() => { fetchRatings(); }, []);
 
-  // Apply dynamic translations when language changes
-  useEffect(() => {
-    const applyTranslations = async () => {
-      // Always reload base English tools first
-      await loadTools();
-      
-      // If not English, fetch and merge translations
-      if (i18n.language !== 'en') {
-        const [trans, categoryTrans] = await Promise.all([
-          fetchTranslations(i18n.language, 'tools'),
-          fetchTranslations(i18n.language, 'categories'),
-        ]);
-        if (Object.keys(trans).length > 0) {
-          setTools(prev => prev.map(tool => ({
-            ...tool,
-            ...(trans[tool.id] ? deepMergeTranslations(tool, trans[tool.id]) : {}),
-          })));
-        }
-        // Extract toolStatuses sub-map for badge label overrides
-        if (categoryTrans.toolStatuses && typeof categoryTrans.toolStatuses === 'object') {
-          setCmsStatusTrans(categoryTrans.toolStatuses as Record<string, string>);
-        } else {
-          setCmsStatusTrans({});
-        }
-      } else {
-        setCmsStatusTrans({});
-      }
-    };
-    
-    applyTranslations();
-  }, [i18n.language]);
+  // Load tools whenever language changes (also covers initial mount).
+  // loadTools fetches tool data + translations in one Promise.all so the
+  // grid always renders translated content on the first paint — no English flash.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { loadTools(i18n.language); }, [i18n.language]);
 
   const fetchRatings = async () => {
     try {
@@ -150,25 +122,32 @@ export function Tools() {
     }
   };
 
-  const loadTools = async () => {
+  const loadTools = async (lang = i18n.language) => {
     try {
-      const [toolsResponse, settingsResponse] = await Promise.all([
+      // Fetch tool data, settings, AND translations in one go so we can render
+      // translated content immediately — no English flash on non-EN languages.
+      const [toolsResponse, settingsResponse, trans, categoryTrans] = await Promise.all([
         api.getTools(),
         api.getSettings(),
+        lang !== 'en' ? fetchTranslations(lang, 'tools')      : Promise.resolve({}),
+        lang !== 'en' ? fetchTranslations(lang, 'categories') : Promise.resolve({}),
       ]);
 
       if (settingsResponse.success && settingsResponse.data?.toolStatuses?.length) {
         setStatuses(settingsResponse.data.toolStatuses);
       }
 
-      const response = toolsResponse;
-      if (response.success && response.data && response.data.length > 0) {
-        // Transform tools to match the expected format for display
-        const transformedTools = response.data.map(tool => {
-          // Get the first available version for pricing and features
+      // CMS status-badge translations
+      if (lang !== 'en' && (categoryTrans as any)?.toolStatuses) {
+        setCmsStatusTrans((categoryTrans as any).toolStatuses as Record<string, string>);
+      } else {
+        setCmsStatusTrans({});
+      }
+
+      if (toolsResponse.success && toolsResponse.data && toolsResponse.data.length > 0) {
+        const transformedTools = toolsResponse.data.map(tool => {
           const firstVersion = tool.versions?.[0];
-          
-          // Determine price display
+
           let price = 'Free';
           let pricingSuffix = '';
           if (firstVersion) {
@@ -181,20 +160,26 @@ export function Tools() {
               if (firstVersion.monthlyPrice) pricingSuffix = '/mo';
             }
           }
-          
-          return {
+
+          const transformed = {
             ...tool,
             price,
             pricingSuffix,
             features: firstVersion?.features || [],
-            category: tool.category || 'Tools'
+            category: tool.category || 'Tools',
           };
+
+          // Merge translations immediately — component never sees English
+          const toolTrans = (trans as Record<string, any>)[tool.id];
+          return toolTrans
+            ? { ...transformed, ...deepMergeTranslations(transformed, toolTrans) }
+            : transformed;
         });
         setTools(transformedTools);
       }
     } catch (error) {
       console.error('Error loading tools:', error);
-      // Keep fallback tools
+      // Keep fallback tools on error
     }
     setLoading(false);
   };

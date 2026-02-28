@@ -12,12 +12,13 @@ import {
   Monitor, Zap, Star, ExternalLink, Sparkles, ShoppingCart, Quote,
   ChevronLeft, ChevronRight,
 } from 'lucide-react';
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import useEmblaCarousel from 'embla-carousel-react';
 import { useTracker } from '../hooks/useTracker';
 import { useTranslation } from 'react-i18next';
 import { fetchTranslations, deepMergeTranslations } from '../utils/translations';
+import { api } from '../utils/api';
 
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-e07959ec`;
 
@@ -827,58 +828,11 @@ export function ToolDetail() {
   const [cmsStatusTrans, setCmsStatusTrans] = useState<Record<string, string>>({});
   const isRTL = i18n.language === 'ar';
 
-  useEffect(() => { loadTool(); }, [slug]);
-
-  // Apply dynamic translations when language changes
-  useEffect(() => {
-    const applyTranslations = async () => {
-      // Always reload base English tool first
-      await loadTool();
-      
-      // If not English, fetch and merge translations
-      if (i18n.language !== 'en') {
-        const [trans, categoryTrans] = await Promise.all([
-          fetchTranslations(i18n.language, 'tools'),
-          fetchTranslations(i18n.language, 'categories'),
-        ]);
-        if (Object.keys(trans).length > 0) {
-          setTool(prev => {
-            if (!prev || !trans[prev.id]) return prev;
-            const merged = deepMergeTranslations(prev, trans[prev.id]) as Tool;
-            // Restore non-translatable version fields so enum checks (pricingModel,
-            // downloadUrl, prices, IDs) always keep the original English values.
-            if (merged.versions && prev.versions) {
-              merged.versions = merged.versions.map((mv: ToolVersion, i: number) => {
-                const orig = prev.versions![i];
-                if (!orig) return mv;
-                return {
-                  ...mv,
-                  pricingModel:          orig.pricingModel,
-                  monthlyPrice:          orig.monthlyPrice,
-                  yearlyPrice:           orig.yearlyPrice,
-                  lifetimePrice:         orig.lifetimePrice,
-                  downloadUrl:           orig.downloadUrl,
-                  lemonSqueezyVariantId: orig.lemonSqueezyVariantId,
-                  versionTypeOriginal:   orig.versionTypeOriginal ?? orig.versionType,
-                };
-              });
-            }
-            return merged;
-          });
-        }
-        // Extract toolStatuses sub-map for badge label overrides
-        if (categoryTrans.toolStatuses && typeof categoryTrans.toolStatuses === 'object') {
-          setCmsStatusTrans(categoryTrans.toolStatuses as Record<string, string>);
-        } else {
-          setCmsStatusTrans({});
-        }
-      } else {
-        setCmsStatusTrans({});
-      }
-    };
-    
-    applyTranslations();
-  }, [i18n.language]);
+  // Single effect — handles slug change AND language switch.
+  // loadTool now fetches tool + translations in one Promise.all so the
+  // component always renders translated content on the very first paint.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { loadTool(); }, [slug, i18n.language]);
 
   // Sync user identity into tracker when user changes
   useEffect(() => {
@@ -911,56 +865,81 @@ export function ToolDetail() {
     setAuthModalOpen(true);
   };
 
+  // Track the last slug we fired tool_view for, so re-running on language
+  // change doesn't double-count page views or re-fetch reviews unnecessarily.
+  const lastTrackedSlug = useRef<string | null>(null);
+
   const loadTool = async () => {
+    const lang = i18n.language; // capture at call time — effect re-runs on change
     try {
       setLoading(true);
       setError(null);
-      const safeGet = async (url: string) => {
-        try {
-          const r = await fetch(url, { headers: { Authorization: `Bearer ${publicAnonKey}` } });
-          if (!r.ok) return null;
-          return r.json();
-        } catch {
-          // Retry once after 1 s (handles Supabase cold-start timeout)
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          try {
-            const r = await fetch(url, { headers: { Authorization: `Bearer ${publicAnonKey}` } });
-            if (!r.ok) return null;
-            return r.json();
-          } catch (retryErr) {
-            console.error('[ToolDetail] fetch failed after retry:', url, retryErr);
-            return null;
-          }
-        }
-      };
 
-      const [result, settingsData] = await Promise.all([
-        safeGet(`${API_BASE}/tools`),
-        safeGet(`${API_BASE}/settings`),
+      // All four requests run in parallel; api.getTools / api.getSettings are
+      // read-through cached so repeat visits are instant (< 1 ms cache hit).
+      const [result, settingsData, trans, categoryTrans] = await Promise.all([
+        api.getTools(),
+        api.getSettings(),
+        lang !== 'en' ? fetchTranslations(lang, 'tools')      : Promise.resolve({}),
+        lang !== 'en' ? fetchTranslations(lang, 'categories') : Promise.resolve({}),
       ]);
 
       if (settingsData?.data?.toolStatuses?.length) {
         setStatuses(settingsData.data.toolStatuses);
       }
-      if (!result) throw new Error('Network error — could not reach server');
+      if (!result.success) throw new Error('Network error — could not reach server');
       if (result.success && result.data) {
         let found = result.data.find((t: Tool) => t.slug === slug)
           || result.data.find((t: Tool) => t.id === slug);
         if (found) {
           if (!found.versions && (found as any).toolVersions)
             found = { ...found, versions: (found as any).toolVersions };
-          // Preserve original versionType before translations
+          // Preserve original versionType before any translation overrides
           if (found.versions) {
             found.versions = found.versions.map((v: ToolVersion) => ({
               ...v,
-              versionTypeOriginal: v.versionTypeOriginal || v.versionType
+              versionTypeOriginal: v.versionTypeOriginal || v.versionType,
             }));
           }
-          setTool(found);
-          // Track tool view
-          track('tool_view', { toolId: found.id, toolName: found.name, toolSlug: found.slug ?? slug });
-          // Fetch reviews for this tool
-          fetchReviews(found.id);
+
+          // ── Merge translations before first setState so UI never shows English ──
+          if (lang !== 'en' && trans && Object.keys(trans).length > 0 && trans[found.id]) {
+            const merged = deepMergeTranslations(found, trans[found.id]) as Tool;
+            // Restore non-translatable version fields (prices, URLs, IDs)
+            if (merged.versions && found.versions) {
+              merged.versions = merged.versions.map((mv: ToolVersion, i: number) => {
+                const orig = found.versions![i];
+                if (!orig) return mv;
+                return {
+                  ...mv,
+                  pricingModel:          orig.pricingModel,
+                  monthlyPrice:          orig.monthlyPrice,
+                  yearlyPrice:           orig.yearlyPrice,
+                  lifetimePrice:         orig.lifetimePrice,
+                  downloadUrl:           orig.downloadUrl,
+                  lemonSqueezyVariantId: orig.lemonSqueezyVariantId,
+                  versionTypeOriginal:   orig.versionTypeOriginal ?? orig.versionType,
+                };
+              });
+            }
+            setTool(merged);
+          } else {
+            setTool(found);
+          }
+
+          // CMS status-badge translations
+          if (lang !== 'en' && categoryTrans && (categoryTrans as any).toolStatuses) {
+            setCmsStatusTrans((categoryTrans as any).toolStatuses as Record<string, string>);
+          } else {
+            setCmsStatusTrans({});
+          }
+
+          // Track view + fetch reviews only when the slug genuinely changes
+          if (lastTrackedSlug.current !== (found.slug ?? slug)) {
+            lastTrackedSlug.current = found.slug ?? slug ?? null;
+            track('tool_view', { toolId: found.id, toolName: found.name, toolSlug: found.slug ?? slug });
+            fetchReviews(found.id);
+          }
         } else {
           setError('Tool not found');
         }
@@ -1546,7 +1525,7 @@ export function ToolDetail() {
         >
           <GlassCard neonBorder className="p-10 flex flex-col sm:flex-row items-center justify-between gap-6 rtl:sm:flex-row-reverse">
             <div>
-              <div className="flex items-center gap-2 mb-1 rtl:flex-row-reverse">
+              <div className="flex items-center gap-2 mb-1">
                 <Zap className="w-4 h-4 text-purple-400" />
                 <span className="text-sm font-bold text-white">{t('tools.detail.needHelp')}</span>
               </div>

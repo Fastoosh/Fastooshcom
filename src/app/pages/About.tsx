@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion } from "motion/react";
 import { GlassCard } from "../components/shared/GlassCard";
 import { NeonButton } from "../components/shared/NeonButton";
@@ -8,9 +8,9 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faLinkedin, faInstagram, faBehance, faDribbble } from "@fortawesome/free-brands-svg-icons";
 import { useTranslation } from "react-i18next";
 import { fetchTranslations, deepMergeTranslations } from "../utils/translations";
-import { projectId, publicAnonKey } from '/utils/supabase/info';
+import { api } from "../utils/api";
 
-const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-e07959ec`;
+// (projectId / publicAnonKey no longer needed — team is fetched via api.getTeam())
 
 interface TeamMember {
   id: string;
@@ -33,28 +33,26 @@ export function About() {
   const [team,    setTeam]    = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => { fetchTeam(); }, []);
+  // Covers initial mount AND language changes — fetches team + translations in
+  // one Promise.all so members always render translated on the first paint.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { fetchTeam(i18n.language); }, [i18n.language]);
 
-  // Apply team translations when language changes
-  useEffect(() => {
-    if (i18n.language === 'en' || team.length === 0) return;
-    fetchTranslations(i18n.language, 'team').then(trans => {
-      if (Object.keys(trans).length > 0) {
-        setTeam(prev => prev.map(m => ({
-          ...m,
-          ...(trans[m.id] ? deepMergeTranslations(m, trans[m.id]) : {}),
-        })));
-      }
-    });
-  }, [i18n.language, team.length]);
-
-  const fetchTeam = async () => {
+  const fetchTeam = async (lang = i18n.language) => {
     try {
-      const response = await fetch(`${API_BASE}/team`, {
-        headers: { 'Authorization': `Bearer ${publicAnonKey}` },
-      });
-      const data = await response.json();
-      if (data.success) setTeam(data.data || []);
+      const [res, trans] = await Promise.all([
+        api.getTeam(),
+        lang !== 'en' ? fetchTranslations(lang, 'team') : Promise.resolve({}),
+      ]);
+      if (res.success) {
+        const members: TeamMember[] = res.data || [];
+        const merged = lang !== 'en' && Object.keys(trans).length > 0
+          ? members.map(m => m.id && (trans as Record<string, any>)[m.id]
+              ? deepMergeTranslations(m, (trans as Record<string, any>)[m.id]) as TeamMember
+              : m)
+          : members;
+        setTeam(merged);
+      }
     } catch (error) {
       console.error('Error fetching team:', error);
     } finally {
@@ -62,9 +60,12 @@ export function About() {
     }
   };
 
-  // Values with translated text, icons stay in code
-  const values = (t('about.values', { returnObjects: true }) as Array<{ title: string; description: string }>)
-    .map((v, i) => ({ ...v, icon: VALUE_ICONS[i] }));
+  // Values with translated text, icons stay in code — memoised per language (Option 4)
+  const values = useMemo(() =>
+    (t('about.values', { returnObjects: true }) as Array<{ title: string; description: string }>)
+      .map((v, i) => ({ ...v, icon: VALUE_ICONS[i] })),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [i18n.language]);
 
   return (
     <div className="min-h-screen py-24 px-6">

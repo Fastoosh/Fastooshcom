@@ -172,76 +172,49 @@ export function ProjectDetail() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // ──────────────────────────────────────────────────────────────────────────
 
-  useEffect(() => {
-    const loadProject = async () => {
-      if (!slug) {
-        setLoading(false);
-        return;
-      }
+  // Single effect — handles slug change AND language switch.
+  // Fetches project + translations in one Promise.all so the page always
+  // renders translated content on the very first paint — no English flash.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { loadProject(); }, [slug, i18n.language]);
 
-      console.log('Loading project with ID:', slug);
-      setLoading(true);
-      setError(null);
+  const loadProject = async () => {
+    if (!slug) { setLoading(false); return; }
+    const lang = i18n.language; // capture at call time
 
-      try {
-        const response = await api.getProject(slug);
-        console.log('Project API response:', response);
-        
-        if (response.success && response.data) {
-          setProject({
-            ...response.data,
-            thumbnail: response.data.imageUrl,
-            images: response.data.screenshots || [],
-          });
-        } else {
-          console.warn('Project not found, using fallback');
-          setError('Project not found');
-          // Keep fallback project
+    setLoading(true);
+    setError(null);
+
+    try {
+      // Fetch project + translations in parallel — merge before setState
+      const [response, trans] = await Promise.all([
+        api.getProject(slug),
+        lang !== 'en' ? fetchTranslations(lang, 'projects') : Promise.resolve({}),
+      ]);
+
+      if (response.success && response.data) {
+        let projectData = {
+          ...response.data,
+          thumbnail: response.data.imageUrl,
+          images: response.data.screenshots || [],
+        };
+
+        // Merge translations before first setState so UI never shows English
+        if (lang !== 'en' && Object.keys(trans).length > 0 && trans[projectData.id]) {
+          projectData = deepMergeTranslations(projectData, trans[projectData.id]) as typeof projectData;
         }
-      } catch (error) {
-        console.error('Error loading project:', error);
-        setError(`Failed to load project: ${error}`);
-        // Keep fallback project
-      } finally {
-        setLoading(false);
+
+        setProject(projectData);
+      } else {
+        setError('Project not found');
       }
-    };
-
-    loadProject();
-  }, [slug]);
-
-  // Apply dynamic translations when language changes
-  useEffect(() => {
-    const applyTranslations = async () => {
-      // Always reload base English project first
-      if (!slug) return;
-      
-      try {
-        const response = await api.getProject(slug);
-        if (response.success && response.data) {
-          let projectData = {
-            ...response.data,
-            thumbnail: response.data.imageUrl,
-            images: response.data.screenshots || [],
-          };
-
-          // If not English, fetch and merge translations
-          if (i18n.language !== 'en') {
-            const trans = await fetchTranslations(i18n.language, 'projects');
-            if (Object.keys(trans).length > 0 && trans[projectData.id]) {
-              projectData = deepMergeTranslations(projectData, trans[projectData.id]);
-            }
-          }
-
-          setProject(projectData);
-        }
-      } catch (err) {
-        console.warn('[ProjectDetail] Failed to apply translations:', err);
-      }
-    };
-    
-    applyTranslations();
-  }, [i18n.language, slug]);
+    } catch (err) {
+      console.error('Error loading project:', err);
+      setError(`Failed to load project: ${err}`);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Convert regular video URLs to embed URLs
   const getEmbedUrl = (url: string) => {
