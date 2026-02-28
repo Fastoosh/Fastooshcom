@@ -3,6 +3,8 @@ import { motion } from "motion/react";
 import { GlassCard } from "../components/shared/GlassCard";
 import { NeonButton } from "../components/shared/NeonButton";
 import { SeoHead } from "../components/shared/SeoHead";
+import { useTranslation } from "react-i18next";
+import { fetchTranslations, deepMergeTranslations } from "../utils/translations";
 import { api } from "../utils/api";
 
 // Fallback projects (used if API fails or returns no data)
@@ -66,13 +68,55 @@ const fallbackProjects = [
 ];
 
 export function Projects() {
-  const [activeCategory, setActiveCategory] = useState("All");
+  const { t, i18n } = useTranslation();
+  const [activeCategory, setActiveCategory] = useState("all");
   const [projects, setProjects] = useState(fallbackProjects);
   const [loading, setLoading] = useState(true);
+  const [categoryTranslations, setCategoryTranslations] = useState<Record<string, string>>({});
 
   useEffect(() => {
     loadProjects();
   }, []);
+
+  // Apply dynamic translations when language changes
+  useEffect(() => {
+    const applyTranslations = async () => {
+      // Always reload base English projects first
+      await loadProjects();
+      
+      // If not English, fetch and merge translations
+      if (i18n.language !== 'en') {
+        const [projectTrans, categoryTrans] = await Promise.all([
+          fetchTranslations(i18n.language, 'projects'),
+          fetchTranslations(i18n.language, 'categories'),
+        ]);
+        
+        // Apply project translations
+        if (Object.keys(projectTrans).length > 0) {
+          setProjects(prev => prev.map(p => ({
+            ...p,
+            ...(projectTrans[p.id] ? deepMergeTranslations(p, projectTrans[p.id]) : {}),
+          })));
+        }
+        
+        // Store category translations
+        if (Object.keys(categoryTrans).length > 0) {
+          // Support both the new structured format { projectCategories: {...} }
+          // and the old flat format { "Motion Design": "..." }
+          const flatMap: Record<string, string> =
+            categoryTrans.projectCategories && typeof categoryTrans.projectCategories === 'object'
+              ? (categoryTrans.projectCategories as Record<string, string>)
+              : (categoryTrans as Record<string, string>);
+          setCategoryTranslations(flatMap);
+        }
+      } else {
+        // Reset category translations for English
+        setCategoryTranslations({});
+      }
+    };
+    
+    applyTranslations();
+  }, [i18n.language]);
 
   const loadProjects = async () => {
     try {
@@ -87,7 +131,7 @@ export function Projects() {
     setLoading(false);
   };
 
-  const filteredProjects = activeCategory === "All" 
+  const filteredProjects = activeCategory === "all" 
     ? projects 
     : projects.filter(p => p.category === activeCategory);
 
@@ -109,11 +153,11 @@ export function Projects() {
           className="text-center mb-16"
         >
           <h1 className="text-5xl md:text-6xl tracking-tight mb-6">
-            Selected
-            <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent"> Projects</span>
+            {t('projects.titlePart1')}
+            <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent"> {t('projects.titlePart2')}</span>
           </h1>
           <p className="text-xl text-white/60 max-w-2xl mx-auto">
-            Curated work for ambitious brands and fast-growing startups
+            {t('projects.subtitle')}
           </p>
         </motion.div>
 
@@ -124,8 +168,9 @@ export function Projects() {
           transition={{ duration: 0.6, delay: 0.2 }}
           className="flex flex-wrap justify-center gap-3 mb-16"
         >
-          {["All", ...Array.from(new Set(projects.map((p) => p.category).filter(Boolean)))].map((category) => {
+          {["all", ...Array.from(new Set(projects.map((p) => p.category).filter(Boolean)))].map((category) => {
             const isActive = category === activeCategory;
+            const label = category === "all" ? t('projects.allFilter') : categoryTranslations[category] || category;
             return (
               <button
                 key={category}
@@ -136,7 +181,7 @@ export function Projects() {
                     : 'bg-white/5 text-white/70 border border-white/20 hover:bg-white/10 hover:text-white'
                 }`}
               >
-                {category}
+                {label}
               </button>
             );
           })}
@@ -144,7 +189,7 @@ export function Projects() {
 
         {/* Projects Grid */}
         {loading ? (
-          <div className="text-center text-white/60 py-12">Loading projects...</div>
+          <div className="text-center text-white/60 py-12">{t('projects.loading')}</div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {filteredProjects.map((project, index) => (
@@ -165,7 +210,7 @@ export function Projects() {
                     />
                   </div>
                   <div className="p-6">
-                    <div className="text-xs text-purple-400 mb-2">{project.category}</div>
+                    <div className="text-xs text-purple-400 mb-2">{categoryTranslations[project.category] || project.category}</div>
                     <h3 className="text-xl mb-2">{project.title}</h3>
                     <p className="text-white/60 text-sm">{project.description}</p>
                   </div>
@@ -184,9 +229,9 @@ export function Projects() {
           className="text-center mt-24"
         >
           <GlassCard className="p-12 w-full">
-            <h3 className="text-2xl mb-4">Have a project in mind?</h3>
-            <p className="text-white/60 mb-6">Let's create something extraordinary together</p>
-            <NeonButton href="/work-with-us">Work with us</NeonButton>
+            <h3 className="text-2xl mb-4">{t('projects.ctaHeading')}</h3>
+            <p className="text-white/60 mb-6">{t('projects.ctaSubtitle')}</p>
+            <NeonButton href="/work-with-us">{t('common.workWithUs')}</NeonButton>
           </GlassCard>
         </motion.div>
       </div>

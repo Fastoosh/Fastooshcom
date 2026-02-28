@@ -1,9 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router';
 import { motion } from 'motion/react';
 import { GlassCard } from "../components/shared/GlassCard";
 import { NeonButton } from "../components/shared/NeonButton";
 import { SeoHead } from "../components/shared/SeoHead";
 import { Zap, Star, Crown } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import { fetchTranslations, deepMergeTranslations } from "../utils/translations";
 import { api } from "../utils/api";
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 
@@ -89,15 +92,51 @@ const getBadgeStyle = (category: string, statuses: { label: string; color: strin
 };
 
 export function Tools() {
+  const { t, i18n } = useTranslation();
+  const navigate = useNavigate();
   const [tools, setTools] = useState(fallbackTools);
   const [loading, setLoading] = useState(true);
   const [statuses, setStatuses] = useState<{ label: string; color: string }[]>(DEFAULT_STATUSES);
   const [ratings, setRatings] = useState<Record<string, { avg: number; count: number }>>({});
+  // CMS category translations: toolStatuses sub-map { "New": "Nouveau", ... }
+  const [cmsStatusTrans, setCmsStatusTrans] = useState<Record<string, string>>({});
 
   useEffect(() => {
     loadTools();
     fetchRatings();
   }, []);
+
+  // Apply dynamic translations when language changes
+  useEffect(() => {
+    const applyTranslations = async () => {
+      // Always reload base English tools first
+      await loadTools();
+      
+      // If not English, fetch and merge translations
+      if (i18n.language !== 'en') {
+        const [trans, categoryTrans] = await Promise.all([
+          fetchTranslations(i18n.language, 'tools'),
+          fetchTranslations(i18n.language, 'categories'),
+        ]);
+        if (Object.keys(trans).length > 0) {
+          setTools(prev => prev.map(tool => ({
+            ...tool,
+            ...(trans[tool.id] ? deepMergeTranslations(tool, trans[tool.id]) : {}),
+          })));
+        }
+        // Extract toolStatuses sub-map for badge label overrides
+        if (categoryTrans.toolStatuses && typeof categoryTrans.toolStatuses === 'object') {
+          setCmsStatusTrans(categoryTrans.toolStatuses as Record<string, string>);
+        } else {
+          setCmsStatusTrans({});
+        }
+      } else {
+        setCmsStatusTrans({});
+      }
+    };
+    
+    applyTranslations();
+  }, [i18n.language]);
 
   const fetchRatings = async () => {
     try {
@@ -148,7 +187,7 @@ export function Tools() {
             price,
             pricingSuffix,
             features: firstVersion?.features || [],
-            category: tool.featured ? 'Popular' : (tool.category || 'Tools')
+            category: tool.category || 'Tools'
           };
         });
         setTools(transformedTools);
@@ -177,34 +216,40 @@ export function Tools() {
           transition={{ duration: 0.6 }}
           className="text-center mb-16"
         >
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full backdrop-blur-xl bg-white/5 border border-white/20 mb-6">
+          <div className="inline-flex items-center gap-2 rtl:flex-row-reverse px-4 py-2 rounded-full backdrop-blur-xl bg-white/5 border border-white/20 mb-6">
             <Zap className="w-4 h-4 text-purple-400" />
-            <span className="text-sm text-white/90">Production Tools Lab</span>
+            <span className="text-sm text-white/90">{t('tools.labBadge')}</span>
           </div>
           <h1 className="text-5xl md:text-6xl tracking-tight mb-6">
-            Tools built
-            <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent"> in-house</span>
+            {t('tools.titlePart1')}
+            <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent"> {t('tools.titlePart2')}</span>
           </h1>
           <p className="text-xl text-white/60 max-w-2xl mx-auto">
-            Speed up your production workflow with our battle-tested automation scripts and plugins
+            {t('tools.subtitle')}
           </p>
         </motion.div>
 
         {/* Tools Grid */}
         {loading ? (
-          <div className="text-center text-white/60 py-12">Loading tools...</div>
+          <div className="text-center text-white/60 py-12">{t('tools.loading')}</div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-24">
+          <div className="flex flex-wrap justify-center gap-8 mb-24">
             {tools.map((tool, index) => (
               <motion.div
                 key={tool.id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5, delay: index * 0.1 }}
+                className="w-full md:w-[calc(50%-1rem)] lg:w-[calc(33.333%-1.334rem)]"
               >
-                <GlassCard hover neonBorder className="p-0 h-full flex flex-col overflow-hidden">
+                <GlassCard
+                  hover
+                  neonBorder
+                  className="p-0 h-full flex flex-col overflow-hidden cursor-pointer"
+                  onClick={() => navigate(`/tools/${tool.slug || tool.id}`)}
+                >
                   {/* Tool Image */}
-                  <div className="relative w-full h-44 flex-shrink-0 overflow-hidden">
+                  <div className="relative w-full aspect-square flex-shrink-0 overflow-hidden">
                     {tool.imageUrl ? (
                       <img
                         src={tool.imageUrl}
@@ -216,16 +261,17 @@ export function Tools() {
                     )}
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
                     {/* Category badge overlaid on image */}
-                    <div className="absolute top-3 left-3">
-                      <div className={`inline-flex items-center gap-1 px-3 py-1 rounded-full bg-gradient-to-r ${getBadgeStyle(tool.category, statuses)} text-white text-xs`}>
+                    <div className="absolute top-3 left-3 rtl:left-auto rtl:right-3 flex items-center gap-1.5 rtl:flex-row-reverse">
+                      <div className={`inline-flex items-center gap-1 rtl:flex-row-reverse px-3 py-1 rounded-full bg-gradient-to-r ${getBadgeStyle(tool.category, statuses)} text-white text-xs`}>
                         {tool.category === "Pro" && <Crown className="w-3 h-3" />}
                         {tool.category === "Popular" && <Star className="w-3 h-3" />}
                         {tool.category === "New" && <Zap className="w-3 h-3" />}
-                        {tool.category}
+                        {cmsStatusTrans[tool.category] || t(`tools.statuses.${tool.category}`, { defaultValue: tool.category })}
                       </div>
+
                     </div>
                     {/* Price overlaid bottom-right */}
-                    <div className="absolute bottom-3 right-3 flex items-baseline gap-1.5">
+                    <div className="absolute bottom-3 right-3 rtl:right-auto rtl:left-3 flex items-baseline gap-1.5">
                       {tool.oldPrice && (
                         <span className="text-xs text-white/40 line-through">{tool.oldPrice}</span>
                       )}
@@ -240,10 +286,10 @@ export function Tools() {
 
                   {/* Content */}
                   <div className="p-6 flex flex-col flex-grow">
-                    <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="flex items-start justify-between gap-2 rtl:flex-row-reverse mb-2">
                       <h3 className="text-xl">{tool.name}</h3>
                       {ratings[tool.id] && (
-                        <div className="flex items-center gap-1 flex-shrink-0 mt-1">
+                        <div className="flex items-center gap-1 rtl:flex-row-reverse flex-shrink-0 mt-1">
                           <Star className="w-3.5 h-3.5 text-yellow-400 fill-yellow-400" />
                           <span className="text-yellow-400 text-xs font-bold">{ratings[tool.id].avg}</span>
                           <span className="text-white/25 text-xs">({ratings[tool.id].count})</span>
@@ -253,11 +299,8 @@ export function Tools() {
                     <p className="text-white/60 mb-6 flex-grow text-sm leading-relaxed">{tool.description}</p>
 
                     {/* CTA */}
-                    <NeonButton 
-                      href={`/tools/${tool.slug || tool.id}`} 
-                      className="w-full justify-center"
-                    >
-                      Get it
+                    <NeonButton className="w-full justify-center">
+                      {t('tools.getIt')}
                     </NeonButton>
                   </div>
                 </GlassCard>
@@ -274,11 +317,11 @@ export function Tools() {
           className="text-center"
         >
           <GlassCard className="p-12 w-full">
-            <h3 className="text-2xl mb-4">Need help or custom development?</h3>
+            <h3 className="text-2xl mb-4">{t('tools.ctaHeading')}</h3>
             <p className="text-white/60 mb-6">
-              All tools include documentation and email support. Custom scripts available on request.
+              {t('tools.ctaSubtitle')}
             </p>
-            <NeonButton href="/work-with-us">Work with us</NeonButton>
+            <NeonButton href="/work-with-us">{t('common.workWithUs')}</NeonButton>
           </GlassCard>
         </motion.div>
       </div>

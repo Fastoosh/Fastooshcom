@@ -89,7 +89,7 @@ function LicenseKey({ value }: { value: string }) {
   const masked = value.replace(/[^-]/g, '•').slice(0, 36) + (value.length > 36 ? '…' : '');
   return (
     <div className="mt-4 rounded-xl bg-black/50 border border-white/10 overflow-hidden">
-      <div className="flex items-center gap-3 px-4 py-3">
+      <div className="flex items-center gap-3 rtl:flex-row-reverse px-4 py-3">
         <Key className="w-4 h-4 text-purple-400 flex-shrink-0" />
         <code className="flex-1 text-xs font-mono text-white/70 truncate select-all">{visible ? value : masked}</code>
         <button onClick={() => setVisible(v => !v)} className="text-white/30 hover:text-white/70 transition-colors flex-shrink-0" title={visible ? 'Hide key' : 'Reveal key'}>
@@ -99,8 +99,8 @@ function LicenseKey({ value }: { value: string }) {
           {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
         </button>
       </div>
-      <div className="px-4 pb-3 flex items-center gap-2">
-        <span className="text-[10px] text-white/25 uppercase tracking-widest font-semibold">License Key</span>
+      <div className="px-4 pb-3 flex items-center gap-2 rtl:flex-row-reverse">
+        <span className="text-[10px] text-white/25 uppercase font-semibold">License Key</span>
         {copied && <motion.span initial={{ opacity: 0, x: -4 }} animate={{ opacity: 1, x: 0 }} className="text-[10px] text-emerald-400">✓ Copied!</motion.span>}
       </div>
     </div>
@@ -124,8 +124,8 @@ function ActivationGuide({ versionType, activationSteps }: { versionType?: strin
   return (
     <div className="mt-3 rounded-xl border border-white/8 overflow-hidden">
       <button onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center justify-between px-4 py-3 text-white/40 hover:text-white/70 transition-colors text-left">
-        <span className="flex items-center gap-2 text-xs font-semibold">
+        className="w-full flex items-center justify-between rtl:flex-row-reverse px-4 py-3 text-white/40 hover:text-white/70 transition-colors text-left rtl:text-right">
+        <span className="flex items-center gap-2 rtl:flex-row-reverse text-xs font-semibold">
           <Zap className="w-3.5 h-3.5 text-purple-400" />
           How to activate {versionType && `(${versionType})`}
         </span>
@@ -136,7 +136,7 @@ function ActivationGuide({ versionType, activationSteps }: { versionType?: strin
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden">
             <ol className="px-4 pb-4 space-y-2.5">
               {steps.map(s => (
-                <li key={s.n} className="flex gap-3 items-start">
+                <li key={s.n} className="flex gap-3 items-start rtl:flex-row-reverse">
                   <span className="w-5 h-5 rounded-full bg-purple-500/20 text-purple-400 text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">{s.n}</span>
                   <p className="text-white/45 text-xs leading-relaxed">{s.text}</p>
                 </li>
@@ -189,7 +189,7 @@ function PurchaseCard({
   return (
     <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.06 }}>
       <GlassCard className={`overflow-hidden ${isActive ? '' : 'opacity-70'}`}>
-        <div className="flex items-start gap-4 p-5">
+        <div className="flex items-start gap-4 p-5 rtl:flex-row-reverse">
           <div className="w-16 h-16 rounded-xl overflow-hidden flex-shrink-0 bg-white/5 border border-white/10">
             {tool?.imageUrl ? <img src={tool.imageUrl} alt={tool.name} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center relative">
               {tool?.imageUrl && (
@@ -204,18 +204,18 @@ function PurchaseCard({
             </div>}
           </div>
           <div className="flex-1 min-w-0">
-            <div className="flex items-start justify-between gap-2 flex-wrap">
+            <div className="flex items-start justify-between gap-2 flex-wrap rtl:flex-row-reverse">
               <div>
                 <h3 className="text-white font-bold text-base leading-tight mb-1">{tool?.name || purchase.productName}</h3>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border ${status.color}`}>{status.icon}{status.label}</span>
+                <div className="flex items-center gap-2 flex-wrap rtl:flex-row-reverse">
+                  <span className={`inline-flex items-center gap-1 rtl:flex-row-reverse px-2 py-0.5 rounded-full text-xs font-semibold border ${status.color}`}>{status.icon}{status.label}</span>
                   {purchase.toolVersions?.versionType && <span className={`px-2 py-0.5 rounded-full text-xs font-bold border ${variantColor}`}>{purchase.toolVersions.versionType}</span>}
-                  {date && <span className="flex items-center gap-1 text-white/30 text-xs"><Calendar className="w-3 h-3" />{date}</span>}
+                  {date && <span className="flex items-center gap-1 rtl:flex-row-reverse text-white/30 text-xs"><Calendar className="w-3 h-3" />{date}</span>}
                 </div>
               </div>
-              <div className="flex items-center gap-3 flex-shrink-0">
+              <div className="flex items-center gap-3 flex-shrink-0 rtl:flex-row-reverse">
                 {purchase.amount != null && <span className="text-white/30 text-xs font-mono">{purchase.currency} {Number(purchase.amount).toFixed(2)}</span>}
-                {tool?.slug && <Link to={`/tools/${tool.slug}`} className="inline-flex items-center gap-1 text-xs font-semibold text-purple-400 hover:text-purple-300 transition-colors">View Tool <ArrowUpRight className="w-3 h-3" /></Link>}
+                {tool?.slug && <Link to={`/tools/${tool.slug}`} className="inline-flex items-center gap-1 rtl:flex-row-reverse text-xs font-semibold text-purple-400 hover:text-purple-300 transition-colors">View Tool <ArrowUpRight className="w-3 h-3" /></Link>}
               </div>
             </div>
           </div>
@@ -224,20 +224,20 @@ function PurchaseCard({
         <div className="p-5 space-y-3">
           {purchase.licenseKey && <LicenseKey value={purchase.licenseKey} />}
           {expiryDate && (
-            <p className={`text-xs flex items-center gap-1.5 ${isActive ? 'text-white/30' : 'text-yellow-400/70'}`}>
+            <p className={`text-xs flex items-center gap-1.5 rtl:flex-row-reverse ${isActive ? 'text-white/30' : 'text-yellow-400/70'}`}>
               <Clock className="w-3.5 h-3.5" />
               {isActive ? 'Renews on' : 'Expired on'}:
               <span className={isActive ? 'text-white/50' : 'text-yellow-400'}>{expiryDate}</span>
             </p>
           )}
           {!expiryDate && isActive && (
-            <p className="text-white/25 text-xs flex items-center gap-1.5">
+            <p className="text-white/25 text-xs flex items-center gap-1.5 rtl:flex-row-reverse">
               <CheckCircle className="w-3.5 h-3.5 text-emerald-400/70" />Lifetime license — never expires
             </p>
           )}
           {/* Expired / cancelled warning banner */}
           {!isActive && purchase.status !== 'refunded' && (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-yellow-400/8 border border-yellow-400/20">
+            <div className="flex items-center gap-2 rtl:flex-row-reverse px-3 py-2 rounded-lg bg-yellow-400/8 border border-yellow-400/20">
               <AlertCircle className="w-3.5 h-3.5 text-yellow-400 flex-shrink-0" />
               <p className="text-yellow-400/80 text-xs flex-1">
                 {purchase.status === 'cancelled' ? 'Your subscription has been cancelled.' : 'Your subscription has expired.'}
@@ -245,16 +245,16 @@ function PurchaseCard({
               </p>
             </div>
           )}
-          <div className="flex flex-wrap gap-2 pt-1">
+          <div className="flex flex-wrap gap-2 pt-1 rtl:flex-row-reverse">
             {/* Free download — only when active */}
             {isFree && downloadUrl && isActive && (
-              <a href={downloadUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/25 transition-all">
+              <a href={downloadUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rtl:flex-row-reverse px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/25 transition-all">
                 <Download className="w-3.5 h-3.5" />Download
               </a>
             )}
             {/* Active paid — manage */}
             {!isFree && isActive && purchase.lemonSqueezyOrderId && (
-              <a href="https://app.lemonsqueezy.com/my-orders/" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold bg-white/8 hover:bg-white/12 text-white/60 hover:text-white border border-white/10 transition-all">
+              <a href="https://app.lemonsqueezy.com/my-orders/" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rtl:flex-row-reverse px-4 py-2 rounded-lg text-sm font-semibold bg-white/8 hover:bg-white/12 text-white/60 hover:text-white border border-white/10 transition-all">
                 <ExternalLink className="w-3.5 h-3.5" />Manage on Lemon Squeezy
               </a>
             )}
@@ -263,7 +263,7 @@ function PurchaseCard({
               tool?.slug ? (
                 <Link
                   to={`/tools/${tool.slug}`}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold bg-yellow-400/15 hover:bg-yellow-400/25 text-yellow-300 border border-yellow-400/30 transition-all"
+                  className="inline-flex items-center gap-2 rtl:flex-row-reverse px-4 py-2 rounded-lg text-sm font-semibold bg-yellow-400/15 hover:bg-yellow-400/25 text-yellow-300 border border-yellow-400/30 transition-all"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />Renew Subscription
                 </Link>
@@ -271,14 +271,14 @@ function PurchaseCard({
                 <a
                   href="https://app.lemonsqueezy.com/my-orders/"
                   target="_blank" rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold bg-yellow-400/15 hover:bg-yellow-400/25 text-yellow-300 border border-yellow-400/30 transition-all"
+                  className="inline-flex items-center gap-2 rtl:flex-row-reverse px-4 py-2 rounded-lg text-sm font-semibold bg-yellow-400/15 hover:bg-yellow-400/25 text-yellow-300 border border-yellow-400/30 transition-all"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />Renew on Lemon Squeezy
                 </a>
               )
             )}
             {tool?.slug && (
-              <Link to={`/tools/${tool.slug}`} className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 border border-purple-500/25 transition-all">
+              <Link to={`/tools/${tool.slug}`} className="inline-flex items-center gap-2 rtl:flex-row-reverse px-4 py-2 rounded-lg text-sm font-semibold bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 border border-purple-500/25 transition-all">
                 <Sparkles className="w-3.5 h-3.5" />Open Tool Page
               </Link>
             )}
@@ -286,7 +286,7 @@ function PurchaseCard({
             {tool?.id && isActive && (
               <button
                 onClick={() => onOpenReview(tool.id, tool.name, tool.imageUrl, existingReview)}
-                className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                className={`inline-flex items-center gap-2 rtl:flex-row-reverse px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
                   existingReview
                     ? 'bg-yellow-400/10 hover:bg-yellow-400/20 text-yellow-300 border border-yellow-400/25'
                     : 'bg-white/6 hover:bg-white/10 text-white/50 hover:text-white/80 border border-white/10'
@@ -381,7 +381,7 @@ function SecuritySection({
 
   return (
     <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.18 }} className="mt-8">
-      <div className="flex items-center gap-3 mb-4">
+      <div className="flex items-center gap-3 rtl:flex-row-reverse mb-4">
         <Shield className="w-5 h-5 text-purple-400" />
         <h2 className="text-xl font-bold text-white">Security</h2>
       </div>
@@ -391,9 +391,9 @@ function SecuritySection({
         <div>
           <button
             onClick={() => { setPwOpen(o => !o); setEmOpen(false); setPwErrors({}); setPwOk(false); }}
-            className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-white/3 transition-colors"
+            className="w-full flex items-center justify-between rtl:flex-row-reverse px-5 py-4 text-left rtl:text-right hover:bg-white/3 transition-colors"
           >
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 rtl:flex-row-reverse">
               <KeyRound className="w-4 h-4 text-white/40" />
               <div>
                 <p className="text-white/80 text-sm font-semibold">Change password</p>
@@ -406,40 +406,40 @@ function SecuritySection({
             {pwOpen && (
               <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden">
                 {pwOk ? (
-                  <div className="px-5 pb-5 pt-1 flex items-center gap-2 text-emerald-400 text-sm">
+                  <div className="px-5 pb-5 pt-1 flex items-center gap-2 rtl:flex-row-reverse text-emerald-400 text-sm">
                     <CheckCircle className="w-4 h-4" />Password updated successfully!
                   </div>
                 ) : (
                   <form onSubmit={handlePwSubmit} className="px-5 pb-5 pt-1 space-y-3">
                     <div>
                       <div className={`relative flex items-center rounded-xl border transition-colors ${pwErrors.pw ? 'border-red-500/50 bg-red-500/5' : 'border-white/10 bg-white/5 focus-within:border-purple-500/50'}`}>
-                        <Lock className="absolute left-3.5 w-4 h-4 text-white/30 pointer-events-none" />
+                        <Lock className="absolute left-3.5 rtl:left-auto rtl:right-3.5 w-4 h-4 text-white/30 pointer-events-none" />
                         <input type={showPw ? 'text' : 'password'} placeholder="New password (min 8 chars)" value={newPw} autoComplete="new-password"
                           onChange={e => setNewPw(e.target.value)}
-                          className="w-full bg-transparent pl-10 pr-10 py-3 text-sm text-white placeholder:text-white/25 focus:outline-none" />
-                        <button type="button" onClick={() => setShowPw(v => !v)} className="absolute right-3 text-white/25 hover:text-white/60 transition-colors">
+                          className="w-full bg-transparent pl-10 rtl:pl-3 rtl:pr-10 pr-10 py-3 text-sm text-white placeholder:text-white/25 focus:outline-none" />
+                        <button type="button" onClick={() => setShowPw(v => !v)} className="absolute right-3 rtl:right-auto rtl:left-3 text-white/25 hover:text-white/60 transition-colors">
                           {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                         </button>
                       </div>
-                      {pwErrors.pw && <p className="text-xs text-red-400 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3" />{pwErrors.pw}</p>}
+                      {pwErrors.pw && <p className="text-xs text-red-400 mt-1 flex items-center gap-1 rtl:flex-row-reverse"><AlertCircle className="w-3 h-3" />{pwErrors.pw}</p>}
                     </div>
                     <div>
                       <div className={`relative flex items-center rounded-xl border transition-colors ${pwErrors.confirm ? 'border-red-500/50 bg-red-500/5' : 'border-white/10 bg-white/5 focus-within:border-purple-500/50'}`}>
-                        <Lock className="absolute left-3.5 w-4 h-4 text-white/30 pointer-events-none" />
+                        <Lock className="absolute left-3.5 rtl:left-auto rtl:right-3.5 w-4 h-4 text-white/30 pointer-events-none" />
                         <input type="password" placeholder="Confirm new password" value={confirmPw} autoComplete="new-password"
                           onChange={e => setConfirmPw(e.target.value)}
-                          className="w-full bg-transparent pl-10 pr-4 py-3 text-sm text-white placeholder:text-white/25 focus:outline-none" />
+                          className="w-full bg-transparent pl-10 rtl:pl-4 rtl:pr-10 pr-4 py-3 text-sm text-white placeholder:text-white/25 focus:outline-none" />
                       </div>
-                      {pwErrors.confirm && <p className="text-xs text-red-400 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3" />{pwErrors.confirm}</p>}
+                      {pwErrors.confirm && <p className="text-xs text-red-400 mt-1 flex items-center gap-1 rtl:flex-row-reverse"><AlertCircle className="w-3 h-3" />{pwErrors.confirm}</p>}
                     </div>
                     {pwErrors.form && (
-                      <div className="flex items-center gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/20">
+                      <div className="flex items-center gap-2 rtl:flex-row-reverse p-3 rounded-xl bg-red-500/10 border border-red-500/20">
                         <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
                         <p className="text-red-400 text-xs">{pwErrors.form}</p>
                       </div>
                     )}
                     <button type="submit" disabled={pwLoading}
-                      className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-semibold text-sm transition-all shadow-lg shadow-purple-500/20 disabled:opacity-60 flex items-center gap-2">
+                      className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-semibold text-sm transition-all shadow-lg shadow-purple-500/20 disabled:opacity-60 flex items-center gap-2 rtl:flex-row-reverse">
                       {pwLoading ? <><Loader2 className="w-4 h-4 animate-spin" />Updating…</> : 'Update Password'}
                     </button>
                   </form>
@@ -453,9 +453,9 @@ function SecuritySection({
         <div>
           <button
             onClick={() => { setEmOpen(o => !o); setPwOpen(false); setEmError(''); setEmOk(false); }}
-            className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-white/3 transition-colors"
+            className="w-full flex items-center justify-between rtl:flex-row-reverse px-5 py-4 text-left rtl:text-right hover:bg-white/3 transition-colors"
           >
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 rtl:flex-row-reverse">
               <Mail className="w-4 h-4 text-white/40" />
               <div>
                 <p className="text-white/80 text-sm font-semibold">Change email</p>
@@ -469,25 +469,25 @@ function SecuritySection({
               <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden">
                 {emOk ? (
                   <div className="px-5 pb-5 pt-1 space-y-1">
-                    <div className="flex items-center gap-2 text-emerald-400 text-sm">
+                    <div className="flex items-center gap-2 rtl:flex-row-reverse text-emerald-400 text-sm">
                       <CheckCircle className="w-4 h-4" />Confirmation sent!
                     </div>
-                    <p className="text-white/35 text-xs pl-6">Check your new inbox — click the link to confirm the change.</p>
+                    <p className="text-white/35 text-xs pl-6 rtl:pl-0 rtl:pr-6">Check your new inbox — click the link to confirm the change.</p>
                   </div>
                 ) : (
                   <form onSubmit={handleEmSubmit} className="px-5 pb-5 pt-1 space-y-3">
                     <div>
                       <div className={`relative flex items-center rounded-xl border transition-colors ${emError ? 'border-red-500/50 bg-red-500/5' : 'border-white/10 bg-white/5 focus-within:border-purple-500/50'}`}>
-                        <Mail className="absolute left-3.5 w-4 h-4 text-white/30 pointer-events-none" />
+                        <Mail className="absolute left-3.5 rtl:left-auto rtl:right-3.5 w-4 h-4 text-white/30 pointer-events-none" />
                         <input type="email" placeholder="New email address" value={newEmail} autoComplete="email"
                           onChange={e => setNewEmail(e.target.value)}
-                          className="w-full bg-transparent pl-10 pr-4 py-3 text-sm text-white placeholder:text-white/25 focus:outline-none" />
+                          className="w-full bg-transparent pl-10 rtl:pl-4 rtl:pr-10 pr-4 py-3 text-sm text-white placeholder:text-white/25 focus:outline-none" />
                       </div>
-                      {emError && <p className="text-xs text-red-400 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3" />{emError}</p>}
+                      {emError && <p className="text-xs text-red-400 mt-1 flex items-center gap-1 rtl:flex-row-reverse"><AlertCircle className="w-3 h-3" />{emError}</p>}
                     </div>
                     <p className="text-white/25 text-xs">A confirmation link will be sent to the new address.</p>
                     <button type="submit" disabled={emLoading}
-                      className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-semibold text-sm transition-all shadow-lg shadow-purple-500/20 disabled:opacity-60 flex items-center gap-2">
+                      className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-semibold text-sm transition-all shadow-lg shadow-purple-500/20 disabled:opacity-60 flex items-center gap-2 rtl:flex-row-reverse">
                       {emLoading ? <><Loader2 className="w-4 h-4 animate-spin" />Sending…</> : 'Send Confirmation'}
                     </button>
                   </form>
@@ -712,7 +712,7 @@ export function Account() {
                     <div className="space-y-2">
                       {(['google', 'discord'] as const).map(p => (
                         <button key={p} type="button" onClick={() => handleOAuth(p)} disabled={!!oauthLoading || authLoading}
-                          className="w-full flex items-center justify-center gap-2.5 py-2.5 px-4 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20 text-white/80 hover:text-white text-sm font-medium transition-all duration-150 disabled:opacity-50">
+                          className="w-full flex items-center justify-center gap-2.5 rtl:flex-row-reverse py-2.5 px-4 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20 text-white/80 hover:text-white text-sm font-medium transition-all duration-150 disabled:opacity-50">
                           {oauthLoading === p
                             ? <Loader2 className="w-4 h-4 animate-spin text-white/40" />
                             : p === 'google'
@@ -722,30 +722,30 @@ export function Account() {
                         </button>
                       ))}
                     </div>
-                    {oauthError && <p className="text-xs text-red-400 flex items-center gap-1"><AlertCircle className="w-3 h-3 shrink-0"/>{oauthError}</p>}
+                    {oauthError && <p className="text-xs text-red-400 flex items-center gap-1 rtl:flex-row-reverse"><AlertCircle className="w-3 h-3 shrink-0"/>{oauthError}</p>}
                     <div className="flex items-center gap-3"><div className="flex-1 h-px bg-white/8"/><span className="text-white/25 text-xs">or</span><div className="flex-1 h-px bg-white/8"/></div>
 
                     <form onSubmit={handleSignInEmail} className="space-y-3">
                     <div className={`relative flex items-center rounded-xl border transition-colors ${authErrors.email ? 'border-red-500/50 bg-red-500/5' : 'border-white/10 bg-white/5 focus-within:border-purple-500/50'}`}>
-                      <Mail className="absolute left-3.5 w-4 h-4 text-white/30 pointer-events-none" />
-                      <input type="email" placeholder="Email" value={authEmail} autoComplete="email" onChange={e => setAuthEmail(e.target.value)} className="w-full bg-transparent pl-10 pr-4 py-3 text-sm text-white placeholder:text-white/25 focus:outline-none" />
+                      <Mail className="absolute left-3.5 rtl:left-auto rtl:right-3.5 w-4 h-4 text-white/30 pointer-events-none" />
+                      <input type="email" placeholder="Email" value={authEmail} autoComplete="email" onChange={e => setAuthEmail(e.target.value)} className="w-full bg-transparent pl-10 rtl:pl-4 rtl:pr-10 pr-4 py-3 text-sm text-white placeholder:text-white/25 focus:outline-none" />
                     </div>
-                    {authErrors.email && <p className="text-xs text-red-400 -mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/>{authErrors.email}</p>}
+                    {authErrors.email && <p className="text-xs text-red-400 -mt-1 flex items-center gap-1 rtl:flex-row-reverse"><AlertCircle className="w-3 h-3"/>{authErrors.email}</p>}
                     <div>
                       <div className={`relative flex items-center rounded-xl border transition-colors ${authErrors.password ? 'border-red-500/50 bg-red-500/5' : 'border-white/10 bg-white/5 focus-within:border-purple-500/50'}`}>
-                        <Lock className="absolute left-3.5 w-4 h-4 text-white/30 pointer-events-none" />
-                        <input type={authShowPw ? 'text' : 'password'} placeholder="Password" value={authPass} autoComplete="current-password" onChange={e => setAuthPass(e.target.value)} className="w-full bg-transparent pl-10 pr-10 py-3 text-sm text-white placeholder:text-white/25 focus:outline-none" />
-                        <button type="button" onClick={() => setAuthShowPw(v => !v)} className="absolute right-3 text-white/25 hover:text-white/60 transition-colors">
+                        <Lock className="absolute left-3.5 rtl:left-auto rtl:right-3.5 w-4 h-4 text-white/30 pointer-events-none" />
+                        <input type={authShowPw ? 'text' : 'password'} placeholder="Password" value={authPass} autoComplete="current-password" onChange={e => setAuthPass(e.target.value)} className="w-full bg-transparent pl-10 rtl:pl-3 rtl:pr-10 pr-10 py-3 text-sm text-white placeholder:text-white/25 focus:outline-none" />
+                        <button type="button" onClick={() => setAuthShowPw(v => !v)} className="absolute right-3 rtl:right-auto rtl:left-3 text-white/25 hover:text-white/60 transition-colors">
                           {authShowPw ? <EyeOff className="w-4 h-4"/> : <Eye className="w-4 h-4"/>}
                         </button>
                       </div>
-                      <div className="flex justify-end mt-1.5">
+                      <div className="flex justify-end rtl:justify-start mt-1.5">
                         <button type="button" onClick={() => { setAuthTab('forgot'); setAuthErrors({}); setFpSent(false); }} className="text-xs text-purple-400 hover:text-purple-300 transition-colors">Forgot password?</button>
                       </div>
                     </div>
-                    {authErrors.password && <p className="text-xs text-red-400 -mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/>{authErrors.password}</p>}
-                    {authErrors.form && <div className="flex items-center gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/20"><AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" /><p className="text-red-400 text-xs">{authErrors.form}</p></div>}
-                    <button type="submit" disabled={authLoading || !!oauthLoading} className="w-full py-3 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-semibold text-sm transition-all shadow-lg shadow-purple-500/20 disabled:opacity-60 flex items-center justify-center gap-2">
+                    {authErrors.password && <p className="text-xs text-red-400 -mt-1 flex items-center gap-1 rtl:flex-row-reverse"><AlertCircle className="w-3 h-3"/>{authErrors.password}</p>}
+                    {authErrors.form && <div className="flex items-center gap-2 rtl:flex-row-reverse p-3 rounded-xl bg-red-500/10 border border-red-500/20"><AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" /><p className="text-red-400 text-xs">{authErrors.form}</p></div>}
+                    <button type="submit" disabled={authLoading || !!oauthLoading} className="w-full py-3 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-semibold text-sm transition-all shadow-lg shadow-purple-500/20 disabled:opacity-60 flex items-center justify-center gap-2 rtl:flex-row-reverse">
                       {authLoading ? <><Loader2 className="w-4 h-4 animate-spin"/>Signing in…</> : 'Sign In'}
                     </button>
                     </form>
@@ -760,7 +760,7 @@ export function Account() {
                       <div className="space-y-2">
                         {(['google', 'discord'] as const).map(p => (
                           <button key={p} type="button" onClick={() => handleOAuth(p)} disabled={!!oauthLoading || authLoading}
-                            className="w-full flex items-center justify-center gap-2.5 py-2.5 px-4 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20 text-white/80 hover:text-white text-sm font-medium transition-all duration-150 disabled:opacity-50">
+                            className="w-full flex items-center justify-center gap-2.5 rtl:flex-row-reverse py-2.5 px-4 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20 text-white/80 hover:text-white text-sm font-medium transition-all duration-150 disabled:opacity-50">
                             {oauthLoading === p ? <Loader2 className="w-4 h-4 animate-spin text-white/40" />
                               : p === 'google'
                                 ? <svg viewBox="0 0 24 24" className="w-4 h-4"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
@@ -769,7 +769,7 @@ export function Account() {
                           </button>
                         ))}
                       </div>
-                      {oauthError && <p className="text-xs text-red-400 flex items-center gap-1"><AlertCircle className="w-3 h-3 shrink-0"/>{oauthError}</p>}
+                      {oauthError && <p className="text-xs text-red-400 flex items-center gap-1 rtl:flex-row-reverse"><AlertCircle className="w-3 h-3 shrink-0"/>{oauthError}</p>}
                       <div className="flex items-center gap-3"><div className="flex-1 h-px bg-white/8"/><span className="text-white/25 text-xs">or</span><div className="flex-1 h-px bg-white/8"/></div>
                     </>)}
                     <form onSubmit={handleSignUpEmail} className="space-y-3">
@@ -782,29 +782,29 @@ export function Account() {
                     ) : (
                       <>
                         <div className="relative flex items-center rounded-xl border border-white/10 bg-white/5 focus-within:border-purple-500/50 transition-colors">
-                          <User className="absolute left-3.5 w-4 h-4 text-white/30 pointer-events-none" />
-                          <input type="text" placeholder="Full name (optional)" value={authName} autoComplete="name" onChange={e => setAuthName(e.target.value)} className="w-full bg-transparent pl-10 pr-4 py-3 text-sm text-white placeholder:text-white/25 focus:outline-none" />
+                          <User className="absolute left-3.5 rtl:left-auto rtl:right-3.5 w-4 h-4 text-white/30 pointer-events-none" />
+                          <input type="text" placeholder="Full name (optional)" value={authName} autoComplete="name" onChange={e => setAuthName(e.target.value)} className="w-full bg-transparent pl-10 rtl:pl-4 rtl:pr-10 pr-4 py-3 text-sm text-white placeholder:text-white/25 focus:outline-none" />
                         </div>
                         <div className={`relative flex items-center rounded-xl border transition-colors ${authErrors.email ? 'border-red-500/50 bg-red-500/5' : 'border-white/10 bg-white/5 focus-within:border-purple-500/50'}`}>
-                          <Mail className="absolute left-3.5 w-4 h-4 text-white/30 pointer-events-none" />
-                          <input type="email" placeholder="Email" value={authEmail} autoComplete="email" onChange={e => setAuthEmail(e.target.value)} className="w-full bg-transparent pl-10 pr-4 py-3 text-sm text-white placeholder:text-white/25 focus:outline-none" />
+                          <Mail className="absolute left-3.5 rtl:left-auto rtl:right-3.5 w-4 h-4 text-white/30 pointer-events-none" />
+                          <input type="email" placeholder="Email" value={authEmail} autoComplete="email" onChange={e => setAuthEmail(e.target.value)} className="w-full bg-transparent pl-10 rtl:pl-4 rtl:pr-10 pr-4 py-3 text-sm text-white placeholder:text-white/25 focus:outline-none" />
                         </div>
-                        {authErrors.email && <p className="text-xs text-red-400 -mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/>{authErrors.email}</p>}
+                        {authErrors.email && <p className="text-xs text-red-400 -mt-1 flex items-center gap-1 rtl:flex-row-reverse"><AlertCircle className="w-3 h-3"/>{authErrors.email}</p>}
                         <div className={`relative flex items-center rounded-xl border transition-colors ${authErrors.password ? 'border-red-500/50 bg-red-500/5' : 'border-white/10 bg-white/5 focus-within:border-purple-500/50'}`}>
-                          <Lock className="absolute left-3.5 w-4 h-4 text-white/30 pointer-events-none" />
-                          <input type={authShowPw ? 'text' : 'password'} placeholder="Password (min 8 chars)" value={authPass} autoComplete="new-password" onChange={e => setAuthPass(e.target.value)} className="w-full bg-transparent pl-10 pr-10 py-3 text-sm text-white placeholder:text-white/25 focus:outline-none" />
-                          <button type="button" onClick={() => setAuthShowPw(v => !v)} className="absolute right-3 text-white/25 hover:text-white/60 transition-colors">
+                          <Lock className="absolute left-3.5 rtl:left-auto rtl:right-3.5 w-4 h-4 text-white/30 pointer-events-none" />
+                          <input type={authShowPw ? 'text' : 'password'} placeholder="Password (min 8 chars)" value={authPass} autoComplete="new-password" onChange={e => setAuthPass(e.target.value)} className="w-full bg-transparent pl-10 rtl:pl-3 rtl:pr-10 pr-10 py-3 text-sm text-white placeholder:text-white/25 focus:outline-none" />
+                          <button type="button" onClick={() => setAuthShowPw(v => !v)} className="absolute right-3 rtl:right-auto rtl:left-3 text-white/25 hover:text-white/60 transition-colors">
                             {authShowPw ? <EyeOff className="w-4 h-4"/> : <Eye className="w-4 h-4"/>}
                           </button>
                         </div>
-                        {authErrors.password && <p className="text-xs text-red-400 -mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/>{authErrors.password}</p>}
+                        {authErrors.password && <p className="text-xs text-red-400 -mt-1 flex items-center gap-1 rtl:flex-row-reverse"><AlertCircle className="w-3 h-3"/>{authErrors.password}</p>}
                         <div className={`relative flex items-center rounded-xl border transition-colors ${authErrors.confirm ? 'border-red-500/50 bg-red-500/5' : 'border-white/10 bg-white/5 focus-within:border-purple-500/50'}`}>
-                          <Lock className="absolute left-3.5 w-4 h-4 text-white/30 pointer-events-none" />
-                          <input type="password" placeholder="Confirm password" value={authConfirm} autoComplete="new-password" onChange={e => setAuthConfirm(e.target.value)} className="w-full bg-transparent pl-10 pr-4 py-3 text-sm text-white placeholder:text-white/25 focus:outline-none" />
+                          <Lock className="absolute left-3.5 rtl:left-auto rtl:right-3.5 w-4 h-4 text-white/30 pointer-events-none" />
+                          <input type="password" placeholder="Confirm password" value={authConfirm} autoComplete="new-password" onChange={e => setAuthConfirm(e.target.value)} className="w-full bg-transparent pl-10 rtl:pl-4 rtl:pr-10 pr-4 py-3 text-sm text-white placeholder:text-white/25 focus:outline-none" />
                         </div>
-                        {authErrors.confirm && <p className="text-xs text-red-400 -mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/>{authErrors.confirm}</p>}
-                        {authErrors.form && <div className="flex items-center gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/20"><AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" /><p className="text-red-400 text-xs">{authErrors.form}</p></div>}
-                        <button type="submit" disabled={authLoading || !!oauthLoading} className="w-full py-3 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-semibold text-sm transition-all shadow-lg shadow-purple-500/20 disabled:opacity-60 flex items-center justify-center gap-2">
+                        {authErrors.confirm && <p className="text-xs text-red-400 -mt-1 flex items-center gap-1 rtl:flex-row-reverse"><AlertCircle className="w-3 h-3"/>{authErrors.confirm}</p>}
+                        {authErrors.form && <div className="flex items-center gap-2 rtl:flex-row-reverse p-3 rounded-xl bg-red-500/10 border border-red-500/20"><AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" /><p className="text-red-400 text-xs">{authErrors.form}</p></div>}
+                        <button type="submit" disabled={authLoading || !!oauthLoading} className="w-full py-3 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-semibold text-sm transition-all shadow-lg shadow-purple-500/20 disabled:opacity-60 flex items-center justify-center gap-2 rtl:flex-row-reverse">
                           {authLoading ? <><Loader2 className="w-4 h-4 animate-spin"/>Creating account…</> : 'Create Account'}
                         </button>
                       </>
@@ -823,23 +823,23 @@ export function Account() {
                           <p className="text-white font-semibold mb-1">Check your inbox</p>
                           <p className="text-white/40 text-xs leading-relaxed">We sent a reset link to <span className="text-purple-300">{authEmail}</span>. It expires in 1 hour.</p>
                         </div>
-                        <button type="button" onClick={() => setAuthTab('signin')} className="flex items-center gap-1.5 mx-auto text-xs text-white/40 hover:text-white/70 transition-colors">
-                          <ArrowLeft className="w-3.5 h-3.5" />Back to sign in
+                        <button type="button" onClick={() => setAuthTab('signin')} className="flex items-center gap-1.5 rtl:flex-row-reverse mx-auto text-xs text-white/40 hover:text-white/70 transition-colors">
+                          <ArrowLeft className="w-3.5 h-3.5 rtl:rotate-180" />Back to sign in
                         </button>
                       </div>
                     ) : (
                       <form onSubmit={handleForgotPassword} className="space-y-3">
                         <div className={`relative flex items-center rounded-xl border transition-colors ${authErrors.email ? 'border-red-500/50 bg-red-500/5' : 'border-white/10 bg-white/5 focus-within:border-purple-500/50'}`}>
-                          <Mail className="absolute left-3.5 w-4 h-4 text-white/30 pointer-events-none" />
-                          <input type="email" placeholder="Your account email" value={authEmail} autoComplete="email" onChange={e => setAuthEmail(e.target.value)} className="w-full bg-transparent pl-10 pr-4 py-3 text-sm text-white placeholder:text-white/25 focus:outline-none" />
+                          <Mail className="absolute left-3.5 rtl:left-auto rtl:right-3.5 w-4 h-4 text-white/30 pointer-events-none" />
+                          <input type="email" placeholder="Your account email" value={authEmail} autoComplete="email" onChange={e => setAuthEmail(e.target.value)} className="w-full bg-transparent pl-10 rtl:pl-4 rtl:pr-10 pr-4 py-3 text-sm text-white placeholder:text-white/25 focus:outline-none" />
                         </div>
-                        {authErrors.email && <p className="text-xs text-red-400 -mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/>{authErrors.email}</p>}
-                        {authErrors.form && <div className="flex items-center gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/20"><AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" /><p className="text-red-400 text-xs">{authErrors.form}</p></div>}
-                        <button type="submit" disabled={authLoading} className="w-full py-3 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-semibold text-sm transition-all shadow-lg shadow-purple-500/20 disabled:opacity-60 flex items-center justify-center gap-2">
+                        {authErrors.email && <p className="text-xs text-red-400 -mt-1 flex items-center gap-1 rtl:flex-row-reverse"><AlertCircle className="w-3 h-3"/>{authErrors.email}</p>}
+                        {authErrors.form && <div className="flex items-center gap-2 rtl:flex-row-reverse p-3 rounded-xl bg-red-500/10 border border-red-500/20"><AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" /><p className="text-red-400 text-xs">{authErrors.form}</p></div>}
+                        <button type="submit" disabled={authLoading} className="w-full py-3 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-semibold text-sm transition-all shadow-lg shadow-purple-500/20 disabled:opacity-60 flex items-center justify-center gap-2 rtl:flex-row-reverse">
                           {authLoading ? <><Loader2 className="w-4 h-4 animate-spin"/>Sending…</> : 'Send Reset Link'}
                         </button>
-                        <button type="button" onClick={() => setAuthTab('signin')} className="flex items-center gap-1.5 mx-auto text-xs text-white/35 hover:text-white/65 transition-colors pt-1">
-                          <ArrowLeft className="w-3.5 h-3.5" />Back to sign in
+                        <button type="button" onClick={() => setAuthTab('signin')} className="flex items-center gap-1.5 rtl:flex-row-reverse mx-auto text-xs text-white/35 hover:text-white/65 transition-colors pt-1">
+                          <ArrowLeft className="w-3.5 h-3.5 rtl:rotate-180" />Back to sign in
                         </button>
                       </form>
                     )}
@@ -867,8 +867,8 @@ export function Account() {
       <div className="max-w-3xl mx-auto px-6">
 
         <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}>
-          <Link to="/tools" className="inline-flex items-center gap-1.5 text-sm text-white/40 hover:text-white/80 transition-colors mb-10">
-            <ArrowLeft className="w-3.5 h-3.5" />Back to Tools
+          <Link to="/tools" className="inline-flex items-center gap-1.5 rtl:flex-row-reverse text-sm text-white/40 hover:text-white/80 transition-colors mb-10">
+            <ArrowLeft className="w-3.5 h-3.5 rtl:rotate-180" />Back to Tools
           </Link>
         </motion.div>
 
@@ -881,7 +881,7 @@ export function Account() {
               exit={{ opacity: 0, y: -8, scale: 0.97 }}
               className="mb-5"
             >
-              <div className="flex items-center gap-3 px-5 py-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/25">
+              <div className="flex items-center gap-3 rtl:flex-row-reverse px-5 py-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/25">
                 <div className="w-8 h-8 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center flex-shrink-0">
                   <Gift className="w-4 h-4 text-emerald-400" />
                 </div>
@@ -907,8 +907,8 @@ export function Account() {
             {/* Top gradient bar */}
             <div className="h-1 w-full bg-gradient-to-r from-purple-500 via-blue-500 to-cyan-500" />
             <div className="p-6">
-              <div className="flex items-center justify-between gap-4 flex-wrap">
-                <div className="flex items-center gap-4">
+              <div className="flex items-center justify-between gap-4 flex-wrap rtl:flex-row-reverse">
+                <div className="flex items-center gap-4 rtl:flex-row-reverse">
                   <div className="relative">
                     {avatarUrl ? (
                       <img src={avatarUrl} alt={displayName} className="w-14 h-14 rounded-full object-cover border-2 border-purple-500/40 shadow-lg shadow-purple-500/20" />
@@ -922,12 +922,12 @@ export function Account() {
                   <div>
                     <p className="text-white font-bold text-lg leading-tight">{displayName}</p>
                     <p className="text-white/40 text-sm">{user.email}</p>
-                    <span className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full bg-purple-500/15 border border-purple-500/25 text-purple-300 text-[10px] font-semibold">
+                    <span className="inline-flex items-center gap-1 rtl:flex-row-reverse mt-1.5 px-2 py-0.5 rounded-full bg-purple-500/15 border border-purple-500/25 text-purple-300 text-[10px] font-semibold">
                       <Star className="w-2.5 h-2.5" />Fastoosh Member
                     </span>
                   </div>
                 </div>
-                <button onClick={handleSignOut} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm text-white/50 hover:text-white/80 border border-white/10 hover:border-white/20 bg-white/5 hover:bg-white/8 transition-all">
+                <button onClick={handleSignOut} className="flex items-center gap-2 rtl:flex-row-reverse px-4 py-2 rounded-xl text-sm text-white/50 hover:text-white/80 border border-white/10 hover:border-white/20 bg-white/5 hover:bg-white/8 transition-all">
                   <LogOut className="w-4 h-4" />Sign out
                 </button>
               </div>
@@ -955,8 +955,8 @@ export function Account() {
 
         {/* ── Licenses ── */}
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}>
-          <div className="flex items-center justify-between mb-5">
-            <div className="flex items-center gap-3">
+          <div className="flex items-center justify-between rtl:flex-row-reverse mb-5">
+            <div className="flex items-center gap-3 rtl:flex-row-reverse">
               <div className="w-8 h-8 rounded-lg bg-purple-500/15 border border-purple-500/25 flex items-center justify-center">
                 <ShoppingBag className="w-4 h-4 text-purple-400" />
               </div>
@@ -969,7 +969,7 @@ export function Account() {
               <button
                 onClick={() => syncAndFetch(session.access_token)}
                 disabled={purchasesLoading}
-                className="flex items-center gap-1.5 text-xs text-white/30 hover:text-white/60 transition-colors disabled:opacity-50 px-3 py-1.5 rounded-lg border border-white/8 hover:border-white/15 bg-white/3 hover:bg-white/6"
+                className="flex items-center gap-1.5 rtl:flex-row-reverse text-xs text-white/30 hover:text-white/60 transition-colors disabled:opacity-50 px-3 py-1.5 rounded-lg border border-white/8 hover:border-white/15 bg-white/3 hover:bg-white/6"
                 title="Refresh & sync purchases"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${purchasesLoading ? 'animate-spin' : ''}`} />
@@ -987,7 +987,7 @@ export function Account() {
 
           {purchasesError && !purchasesLoading && (
             <GlassCard className="p-6 border border-red-500/20 bg-red-500/5">
-              <div className="flex items-start gap-3">
+              <div className="flex items-start gap-3 rtl:flex-row-reverse">
                 <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
                 <div>
                   <p className="text-red-400 text-sm font-semibold mb-1">Could not load purchases</p>
@@ -1015,12 +1015,12 @@ export function Account() {
                 </p>
                 <div className="flex flex-wrap justify-center gap-3">
                   <NeonButton href="/tools" variant="primary">
-                    <Sparkles className="w-4 h-4 mr-2" />Browse Tools
+                    <Sparkles className="w-4 h-4 mr-2 rtl:mr-0 rtl:ml-2" />Browse Tools
                   </NeonButton>
                 </div>
               </div>
               {/* Info tip */}
-              <div className="border-t border-white/6 px-6 py-4 flex items-start gap-3 bg-white/2">
+              <div className="border-t border-white/6 px-6 py-4 flex items-start gap-3 rtl:flex-row-reverse bg-white/2">
                 <Info className="w-4 h-4 text-white/25 flex-shrink-0 mt-0.5" />
                 <p className="text-white/25 text-xs leading-relaxed">
                   Purchased a tool before creating your account? Hit the <strong className="text-white/40">Sync</strong> button above — we'll automatically link it to your email.
@@ -1057,7 +1057,7 @@ export function Account() {
                 </div>
                 <button
                   onClick={() => setSupportOpen(true)}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 hover:text-purple-200 border border-purple-500/25 hover:border-purple-500/40 transition-all"
+                  className="inline-flex items-center gap-2 rtl:flex-row-reverse px-4 py-2 rounded-xl text-sm font-semibold bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 hover:text-purple-200 border border-purple-500/25 hover:border-purple-500/40 transition-all"
                 >
                   <Send className="w-3.5 h-3.5" />Get Support
                 </button>

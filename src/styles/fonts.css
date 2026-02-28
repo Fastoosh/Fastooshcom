@@ -1,0 +1,51 @@
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300..900&display=swap');
+
+/* ── Cairo for Arabic ──────────────────────────────────────────────────────── */
+html[lang="ar"],
+html[dir="rtl"] {
+  font-family: 'Cairo', sans-serif;
+}
+
+/* ── RTL typography corrections ────────────────────────────────────────────── */
+
+/*
+ * Arabic script has no concept of letter-spacing.
+ * The `tracking-tight` and similar Tailwind classes must be neutralised.
+ */
+[dir="rtl"] * {
+  letter-spacing: 0 !important;
+}
+
+/* Arabic needs more generous line-height for comfortable reading */
+[dir="rtl"] p,
+[dir="rtl"] li,
+[dir="rtl"] blockquote {
+  line-height: 1.9;
+}
+
+[dir="rtl"] h1,
+[dir="rtl"] h2,
+[dir="rtl"] h3,
+[dir="rtl"] h4,
+[dir="rtl"] h5,
+[dir="rtl"] h6 {
+  line-height: 1.65;
+}
+
+/* ── RTL text-alignment helpers ─────────────────────────────────────────────── */
+
+/*
+ * Many Tailwind classes hard-code `text-left`.
+ * In an RTL document those should resolve to right-aligned instead.
+ */
+[dir="rtl"] .text-left {
+  text-align: right;
+}
+
+/*
+ * Any placeholder text should also align with the field direction.
+ */
+[dir="rtl"] input::placeholder,
+[dir="rtl"] textarea::placeholder {
+  text-align: right;
+}

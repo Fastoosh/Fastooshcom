@@ -6,15 +6,17 @@ interface GlassCardProps {
   className?: string;
   hover?: boolean;
   neonBorder?: boolean;
+  onClick?: () => void;
 }
 
-export function GlassCard({ children, className = "", hover = false, neonBorder = false }: GlassCardProps) {
+export function GlassCard({ children, className = "", hover = false, neonBorder = false, onClick }: GlassCardProps) {
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   return (
     <motion.div
       className={`relative rounded-2xl backdrop-blur-xl shadow-2xl ${neonBorder ? '' : 'border border-white/10'} ${className}`}
       {...(neonBorder ? { 'data-fastoosh-dark': 'true' } : {})}
+      onClick={onClick}
       style={{
         backgroundColor: neonBorder 
           ? 'var(--fastoosh-card-dark, rgba(255,255,255,0.02))'

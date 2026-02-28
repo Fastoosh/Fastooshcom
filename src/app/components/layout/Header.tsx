@@ -2,18 +2,21 @@ import { Link, useLocation, useNavigate } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
 import { NeonButton } from "../shared/NeonButton";
 import { UserAuthModal } from "../shared/UserAuthModal";
+import { LanguageSwitcher } from "../shared/LanguageSwitcher";
 import { useUserAuth } from "../../hooks/useUserAuth";
+import { useTranslation } from "react-i18next";
 import { useState, useRef, useEffect } from "react";
 import { X, User, ShoppingBag, LogOut } from "lucide-react";
 import { useLogo } from "../../context/LogoContext";
 
 export function Header() {
   const location = useLocation();
-  const navigate = useNavigate();
+  const navigate  = useNavigate();
+  const { t }     = useTranslation();
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [authModalOpen, setAuthModalOpen] = useState(false);
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [authModalOpen,  setAuthModalOpen]  = useState(false);
+  const [userMenuOpen,   setUserMenuOpen]   = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const { activeLogoUrl, logoText, logoHeight } = useLogo();
 
@@ -31,10 +34,10 @@ export function Header() {
   }, []);
 
   const navItems = [
-    { label: "Home",     path: "/" },
-    { label: "Projects", path: "/projects" },
-    { label: "Tools",    path: "/tools" },
-    { label: "About",    path: "/about" },
+    { label: t('nav.home'),     path: "/" },
+    { label: t('nav.projects'), path: "/projects" },
+    { label: t('nav.tools'),    path: "/tools" },
+    { label: t('nav.about'),    path: "/about" },
   ];
 
   const handleSignOut = async () => {
@@ -43,9 +46,9 @@ export function Header() {
     navigate('/tools');
   };
 
-  const avatarUrl    = user?.user_metadata?.avatar_url;
-  const displayName  = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email?.split('@')[0] || '';
-  const initials     = displayName.slice(0, 2).toUpperCase();
+  const avatarUrl   = user?.user_metadata?.avatar_url;
+  const displayName = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email?.split('@')[0] || '';
+  const initials    = displayName.slice(0, 2).toUpperCase();
 
   return (
     <>
@@ -53,7 +56,7 @@ export function Header() {
         className="sticky top-0 z-50 backdrop-blur-2xl border-b border-white/5"
         style={{ backgroundColor: 'var(--fastoosh-header-bg, rgba(0,0,0,0.10))' }}
       >
-        <nav className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+        <nav className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between rtl:flex-row-reverse">
           {/* Logo */}
           <Link to="/" onClick={() => setMobileMenuOpen(false)}>
             <motion.div
@@ -68,9 +71,7 @@ export function Header() {
                   className="w-auto object-contain"
                 />
               ) : (
-                <span
-                  className="text-2xl font-bold bg-gradient-to-r from-violet-400 via-purple-300 to-pink-400 bg-clip-text text-transparent"
-                >
+                <span className="text-2xl font-bold bg-gradient-to-r from-violet-400 via-purple-300 to-pink-400 bg-clip-text text-transparent">
                   {logoText}
                 </span>
               )}
@@ -78,7 +79,7 @@ export function Header() {
           </Link>
 
           {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center gap-1">
+          <div className="hidden md:flex items-center gap-1 rtl:flex-row-reverse">
             {navItems.map((item) => {
               const isActive = location.pathname === item.path;
               return (
@@ -102,7 +103,10 @@ export function Header() {
           </div>
 
           {/* Desktop right side */}
-          <div className="hidden md:flex items-center gap-3">
+          <div className="hidden md:flex items-center gap-3 rtl:flex-row-reverse">
+            {/* Language switcher */}
+            <LanguageSwitcher variant="compact" />
+
             {!loading && (
               <>
                 {user ? (
@@ -114,23 +118,16 @@ export function Header() {
                         border border-white/10 hover:border-purple-500/40
                         hover:bg-purple-500/10 transition-all group"
                       style={{ backgroundColor: 'var(--fastoosh-signin-bg, rgba(255,255,255,0.05))' }}
-                      aria-label="User menu"
+                      aria-label={t('nav.myAccount')}
                     >
                       {avatarUrl ? (
-                        <img
-                          src={avatarUrl}
-                          alt={displayName}
-                          className="w-7 h-7 rounded-full object-cover"
-                        />
+                        <img src={avatarUrl} alt={displayName} className="w-7 h-7 rounded-full object-cover" />
                       ) : (
-                        <div className="w-7 h-7 rounded-full bg-purple-500/30 flex items-center
-                          justify-center text-purple-300 text-xs font-bold">
+                        <div className="w-7 h-7 rounded-full bg-purple-500/30 flex items-center justify-center text-purple-300 text-xs font-bold">
                           {initials}
                         </div>
                       )}
-                      <span className="fastoosh-nav-link text-sm max-w-24 truncate">
-                        {displayName}
-                      </span>
+                      <span className="fastoosh-nav-link text-sm max-w-24 truncate">{displayName}</span>
                     </button>
 
                     {/* Dropdown */}
@@ -141,42 +138,37 @@ export function Header() {
                           animate={{ opacity: 1, y: 0, scale: 1 }}
                           exit={{ opacity: 0, y: 8, scale: 0.95 }}
                           transition={{ duration: 0.15 }}
-                          className="absolute right-0 top-full mt-2 w-52 rounded-xl
+                          className="absolute right-0 rtl:right-auto rtl:left-0 top-full mt-2 w-52 rounded-xl
                             bg-black/95 backdrop-blur-xl border border-white/10
                             shadow-2xl shadow-black/60 overflow-hidden z-50"
                         >
-                          {/* User info header */}
                           <div className="px-4 py-3 border-b border-white/8">
                             <p className="text-white font-semibold text-sm truncate">{displayName}</p>
                             <p className="text-white/40 text-xs truncate">{user.email}</p>
                           </div>
-                          {/* Menu items */}
                           <div className="py-1">
                             <Link
                               to="/account"
                               onClick={() => setUserMenuOpen(false)}
-                              className="flex items-center gap-3 px-4 py-2.5 text-sm text-white/70
-                                hover:text-white hover:bg-white/5 transition-colors"
+                              className="flex items-center gap-3 rtl:flex-row-reverse px-4 py-2.5 text-sm text-white/70 hover:text-white hover:bg-white/5 transition-colors"
                             >
                               <ShoppingBag className="w-4 h-4" />
-                              My Purchases
+                              {t('nav.myPurchases')}
                             </Link>
                             <Link
                               to="/account"
                               onClick={() => setUserMenuOpen(false)}
-                              className="flex items-center gap-3 px-4 py-2.5 text-sm text-white/70
-                                hover:text-white hover:bg-white/5 transition-colors"
+                              className="flex items-center gap-3 rtl:flex-row-reverse px-4 py-2.5 text-sm text-white/70 hover:text-white hover:bg-white/5 transition-colors"
                             >
                               <User className="w-4 h-4" />
-                              My Account
+                              {t('nav.myAccount')}
                             </Link>
                             <button
                               onClick={handleSignOut}
-                              className="w-full flex items-center gap-3 px-4 py-2.5 text-sm
-                                text-red-400 hover:text-red-300 hover:bg-red-500/5 transition-colors"
+                              className="w-full flex items-center gap-3 rtl:flex-row-reverse px-4 py-2.5 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/5 transition-colors"
                             >
                               <LogOut className="w-4 h-4" />
-                              Sign out
+                              {t('nav.signOut')}
                             </button>
                           </div>
                         </motion.div>
@@ -187,19 +179,19 @@ export function Header() {
                   /* Sign in button */
                   <button
                     onClick={() => setAuthModalOpen(true)}
-                    className="flex items-center gap-2 px-4 py-2 rounded-xl
+                    className="flex items-center gap-2 rtl:flex-row-reverse px-4 py-2 rounded-xl
                       border border-white/10 hover:border-purple-500/40
                       fastoosh-nav-link text-sm
                       hover:bg-purple-500/10 transition-all"
                     style={{ backgroundColor: 'var(--fastoosh-signin-bg, rgba(255,255,255,0.05))' }}
                   >
                     <User className="w-4 h-4" />
-                    Sign in
+                    {t('nav.signIn')}
                   </button>
                 )}
               </>
             )}
-            <NeonButton href="/work-with-us">Work with us</NeonButton>
+            <NeonButton href="/work-with-us">{t('nav.workWithUs')}</NeonButton>
           </div>
 
           {/* Mobile menu button */}
@@ -235,11 +227,17 @@ export function Header() {
                   to={item.path}
                   onClick={() => setMobileMenuOpen(false)}
                   data-active={location.pathname === item.path ? 'true' : 'false'}
-                  className="fastoosh-nav-link block py-2 transition-colors"
+                  className="fastoosh-nav-link block py-2 transition-colors text-start"
                 >
                   {item.label}
                 </Link>
               ))}
+
+              {/* Mobile language switcher */}
+              <div className="pt-1 pb-1 border-t border-white/8">
+                <LanguageSwitcher variant="full" />
+              </div>
+
               {/* Mobile auth */}
               <div className="pt-2 space-y-3 border-t border-white/8">
                 {user ? (
@@ -247,37 +245,36 @@ export function Header() {
                     <Link
                       to="/account"
                       onClick={() => setMobileMenuOpen(false)}
-                      className="fastoosh-nav-link flex items-center gap-2 py-2 transition-colors"
+                      className="fastoosh-nav-link flex items-center gap-2 rtl:flex-row-reverse py-2 transition-colors"
                     >
                       {avatarUrl ? (
-                        <img src={avatarUrl} alt={displayName}
-                          className="w-6 h-6 rounded-full object-cover" />
+                        <img src={avatarUrl} alt={displayName} className="w-6 h-6 rounded-full object-cover" />
                       ) : (
                         <User className="w-5 h-5" />
                       )}
-                      My Account
+                      {t('nav.myAccount')}
                     </Link>
                     <button
                       onClick={() => { handleSignOut(); setMobileMenuOpen(false); }}
-                      className="flex items-center gap-2 py-2 text-red-400 hover:text-red-300 transition-colors"
+                      className="flex items-center gap-2 rtl:flex-row-reverse py-2 text-red-400 hover:text-red-300 transition-colors"
                     >
                       <LogOut className="w-4 h-4" />
-                      Sign out
+                      {t('nav.signOut')}
                     </button>
                   </>
                 ) : (
                   <button
                     onClick={() => { setAuthModalOpen(true); setMobileMenuOpen(false); }}
-                    className="fastoosh-nav-link flex items-center gap-2 py-2 transition-colors"
+                    className="fastoosh-nav-link flex items-center gap-2 rtl:flex-row-reverse py-2 transition-colors"
                   >
                     <User className="w-5 h-5" />
-                    Sign in
+                    {t('nav.signIn')}
                   </button>
                 )}
               </div>
               <div className="pt-2">
                 <NeonButton href="/work-with-us" className="w-full justify-center">
-                  Work with us
+                  {t('nav.workWithUs')}
                 </NeonButton>
               </div>
             </div>

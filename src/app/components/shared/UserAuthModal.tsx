@@ -95,18 +95,18 @@ function FieldInput({
           : 'border-white/10 bg-white/5 focus-within:border-purple-500/50 focus-within:bg-purple-500/5'
         }`}
       >
-        <Icon className="absolute left-3.5 w-4 h-4 text-white/30 pointer-events-none" />
+        <Icon className="absolute left-3.5 rtl:left-auto rtl:right-3.5 w-4 h-4 text-white/30 pointer-events-none" />
         <input
           type={type} placeholder={placeholder} value={value}
           autoComplete={autoComplete}
           onChange={e => onChange(e.target.value)}
-          className="w-full bg-transparent pl-10 pr-10 py-3 text-sm text-white
+          className="w-full bg-transparent pl-10 rtl:pl-3 rtl:pr-10 pr-10 py-3 text-sm text-white
             placeholder:text-white/25 focus:outline-none"
         />
-        {rightSlot && <div className="absolute right-3">{rightSlot}</div>}
+        {rightSlot && <div className="absolute right-3 rtl:right-auto rtl:left-3">{rightSlot}</div>}
       </div>
       {error && (
-        <p className="flex items-center gap-1 mt-1.5 text-xs text-red-400">
+        <p className="flex items-center gap-1 rtl:flex-row-reverse mt-1.5 text-xs text-red-400">
           <AlertCircle className="w-3 h-3 flex-shrink-0" />{error}
         </p>
       )}
@@ -342,7 +342,7 @@ export function UserAuthModal({
                     </div>
 
                     {oauthError && (
-                      <div className="flex items-center gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/20">
+                      <div className="flex items-center gap-2 rtl:flex-row-reverse p-3 rounded-xl bg-red-500/10 border border-red-500/20">
                         <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
                         <p className="text-red-400 text-xs">{oauthError}</p>
                       </div>
@@ -366,7 +366,7 @@ export function UserAuthModal({
                               {siShowPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                             </button>
                           } />
-                        <div className="flex justify-end mt-1.5">
+                        <div className="flex justify-end rtl:justify-start mt-1.5">
                           <button type="button" onClick={goToForgot}
                             className="text-xs text-purple-400 hover:text-purple-300 transition-colors">
                             Forgot password?
@@ -375,7 +375,7 @@ export function UserAuthModal({
                       </div>
 
                       {siErrors.form && (
-                        <div className="flex items-center gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/20">
+                        <div className="flex items-center gap-2 rtl:flex-row-reverse p-3 rounded-xl bg-red-500/10 border border-red-500/20">
                           <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
                           <p className="text-red-400 text-xs">{siErrors.form}</p>
                         </div>
@@ -385,7 +385,7 @@ export function UserAuthModal({
                         className="w-full py-3 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600
                           hover:from-purple-500 hover:to-blue-500 text-white font-semibold text-sm
                           transition-all shadow-lg shadow-purple-500/20 disabled:opacity-60
-                          flex items-center justify-center gap-2">
+                          flex items-center justify-center gap-2 rtl:flex-row-reverse">
                         {siLoading ? <><Loader2 className="w-4 h-4 animate-spin" />Signing in…</> : 'Sign In'}
                       </button>
 
@@ -420,7 +420,7 @@ export function UserAuthModal({
                         </div>
 
                         {oauthError && (
-                          <div className="flex items-center gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/20">
+                          <div className="flex items-center gap-2 rtl:flex-row-reverse p-3 rounded-xl bg-red-500/10 border border-red-500/20">
                             <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
                             <p className="text-red-400 text-xs">{oauthError}</p>
                           </div>
@@ -466,7 +466,7 @@ export function UserAuthModal({
                             error={suErrors.confirm} autoComplete="new-password" />
 
                           {suErrors.form && (
-                            <div className="flex items-center gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/20">
+                            <div className="flex items-center gap-2 rtl:flex-row-reverse p-3 rounded-xl bg-red-500/10 border border-red-500/20">
                               <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
                               <p className="text-red-400 text-xs">{suErrors.form}</p>
                             </div>
@@ -476,7 +476,7 @@ export function UserAuthModal({
                             className="w-full py-3 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600
                               hover:from-purple-500 hover:to-blue-500 text-white font-semibold text-sm
                               transition-all shadow-lg shadow-purple-500/20 disabled:opacity-60
-                              flex items-center justify-center gap-2">
+                              flex items-center justify-center gap-2 rtl:flex-row-reverse">
                             {suLoading
                               ? <><Loader2 className="w-4 h-4 animate-spin" />Creating account…</>
                               : 'Create Account'}

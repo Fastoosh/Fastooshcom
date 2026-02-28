@@ -17,6 +17,7 @@ import { AdminReviewsTab } from '../components/admin/AdminReviewsTab';
 import { DashboardTab } from '../components/admin/DashboardTab';
 import { invalidateSiteSettingsCache } from '../components/shared/SeoHead';
 import { StyleTab } from '../components/admin/StyleTab';
+import { TranslationTab } from '../components/admin/TranslationTab';
 
 import { ScrollingGradientBackground } from '../components/shared/ScrollingGradientBackground';
 
@@ -32,6 +33,16 @@ const createSlug = (text: string): string => {
     .replace(/--+/g, '-') // Replace multiple hyphens with single
     .replace(/^-+|-+$/g, ''); // Remove leading/trailing hyphens
 };
+
+// Module-level constant shared by SettingsForm and inline category/status panels
+const STATUS_COLOR_OPTIONS = [
+  { name: 'purple', label: 'Purple', classes: 'from-purple-500 to-violet-500' },
+  { name: 'green',  label: 'Green',  classes: 'from-green-500 to-emerald-500' },
+  { name: 'amber',  label: 'Amber',  classes: 'from-yellow-500 to-orange-500' },
+  { name: 'cyan',   label: 'Cyan',   classes: 'from-cyan-500 to-blue-400' },
+  { name: 'pink',   label: 'Pink',   classes: 'from-pink-500 to-fuchsia-500' },
+  { name: 'red',    label: 'Red',    classes: 'from-red-500 to-rose-400' },
+];
 
 interface Project {
   id: string;
@@ -57,6 +68,7 @@ interface Tool {
   name: string;
   description: string;
   category: string;
+  toolCategory?: string;
   imageUrl: string;
   featured: boolean;
   slug?: string;
@@ -133,9 +145,17 @@ export function Admin() {
     },
   });
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [authChecking, setAuthChecking] = useState(true);
   const [networkError, setNetworkError] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
+
+  // Inline category / status management (Projects & Tools tabs)
+  const [newProjectCat, setNewProjectCat] = useState('');
+  const [newToolCat, setNewToolCat] = useState('');
+  const [newToolStatusLabel, setNewToolStatusLabel] = useState('');
+  const [newToolStatusColor, setNewToolStatusColor] = useState('purple');
+  const [catSaving, setCatSaving] = useState(false);
 
   // Editing states
   const [editingProject, setEditingProject] = useState<Project | null>(null);
@@ -226,28 +246,32 @@ export function Admin() {
     }
   };
 
-  const loadData = async () => {
+  const loadData = async (attempt = 0) => {
     setLoading(true);
+    setLoadError(false);
     try {
-      const [projectsRes, toolsRes, teamRes, settingsRes] = await Promise.all([
-        fetch(`${API_BASE}/projects`, {
-          headers: { Authorization: `Bearer ${publicAnonKey}` },
-        }),
-        fetch(`${API_BASE}/tools`, {
-          headers: { Authorization: `Bearer ${publicAnonKey}` },
-        }),
-        fetch(`${API_BASE}/team`, {
-          headers: { Authorization: `Bearer ${publicAnonKey}` },
-        }),
-        fetch(`${API_BASE}/settings`, {
-          headers: { Authorization: `Bearer ${publicAnonKey}` },
-        }),
+      const headers = { Authorization: `Bearer ${publicAnonKey}` };
+      const [projectsRes, toolsRes, teamRes, settingsRes] = await Promise.allSettled([
+        fetchWithRetry(`${API_BASE}/projects`, { headers }, 2),
+        fetchWithRetry(`${API_BASE}/tools`,    { headers }, 2),
+        fetchWithRetry(`${API_BASE}/team`,     { headers }, 2),
+        fetchWithRetry(`${API_BASE}/settings`, { headers }, 2),
       ]);
 
-      const projectsData = await projectsRes.json();
-      const toolsData = await toolsRes.json();
-      const teamData = await teamRes.json();
-      const settingsData = await settingsRes.json();
+      const safeJson = async (r: PromiseSettledResult<Response>) => {
+        if (r.status === 'rejected') {
+          console.warn('A loadData fetch was rejected:', r.reason);
+          return {};
+        }
+        try { return await r.value.json(); } catch { return {}; }
+      };
+
+      const [projectsData, toolsData, teamData, settingsData] = await Promise.all([
+        safeJson(projectsRes),
+        safeJson(toolsRes),
+        safeJson(teamRes),
+        safeJson(settingsRes),
+      ]);
 
       setProjects(projectsData.data || []);
       setTools(toolsData.data || []);
@@ -278,6 +302,12 @@ export function Admin() {
       });
     } catch (error) {
       console.error('Error loading data:', error);
+      if (attempt < 2) {
+        console.warn(`loadData failed (attempt ${attempt + 1}/3), retrying in 3 s…`);
+        setTimeout(() => loadData(attempt + 1), 3000);
+        return;
+      }
+      setLoadError(true);
     }
     setLoading(false);
   };
@@ -521,6 +551,63 @@ export function Admin() {
     }
   };
 
+  // ========== INLINE CATEGORY / STATUS HANDLERS ==========
+
+  const addProjectCategory = async () => {
+    const trimmed = newProjectCat.trim();
+    if (!trimmed) return;
+    const existing = settings.projectCategories || [];
+    if (existing.includes(trimmed)) return;
+    setCatSaving(true);
+    try { await saveSettings({ ...settings, projectCategories: [...existing, trimmed] }); } catch {}
+    setNewProjectCat('');
+    setCatSaving(false);
+  };
+
+  const removeProjectCategory = async (index: number) => {
+    const existing = settings.projectCategories || [];
+    setCatSaving(true);
+    try { await saveSettings({ ...settings, projectCategories: existing.filter((_, i) => i !== index) }); } catch {}
+    setCatSaving(false);
+  };
+
+  const addToolCategory = async () => {
+    const trimmed = newToolCat.trim();
+    if (!trimmed) return;
+    const existing = settings.toolCategories || [];
+    if (existing.includes(trimmed)) return;
+    setCatSaving(true);
+    try { await saveSettings({ ...settings, toolCategories: [...existing, trimmed] }); } catch {}
+    setNewToolCat('');
+    setCatSaving(false);
+  };
+
+  const removeToolCategory = async (index: number) => {
+    const existing = settings.toolCategories || [];
+    setCatSaving(true);
+    try { await saveSettings({ ...settings, toolCategories: existing.filter((_, i) => i !== index) }); } catch {}
+    setCatSaving(false);
+  };
+
+  const addToolStatus = async () => {
+    const trimmed = newToolStatusLabel.trim();
+    if (!trimmed) return;
+    const existing = settings.toolStatuses || [];
+    if (existing.some(s => s.label === trimmed)) return;
+    setCatSaving(true);
+    try { await saveSettings({ ...settings, toolStatuses: [...existing, { label: trimmed, color: newToolStatusColor }] }); } catch {}
+    setNewToolStatusLabel('');
+    setNewToolStatusColor('purple');
+    setCatSaving(false);
+  };
+
+  const removeToolStatus = async (index: number) => {
+    const existing = settings.toolStatuses || [];
+    setCatSaving(true);
+    try { await saveSettings({ ...settings, toolStatuses: existing.filter((_, i) => i !== index) }); } catch {}
+    setCatSaving(false);
+  };
+
   if (authChecking) {
     return (
       <>
@@ -548,6 +635,29 @@ export function Admin() {
             </p>
             <Button
               onClick={() => { setNetworkError(false); setAuthChecking(true); checkAuth(0); }}
+              className="bg-purple-600 hover:bg-purple-500 text-white"
+            >
+              Retry
+            </Button>
+          </GlassCard>
+        </div>
+      </>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <>
+        <ScrollingGradientBackground />
+        <div className="min-h-screen bg-black/85 flex items-center justify-center p-6"
+          style={{ '--fastoosh-card-bg': 'rgba(255,255,255,0.03)', '--fastoosh-card-dark': 'rgba(0,0,0,0.95)' } as React.CSSProperties}>
+          <GlassCard className="p-8 text-center max-w-sm">
+            <p className="text-red-400 font-semibold mb-2">Failed to Load Data</p>
+            <p className="text-white/60 text-sm mb-4">
+              Could not fetch content from the server after several attempts. The service may still be warming up — please try again.
+            </p>
+            <Button
+              onClick={() => loadData(0)}
               className="bg-purple-600 hover:bg-purple-500 text-white"
             >
               Retry
@@ -592,15 +702,16 @@ export function Admin() {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="mb-6 flex-wrap">
             <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
+            <TabsTrigger value="home">Home</TabsTrigger>
             <TabsTrigger value="projects">Projects</TabsTrigger>
             <TabsTrigger value="tools">Tools</TabsTrigger>
             <TabsTrigger value="team">Team</TabsTrigger>
-            <TabsTrigger value="home">Home</TabsTrigger>
             <TabsTrigger value="settings">Settings</TabsTrigger>
             <TabsTrigger value="style">Style</TabsTrigger>
             <TabsTrigger value="leads">Leads</TabsTrigger>
             <TabsTrigger value="reviews">Reviews</TabsTrigger>
             <TabsTrigger value="seo">SEO</TabsTrigger>
+            <TabsTrigger value="translations">🌐 Translations</TabsTrigger>
           </TabsList>
 
           {/* DASHBOARD TAB */}
@@ -683,6 +794,58 @@ export function Admin() {
                 ))}
               </div>
             </GlassCard>
+
+            {/* PROJECT CATEGORIES */}
+            <GlassCard className="p-6">
+              <h2 className="text-xl font-bold text-white mb-1">Project Categories</h2>
+              <p className="text-gray-400 text-sm mb-4">
+                These appear in the category dropdown when adding or editing a project.
+              </p>
+              <div className="flex flex-wrap gap-2 mb-4 min-h-[2rem]">
+                {(settings.projectCategories || []).length === 0 && (
+                  <p className="text-gray-500 text-sm italic">No categories yet — add one below.</p>
+                )}
+                {(settings.projectCategories || []).map((cat, index) => (
+                  <span
+                    key={cat}
+                    className="flex items-center gap-1 pl-3 pr-1.5 py-1 bg-purple-900/40 border border-purple-500/40 rounded-full text-sm text-white"
+                  >
+                    {cat}
+                    <button
+                      type="button"
+                      onClick={() => removeProjectCategory(index)}
+                      disabled={catSaving}
+                      className="ml-1 w-4 h-4 flex items-center justify-center rounded-full text-white/50 hover:text-red-400 hover:bg-white/10 transition-colors disabled:opacity-40"
+                      title={`Remove "${cat}"`}
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="e.g. Motion Design"
+                  value={newProjectCat}
+                  onChange={(e) => setNewProjectCat(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addProjectCategory(); } }}
+                  className="bg-black/50 border-white/20 text-white"
+                  disabled={catSaving}
+                />
+                <Button
+                  type="button"
+                  onClick={addProjectCategory}
+                  disabled={catSaving || !newProjectCat.trim()}
+                  className="cursor-pointer whitespace-nowrap bg-purple-600 hover:bg-purple-700 text-white disabled:opacity-50"
+                >
+                  {catSaving ? (
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <><Plus className="w-4 h-4 mr-1" />Add</>
+                  )}
+                </Button>
+              </div>
+            </GlassCard>
           </TabsContent>
 
           {/* TOOLS TAB */}
@@ -717,6 +880,7 @@ export function Admin() {
                   onSave={saveTool}
                   onCancel={() => setEditingTool(null)}
                   statuses={(settings.toolStatuses || []).map(s => s.label)}
+                  toolCategories={settings.toolCategories || []}
                 />
               )}
 
@@ -752,6 +916,129 @@ export function Admin() {
                     </div>
                   </div>
                 ))}
+              </div>
+            </GlassCard>
+
+            {/* TOOL CATEGORIES */}
+            <GlassCard className="p-6">
+              <h2 className="text-xl font-bold text-white mb-1">Tool Categories</h2>
+              <p className="text-gray-400 text-sm mb-4">
+                These appear in the category dropdown when adding or editing a tool.
+              </p>
+              <div className="flex flex-wrap gap-2 mb-4 min-h-[2rem]">
+                {(settings.toolCategories || []).length === 0 && (
+                  <p className="text-gray-500 text-sm italic">No categories yet — add one below.</p>
+                )}
+                {(settings.toolCategories || []).map((cat, index) => (
+                  <span
+                    key={cat}
+                    className="flex items-center gap-1 pl-3 pr-1.5 py-1 bg-purple-900/40 border border-purple-500/40 rounded-full text-sm text-white"
+                  >
+                    {cat}
+                    <button
+                      type="button"
+                      onClick={() => removeToolCategory(index)}
+                      disabled={catSaving}
+                      className="ml-1 w-4 h-4 flex items-center justify-center rounded-full text-white/50 hover:text-red-400 hover:bg-white/10 transition-colors disabled:opacity-40"
+                      title={`Remove "${cat}"`}
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="e.g. Rendering"
+                  value={newToolCat}
+                  onChange={(e) => setNewToolCat(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addToolCategory(); } }}
+                  className="bg-black/50 border-white/20 text-white"
+                  disabled={catSaving}
+                />
+                <Button
+                  type="button"
+                  onClick={addToolCategory}
+                  disabled={catSaving || !newToolCat.trim()}
+                  className="cursor-pointer whitespace-nowrap bg-purple-600 hover:bg-purple-700 text-white disabled:opacity-50"
+                >
+                  {catSaving ? (
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <><Plus className="w-4 h-4 mr-1" />Add</>
+                  )}
+                </Button>
+              </div>
+            </GlassCard>
+
+            {/* TOOL STATUSES */}
+            <GlassCard className="p-6">
+              <h2 className="text-xl font-bold text-white mb-1">Tool Statuses</h2>
+              <p className="text-gray-400 text-sm mb-4">
+                These appear as badge pills on tool cards. Pick a label and a color for each status.
+              </p>
+              <div className="flex flex-wrap gap-2 mb-4 min-h-[2rem]">
+                {(settings.toolStatuses || []).length === 0 && (
+                  <p className="text-gray-500 text-sm italic">No statuses yet — add one below.</p>
+                )}
+                {(settings.toolStatuses || []).map((status, index) => {
+                  const colorOption = STATUS_COLOR_OPTIONS.find(c => c.name === status.color);
+                  return (
+                    <span
+                      key={status.label}
+                      className={`flex items-center gap-1 pl-3 pr-1.5 py-1 bg-gradient-to-r ${colorOption?.classes || 'from-purple-500 to-violet-500'} rounded-full text-sm text-white font-medium`}
+                    >
+                      {status.label}
+                      <button
+                        type="button"
+                        onClick={() => removeToolStatus(index)}
+                        disabled={catSaving}
+                        className="ml-1 w-4 h-4 flex items-center justify-center rounded-full text-white/70 hover:text-white hover:bg-black/20 transition-colors disabled:opacity-40"
+                        title={`Remove "${status.label}"`}
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  );
+                })}
+              </div>
+              <div className="flex gap-2 items-center flex-wrap">
+                <Input
+                  placeholder="e.g. Hot Deal"
+                  value={newToolStatusLabel}
+                  onChange={(e) => setNewToolStatusLabel(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addToolStatus(); } }}
+                  className="bg-black/50 border-white/20 text-white flex-1 min-w-[140px]"
+                  disabled={catSaving}
+                />
+                {/* Color swatches */}
+                <div className="flex gap-1.5 items-center">
+                  {STATUS_COLOR_OPTIONS.map((color) => (
+                    <button
+                      key={color.name}
+                      type="button"
+                      onClick={() => setNewToolStatusColor(color.name)}
+                      title={color.label}
+                      className={`w-6 h-6 rounded-full bg-gradient-to-br ${color.classes} transition-all ${
+                        newToolStatusColor === color.name
+                          ? 'ring-2 ring-white ring-offset-2 ring-offset-black scale-110'
+                          : 'opacity-60 hover:opacity-100'
+                      }`}
+                    />
+                  ))}
+                </div>
+                <Button
+                  type="button"
+                  onClick={addToolStatus}
+                  disabled={catSaving || !newToolStatusLabel.trim()}
+                  className="cursor-pointer whitespace-nowrap bg-purple-600 hover:bg-purple-700 text-white disabled:opacity-50"
+                >
+                  {catSaving ? (
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <><Plus className="w-4 h-4 mr-1" />Add</>
+                  )}
+                </Button>
               </div>
             </GlassCard>
           </TabsContent>
@@ -882,65 +1169,6 @@ export function Admin() {
                   )}
                 </div>
 
-                <div className="p-4 bg-white/5 rounded-lg border border-white/10">
-                  <h3 className="text-white font-semibold mb-2">Project Categories</h3>
-                  {settings.projectCategories && settings.projectCategories.length > 0 ? (
-                    <div className="flex flex-wrap gap-2">
-                      {settings.projectCategories.map((cat) => (
-                        <span key={cat} className="px-2 py-1 bg-purple-900/30 border border-purple-500/30 rounded-full text-xs text-purple-300">
-                          {cat}
-                        </span>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-gray-500 text-sm">No categories defined yet. Click "Edit Settings" to add them.</p>
-                  )}
-                </div>
-
-                <div className="p-4 bg-white/5 rounded-lg border border-white/10">
-                  <h3 className="text-white font-semibold mb-2">Tool Categories</h3>
-                  {settings.toolCategories && settings.toolCategories.length > 0 ? (
-                    <div className="flex flex-wrap gap-2">
-                      {settings.toolCategories.map((cat) => (
-                        <span key={cat} className="px-2 py-1 bg-purple-900/30 border border-purple-500/30 rounded-full text-xs text-purple-300">
-                          {cat}
-                        </span>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-gray-500 text-sm">No categories defined yet. Click "Edit Settings" to add them.</p>
-                  )}
-                </div>
-
-                <div className="p-4 bg-white/5 rounded-lg border border-white/10">
-                  <h3 className="text-white font-semibold mb-2">Tool Statuses</h3>
-                  {settings.toolStatuses && settings.toolStatuses.length > 0 ? (
-                    <div className="flex flex-wrap gap-2">
-                      {settings.toolStatuses.map((status) => {
-                        const gradientMap: Record<string, string> = {
-                          purple: 'from-purple-500 to-violet-500',
-                          green:  'from-green-500 to-emerald-500',
-                          amber:  'from-yellow-500 to-orange-500',
-                          cyan:   'from-cyan-500 to-blue-400',
-                          pink:   'from-pink-500 to-fuchsia-500',
-                          red:    'from-red-500 to-rose-400',
-                        };
-                        const gradient = gradientMap[status.color] || 'from-purple-500 to-violet-500';
-                        return (
-                          <span
-                            key={status.label}
-                            className={`px-2 py-1 bg-gradient-to-r ${gradient} rounded-full text-xs text-white font-medium`}
-                          >
-                            {status.label}
-                          </span>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <p className="text-gray-500 text-sm">No statuses defined yet. Click "Edit Settings" to add them.</p>
-                  )}
-                </div>
-                
                 <div
                   className="p-4 bg-white/5 rounded-lg border border-white/10"
                 >
@@ -1017,6 +1245,11 @@ export function Admin() {
           {/* STYLE TAB */}
           <TabsContent value="style">
             <StyleTab />
+          </TabsContent>
+
+          {/* TRANSLATIONS TAB */}
+          <TabsContent value="translations">
+            <TranslationTab />
           </TabsContent>
 
         </Tabs>
@@ -2604,62 +2837,6 @@ function SettingsForm({
   const [uploading, setUploading] = useState(false);
   const [uploadingFavicon, setUploadingFavicon] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [newCategory, setNewCategory] = useState('');
-  const [newToolCategory, setNewToolCategory] = useState('');
-  const [newStatusLabel, setNewStatusLabel] = useState('');
-  const [newStatusColor, setNewStatusColor] = useState('purple');
-
-  const STATUS_COLOR_OPTIONS = [
-    { name: 'purple', label: 'Purple', classes: 'from-purple-500 to-violet-500' },
-    { name: 'green',  label: 'Green',  classes: 'from-green-500 to-emerald-500' },
-    { name: 'amber',  label: 'Amber',  classes: 'from-yellow-500 to-orange-500' },
-    { name: 'cyan',   label: 'Cyan',   classes: 'from-cyan-500 to-blue-400' },
-    { name: 'pink',   label: 'Pink',   classes: 'from-pink-500 to-fuchsia-500' },
-    { name: 'red',    label: 'Red',    classes: 'from-red-500 to-rose-400' },
-  ];
-
-  const addStatus = () => {
-    const trimmed = newStatusLabel.trim();
-    if (!trimmed) return;
-    const existing = formData.toolStatuses || [];
-    if (existing.some(s => s.label === trimmed)) return;
-    setFormData({ ...formData, toolStatuses: [...existing, { label: trimmed, color: newStatusColor }] });
-    setNewStatusLabel('');
-    setNewStatusColor('purple');
-  };
-
-  const removeStatus = (index: number) => {
-    const existing = formData.toolStatuses || [];
-    setFormData({ ...formData, toolStatuses: existing.filter((_, i) => i !== index) });
-  };
-
-  const addCategory = () => {
-    const trimmed = newCategory.trim();
-    if (!trimmed) return;
-    const existing = formData.projectCategories || [];
-    if (existing.includes(trimmed)) return;
-    setFormData({ ...formData, projectCategories: [...existing, trimmed] });
-    setNewCategory('');
-  };
-
-  const addToolCategory = () => {
-    const trimmed = newToolCategory.trim();
-    if (!trimmed) return;
-    const existing = formData.toolCategories || [];
-    if (existing.includes(trimmed)) return;
-    setFormData({ ...formData, toolCategories: [...existing, trimmed] });
-    setNewToolCategory('');
-  };
-
-  const removeToolCategory = (index: number) => {
-    const existing = formData.toolCategories || [];
-    setFormData({ ...formData, toolCategories: existing.filter((_, i) => i !== index) });
-  };
-
-  const removeCategory = (index: number) => {
-    const existing = formData.projectCategories || [];
-    setFormData({ ...formData, projectCategories: existing.filter((_, i) => i !== index) });
-  };
 
   const handleFaviconUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -2939,167 +3116,6 @@ function SettingsForm({
           </div>
         </div>
         
-        {/* Project Categories Section */}
-        <div className="mt-6 pt-6 border-t border-white/10">
-          <h4 className="text-lg font-semibold text-white mb-1">Project Categories</h4>
-          <p className="text-sm text-gray-400 mb-3">
-            These appear in the category dropdown when adding or editing a project.
-          </p>
-          {/* Existing category tags */}
-          <div className="flex flex-wrap gap-2 mb-3 min-h-[2rem]">
-            {(formData.projectCategories || []).length === 0 && (
-              <p className="text-gray-500 text-sm italic">No categories yet — add one below.</p>
-            )}
-            {(formData.projectCategories || []).map((cat, index) => (
-              <span
-                key={cat}
-                className="flex items-center gap-1 pl-3 pr-1.5 py-1 bg-purple-900/40 border border-purple-500/40 rounded-full text-sm text-white"
-              >
-                {cat}
-                <button
-                  type="button"
-                  onClick={() => removeCategory(index)}
-                  className="ml-1 w-4 h-4 flex items-center justify-center rounded-full text-white/50 hover:text-red-400 hover:bg-white/10 transition-colors"
-                  title={`Remove "${cat}"`}
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              </span>
-            ))}
-          </div>
-          {/* Add new category */}
-          <div className="flex gap-2">
-            <Input
-              placeholder="e.g. Motion Design"
-              value={newCategory}
-              onChange={(e) => setNewCategory(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCategory(); } }}
-              className="bg-black/50 border-white/20 text-white"
-            />
-            <Button
-              type="button"
-              onClick={addCategory}
-              className="cursor-pointer whitespace-nowrap bg-purple-600 hover:bg-purple-700 text-white"
-            >
-              <Plus className="w-4 h-4 mr-1" />
-              Add
-            </Button>
-          </div>
-        </div>
-
-        {/* Tool Categories Section */}
-        <div className="mt-6 pt-6 border-t border-white/10">
-          <h4 className="text-lg font-semibold text-white mb-1">Tool Categories</h4>
-          <p className="text-sm text-gray-400 mb-3">
-            These appear in the category dropdown when adding or editing a tool.
-          </p>
-          <div className="flex flex-wrap gap-2 mb-3 min-h-[2rem]">
-            {(formData.toolCategories || []).length === 0 && (
-              <p className="text-gray-500 text-sm italic">No categories yet — add one below.</p>
-            )}
-            {(formData.toolCategories || []).map((cat, index) => (
-              <span
-                key={cat}
-                className="flex items-center gap-1 pl-3 pr-1.5 py-1 bg-purple-900/40 border border-purple-500/40 rounded-full text-sm text-white"
-              >
-                {cat}
-                <button
-                  type="button"
-                  onClick={() => removeToolCategory(index)}
-                  className="ml-1 w-4 h-4 flex items-center justify-center rounded-full text-white/50 hover:text-red-400 hover:bg-white/10 transition-colors"
-                  title={`Remove "${cat}"`}
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              </span>
-            ))}
-          </div>
-          <div className="flex gap-2">
-            <Input
-              placeholder="e.g. Rendering"
-              value={newToolCategory}
-              onChange={(e) => setNewToolCategory(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addToolCategory(); } }}
-              className="bg-black/50 border-white/20 text-white"
-            />
-            <Button
-              type="button"
-              onClick={addToolCategory}
-              className="cursor-pointer whitespace-nowrap bg-purple-600 hover:bg-purple-700 text-white"
-            >
-              <Plus className="w-4 h-4 mr-1" />
-              Add
-            </Button>
-          </div>
-        </div>
-
-        {/* Tool Statuses Section */}
-        <div className="mt-6 pt-6 border-t border-white/10">
-          <h4 className="text-lg font-semibold text-white mb-1">Tool Statuses</h4>
-          <p className="text-sm text-gray-400 mb-3">
-            These appear as badge pills on tool cards. Pick a label and a color for each status.
-          </p>
-          {/* Existing status tags */}
-          <div className="flex flex-wrap gap-2 mb-3 min-h-[2rem]">
-            {(formData.toolStatuses || []).length === 0 && (
-              <p className="text-gray-500 text-sm italic">No statuses yet — add one below.</p>
-            )}
-            {(formData.toolStatuses || []).map((status, index) => {
-              const colorOption = STATUS_COLOR_OPTIONS.find(c => c.name === status.color);
-              return (
-                <span
-                  key={status.label}
-                  className={`flex items-center gap-1 pl-3 pr-1.5 py-1 bg-gradient-to-r ${colorOption?.classes || 'from-purple-500 to-violet-500'} rounded-full text-sm text-white font-medium`}
-                >
-                  {status.label}
-                  <button
-                    type="button"
-                    onClick={() => removeStatus(index)}
-                    className="ml-1 w-4 h-4 flex items-center justify-center rounded-full text-white/70 hover:text-white hover:bg-black/20 transition-colors"
-                    title={`Remove "${status.label}"`}
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </span>
-              );
-            })}
-          </div>
-          {/* Add new status */}
-          <div className="flex gap-2 items-center flex-wrap">
-            <Input
-              placeholder="e.g. Hot Deal"
-              value={newStatusLabel}
-              onChange={(e) => setNewStatusLabel(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addStatus(); } }}
-              className="bg-black/50 border-white/20 text-white flex-1 min-w-[140px]"
-            />
-            {/* Color swatches */}
-            <div className="flex gap-1.5 items-center">
-              {STATUS_COLOR_OPTIONS.map((color) => (
-                <button
-                  key={color.name}
-                  type="button"
-                  onClick={() => setNewStatusColor(color.name)}
-                  title={color.label}
-                  className={`w-6 h-6 rounded-full bg-gradient-to-br ${color.classes} transition-all ${
-                    newStatusColor === color.name
-                      ? 'ring-2 ring-white ring-offset-2 ring-offset-black scale-110'
-                      : 'opacity-60 hover:opacity-100'
-                  }`}
-                />
-              ))}
-            </div>
-            <Button
-              type="button"
-              onClick={addStatus}
-              className="cursor-pointer whitespace-nowrap bg-purple-600 hover:bg-purple-700 text-white"
-            >
-              <Plus className="w-4 h-4 mr-1" />
-              Add
-            </Button>
-          </div>
-        </div>
-
         <div className="flex gap-2 pt-4 border-t border-white/10">
           <Button onClick={() => onSave(formData)} className="cursor-pointer bg-violet-600 hover:bg-violet-500 text-white">
             <Save className="w-4 h-4 mr-2" />

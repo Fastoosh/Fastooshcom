@@ -8,6 +8,8 @@ import { SeoHead } from "../components/shared/SeoHead";
 import { ArrowLeft, Play } from "lucide-react";
 import { api } from "../utils/api";
 import { projectId as supabaseProjectId, publicAnonKey } from '/utils/supabase/info';
+import { useTranslation } from 'react-i18next';
+import { fetchTranslations, deepMergeTranslations } from '../utils/translations';
 
 const API_BASE = `https://${supabaseProjectId}.supabase.co/functions/v1/make-server-e07959ec`;
 
@@ -34,20 +36,21 @@ const fallbackProject = {
 };
 
 export function ProjectDetail() {
-  const { id } = useParams();
+  const { slug } = useParams();
+  const { i18n, t } = useTranslation();
   const [project, setProject] = useState<any>(fallbackProject);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showVideo, setShowVideo] = useState(false);
 
   // ── Video analytics tracking ───────────────────────────────────────────────
-  const idRef           = useRef<string | undefined>(id);
+  const idRef           = useRef<string | undefined>(slug);
   const playStartRef    = useRef<number | null>(null);   // non-null only while actually playing
   const isPlayingRef    = useRef(false);                 // mirrors real player play/pause state
   const viewRecordedRef = useRef(false);
   const iframeRef       = useRef<HTMLIFrameElement>(null);
 
-  useEffect(() => { idRef.current = id; }, [id]);
+  useEffect(() => { idRef.current = slug; }, [slug]);
 
   /** Fire-and-forget: POST seconds watched to the server. */
   const postWatchSeconds = useCallback((secs: number) => {
@@ -171,17 +174,17 @@ export function ProjectDetail() {
 
   useEffect(() => {
     const loadProject = async () => {
-      if (!id) {
+      if (!slug) {
         setLoading(false);
         return;
       }
 
-      console.log('Loading project with ID:', id);
+      console.log('Loading project with ID:', slug);
       setLoading(true);
       setError(null);
 
       try {
-        const response = await api.getProject(id);
+        const response = await api.getProject(slug);
         console.log('Project API response:', response);
         
         if (response.success && response.data) {
@@ -205,7 +208,40 @@ export function ProjectDetail() {
     };
 
     loadProject();
-  }, [id]);
+  }, [slug]);
+
+  // Apply dynamic translations when language changes
+  useEffect(() => {
+    const applyTranslations = async () => {
+      // Always reload base English project first
+      if (!slug) return;
+      
+      try {
+        const response = await api.getProject(slug);
+        if (response.success && response.data) {
+          let projectData = {
+            ...response.data,
+            thumbnail: response.data.imageUrl,
+            images: response.data.screenshots || [],
+          };
+
+          // If not English, fetch and merge translations
+          if (i18n.language !== 'en') {
+            const trans = await fetchTranslations(i18n.language, 'projects');
+            if (Object.keys(trans).length > 0 && trans[projectData.id]) {
+              projectData = deepMergeTranslations(projectData, trans[projectData.id]);
+            }
+          }
+
+          setProject(projectData);
+        }
+      } catch (err) {
+        console.warn('[ProjectDetail] Failed to apply translations:', err);
+      }
+    };
+    
+    applyTranslations();
+  }, [i18n.language, slug]);
 
   // Convert regular video URLs to embed URLs
   const getEmbedUrl = (url: string) => {
@@ -238,7 +274,7 @@ export function ProjectDetail() {
   if (loading) {
     return (
       <div className="min-h-screen py-24 px-6 flex items-center justify-center">
-        <div className="text-white/60">Loading project...</div>
+        <div className="text-white/60">{t('projects.detail.loadingProject')}</div>
       </div>
     );
   }
@@ -246,7 +282,7 @@ export function ProjectDetail() {
   return (
     <div className="min-h-screen py-24 px-6">
       <SeoHead
-        pageKey={`project--${id}`}
+        pageKey={`project--${slug}`}
         fallback={{
           title: project?.title ? `${project.title} — Fastoosh Projects` : 'Project — Fastoosh',
           description: project?.goal || project?.description || 'A premium motion design project by Fastoosh.',
@@ -262,7 +298,7 @@ export function ProjectDetail() {
             className="mb-6 p-4 bg-yellow-500/20 border border-yellow-500/50 rounded-lg"
           >
             <p className="text-yellow-300 text-sm">
-              ⚠️ Could not load project from database. Showing demo content. 
+              ⚠️ {t('projects.detail.errorBanner')}
               <br />
               <span className="text-xs text-yellow-400/70">Error: {error}</span>
             </p>
@@ -274,10 +310,10 @@ export function ProjectDetail() {
           href="/projects"
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
-          className="inline-flex items-center gap-2 text-white/60 hover:text-white transition-colors mb-12"
+          className="inline-flex items-center gap-2 rtl:flex-row-reverse text-white/60 hover:text-white transition-colors mb-12"
         >
-          <ArrowLeft className="w-4 h-4" />
-          Back to projects
+          <ArrowLeft className="w-4 h-4 rtl:rotate-180" />
+          {t('projects.detail.backToProjects')}
         </motion.a>
 
         {/* Hero Video */}
@@ -308,7 +344,7 @@ export function ProjectDetail() {
                     </div>
                   ) : (
                     <div className="text-white/60 text-center">
-                      <p className="text-sm">No video available</p>
+                      <p className="text-sm">{t('projects.detail.noVideo')}</p>
                     </div>
                   )}
                 </div>
@@ -326,20 +362,20 @@ export function ProjectDetail() {
         >
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-12">
             <div>
-              <div className="text-white/50 text-sm mb-1">Category</div>
+              <div className="text-white/50 text-sm mb-1">{t('projects.detail.category')}</div>
               <div className="text-white">{project.category}</div>
             </div>
             <div>
-              <div className="text-white/50 text-sm mb-1">Client</div>
+              <div className="text-white/50 text-sm mb-1">{t('projects.detail.client')}</div>
               <div className="text-white">{project.client}</div>
             </div>
             <div>
-              <div className="text-white/50 text-sm mb-1">Year</div>
+              <div className="text-white/50 text-sm mb-1">{t('projects.detail.year')}</div>
               <div className="text-white">{project.year}</div>
             </div>
             <div>
-              <div className="text-white/50 text-sm mb-1">Outcome</div>
-              <div className="text-white">Featured</div>
+              <div className="text-white/50 text-sm mb-1">{t('projects.detail.outcome')}</div>
+              <div className="text-white">{t('projects.detail.featured')}</div>
             </div>
           </div>
 
@@ -356,7 +392,7 @@ export function ProjectDetail() {
               viewport={{ once: true }}
             >
               <GlassCard className="p-8">
-                <h2 className="text-2xl mb-4">Goal</h2>
+                <h2 className="text-2xl mb-4">{t('projects.detail.goal')}</h2>
                 <p className="text-white/70 text-lg leading-relaxed">{project.goal}</p>
               </GlassCard>
             </motion.div>
@@ -370,7 +406,7 @@ export function ProjectDetail() {
               viewport={{ once: true }}
             >
               <GlassCard className="p-8">
-                <h2 className="text-2xl mb-4">Approach</h2>
+                <h2 className="text-2xl mb-4">{t('projects.detail.approach')}</h2>
                 <p className="text-white/70 text-lg leading-relaxed">{project.approach}</p>
               </GlassCard>
             </motion.div>
@@ -384,11 +420,11 @@ export function ProjectDetail() {
               viewport={{ once: true }}
             >
               <GlassCard className="p-8">
-                <h2 className="text-2xl mb-4">Deliverables</h2>
+                <h2 className="text-2xl mb-4">{t('projects.detail.deliverables')}</h2>
                 <ul className="space-y-2">
                   {project.deliverables.map((item: string, index: number) => (
                     <li key={index} className="text-white/70 flex items-start gap-3">
-                      <span className="text-purple-400 mt-1">→</span>
+                      <span className="text-purple-400 mt-1 rtl:rotate-180 inline-block">→</span>
                       {item}
                     </li>
                   ))}
@@ -409,7 +445,7 @@ export function ProjectDetail() {
                   transition={{ delay: index * 0.1 }}
                 >
                   <GlassCard className="overflow-hidden">
-                    <img src={image} alt={`Still ${index + 1}`} className="w-full" />
+                    <img src={image} alt={`${t('projects.detail.stills')} ${index + 1}`} className="w-full" />
                   </GlassCard>
                 </motion.div>
               ))}
@@ -424,7 +460,7 @@ export function ProjectDetail() {
               viewport={{ once: true }}
             >
               <GlassCard neonBorder className="p-8">
-                <h2 className="text-2xl mb-4">Outcome</h2>
+                <h2 className="text-2xl mb-4">{t('projects.detail.outcomeSection')}</h2>
                 <p className="text-white/70 text-lg leading-relaxed">{project.outcome}</p>
               </GlassCard>
             </motion.div>
@@ -439,9 +475,9 @@ export function ProjectDetail() {
           className="mt-24 text-center"
         >
           <GlassCard className="p-12 w-full">
-            <h3 className="text-3xl mb-4">Ready to start your project?</h3>
-            <p className="text-white/60 mb-6">Let's create something extraordinary together</p>
-            <NeonButton href="/work-with-us">Work with us</NeonButton>
+            <h3 className="text-3xl mb-4">{t('projects.detail.ctaHeading')}</h3>
+            <p className="text-white/60 mb-6">{t('projects.detail.ctaSubtitle')}</p>
+            <NeonButton href="/work-with-us">{t('common.workWithUs')}</NeonButton>
           </GlassCard>
         </motion.div>
       </div>

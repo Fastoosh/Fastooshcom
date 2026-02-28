@@ -9,7 +9,7 @@ import {
   X, CheckCircle2, AlertCircle, Wand2, RotateCcw,
   Home, Quote, Star, Zap, Target, Shield, TrendingUp, Award,
   Heart, Layers, Globe, Clock, CheckCircle, MessageSquare,
-  Play, Users, ArrowRight, Lightbulb, Video,
+  Play, Users, ArrowRight, Lightbulb, Video, Calendar,
 } from 'lucide-react';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 
@@ -33,6 +33,7 @@ const ICON_OPTIONS = [
   { value: 'message', label: 'Message 💬', Icon: MessageSquare },
   { value: 'play', label: 'Play ▶️', Icon: Play },
   { value: 'video', label: 'Video 🎥', Icon: Video },
+  { value: 'calendar', label: 'Calendar 📅', Icon: Calendar },
 ];
 
 export const ICON_MAP: Record<string, any> = Object.fromEntries(
@@ -308,6 +309,9 @@ export function HomeTab() {
           <button onClick={() => setFormMessage(null)}><X className="w-3.5 h-3.5 opacity-60 hover:opacity-100" /></button>
         </div>
       )}
+
+      {/* Availability Calendar */}
+      <AvailabilityCalendar />
 
       {/* Sections */}
       {SECTIONS.map(({ id, label, icon: Icon, description }) => (
@@ -821,4 +825,241 @@ function deepMerge(base: HomeContent, overrides: Partial<HomeContent>): HomeCont
     }
   }
   return result;
+}
+
+// ── Availability Calendar ──────────────────────────────────────────────────────
+function AvailabilityCalendar() {
+  const [calendar, setCalendar] = useState<Record<string, { status: string; message: string }>>({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [customMessages, setCustomMessages] = useState<Record<string, string>>({
+    available: '',
+    busy: '',
+    booked: ''
+  });
+
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  
+  // Get current date info
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth(); // 0-11
+
+  useEffect(() => {
+    loadCalendar();
+  }, []);
+
+  const loadCalendar = async () => {
+    try {
+      const token = localStorage.getItem('admin_token');
+      const res = await fetch(`${API_BASE}/availability-calendar`, {
+        headers: { Authorization: `Bearer ${publicAnonKey}`, 'X-Admin-Token': token || '' },
+      });
+      const data = await res.json();
+      if (data.success && data.data) {
+        setCalendar(data.data.calendar || {});
+        setCustomMessages(data.data.messages || {
+          available: '',
+          busy: '',
+          booked: ''
+        });
+      }
+    } catch (error) {
+      console.error('Error loading availability calendar:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    setMessage(null);
+    try {
+      const token = localStorage.getItem('admin_token');
+      const res = await fetch(`${API_BASE}/availability-calendar`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${publicAnonKey}`, 'X-Admin-Token': token || '' },
+        body: JSON.stringify({ calendar, messages: customMessages }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMessage({ type: 'success', text: '✅ Availability calendar saved!' });
+      } else {
+        setMessage({ type: 'error', text: data.error || 'Failed to save.' });
+      }
+    } catch (e) {
+      setMessage({ type: 'error', text: `Error: ${e}` });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggleMonthStatus = (monthKey: string) => {
+    setCalendar(prev => {
+      const current = prev[monthKey]?.status || 'available';
+      const nextStatus = current === 'available' ? 'busy' : current === 'busy' ? 'booked' : 'available';
+      return {
+        ...prev,
+        [monthKey]: { status: nextStatus, message: customMessages[nextStatus] || '' }
+      };
+    });
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'available': return 'bg-green-500/20 border-green-500/40 text-green-300';
+      case 'busy': return 'bg-yellow-500/20 border-yellow-500/40 text-yellow-300';
+      case 'booked': return 'bg-red-500/20 border-red-500/40 text-red-300';
+      default: return 'bg-white/5 border-white/10 text-white/40';
+    }
+  };
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'available': return '✓';
+      case 'busy': return '~';
+      case 'booked': return '✕';
+      default: return '';
+    }
+  };
+
+  const renderYear = (year: number, startMonth: number = 0) => {
+    // Filter months to only show from startMonth onwards
+    const monthsToShow = MONTHS.slice(startMonth);
+    const monthIndices = Array.from({ length: monthsToShow.length }, (_, i) => i + startMonth);
+    
+    if (monthsToShow.length === 0) return null;
+
+    return (
+      <div key={year} className="space-y-3">
+        <h4 className="text-white/60 text-sm font-semibold">{year}</h4>
+        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
+          {monthIndices.map((idx) => {
+            const monthKey = `${year}-${String(idx + 1).padStart(2, '0')}`;
+            const data = calendar[monthKey];
+            const status = data?.status || 'available';
+            
+            return (
+              <button
+                key={monthKey}
+                onClick={() => toggleMonthStatus(monthKey)}
+                className={`p-3 rounded-lg border transition-all hover:scale-105 ${getStatusColor(status)}`}
+                title={`Click to toggle. Current: ${status}`}
+              >
+                <div className="text-xs font-medium">{MONTHS[idx]}</div>
+                <div className="text-lg font-bold mt-1">{getStatusIcon(status)}</div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  if (loading) {
+    return (
+      <GlassCard className="p-4">
+        <div className="flex items-center justify-center h-32">
+          <Loader2 className="w-6 h-6 text-purple-400 animate-spin" />
+        </div>
+      </GlassCard>
+    );
+  }
+
+  return (
+    <GlassCard className="p-5 border-purple-500/20">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Calendar className="w-5 h-5 text-purple-400" />
+          <h3 className="text-white font-semibold text-base">Availability Calendar</h3>
+        </div>
+        <Button
+          onClick={handleSave}
+          disabled={saving}
+          size="sm"
+          className="bg-purple-600 hover:bg-purple-500 text-white"
+        >
+          {saving ? <><Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />Saving…</> : <><Save className="w-3.5 h-3.5 mr-1.5" />Save</>}
+        </Button>
+      </div>
+
+      <p className="text-white/40 text-xs mb-4">
+        Click any month to toggle availability status. The badge on the home page automatically shows the current month's status. Displaying remaining months of {currentYear} only.
+      </p>
+
+      {/* Legend */}
+      <div className="flex flex-wrap gap-4 mb-5 p-3 bg-white/5 rounded-lg">
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-4 rounded bg-green-500/40 flex items-center justify-center text-xs text-green-300">✓</div>
+          <span className="text-white/60 text-xs">Available</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-4 rounded bg-yellow-500/40 flex items-center justify-center text-xs text-yellow-300">~</div>
+          <span className="text-white/60 text-xs">Busy</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-4 rounded bg-red-500/40 flex items-center justify-center text-xs text-red-300">✕</div>
+          <span className="text-white/60 text-xs">Booked</span>
+        </div>
+      </div>
+
+      {/* Custom messages */}
+      <div className="space-y-2 mb-5 p-3 bg-white/5 rounded-lg">
+        <p className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-2">Custom Messages (Optional)</p>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+          <div>
+            <label className="text-xs text-green-400/80 mb-1 block">Available</label>
+            <Input
+              value={customMessages.available}
+              onChange={e => setCustomMessages(p => ({ ...p, available: e.target.value }))}
+              placeholder="Now booking: [month]"
+              className="bg-black/40 border-green-500/20 text-white text-xs h-8"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-yellow-400/80 mb-1 block">Busy</label>
+            <Input
+              value={customMessages.busy}
+              onChange={e => setCustomMessages(p => ({ ...p, busy: e.target.value }))}
+              placeholder="Limited availability"
+              className="bg-black/40 border-yellow-500/20 text-white text-xs h-8"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-red-400/80 mb-1 block">Booked</label>
+            <Input
+              value={customMessages.booked}
+              onChange={e => setCustomMessages(p => ({ ...p, booked: e.target.value }))}
+              placeholder="Fully booked"
+              className="bg-black/40 border-red-500/20 text-white text-xs h-8"
+            />
+          </div>
+        </div>
+        <p className="text-white/25 text-xs mt-2">
+          If empty, default messages will be used
+        </p>
+      </div>
+
+      {/* Calendar grid - only showing remaining months of current year */}
+      <div className="space-y-6">
+        {renderYear(currentYear, currentMonth)}
+      </div>
+
+      {/* Message */}
+      {message && (
+        <div className={`flex items-start gap-2 p-2 rounded-lg text-xs mt-4 ${
+          message.type === 'success'
+            ? 'bg-green-500/10 border border-green-500/20 text-green-300'
+            : 'bg-red-500/10 border border-red-500/20 text-red-300'
+        }`}>
+          {message.type === 'success'
+            ? <CheckCircle2 className="w-3 h-3 mt-0.5 flex-shrink-0" />
+            : <AlertCircle className="w-3 h-3 mt-0.5 flex-shrink-0" />}
+          <span className="flex-1">{message.text}</span>
+          <button onClick={() => setMessage(null)}><X className="w-3 h-3 opacity-60 hover:opacity-100" /></button>
+        </div>
+      )}
+    </GlassCard>
+  );
 }

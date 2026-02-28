@@ -23,7 +23,7 @@ export function NeonButton({
 }: NeonButtonProps) {
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   
-  const baseClasses = "relative px-8 py-4 rounded-xl overflow-hidden transition-all duration-300 inline-flex items-center";
+  const baseClasses = "relative px-8 py-4 rounded-xl overflow-hidden transition-all duration-300 inline-flex items-center cursor-pointer";
   
   const variantClasses = {
     primary: "bg-gradient-to-r from-violet-600 to-purple-600 text-white hover:from-violet-500 hover:to-fuchsia-500",
@@ -43,7 +43,7 @@ export function NeonButton({
       className={`${baseClasses} ${variantClasses[variant]} ${className} ${disabledClasses}`}
     >
       <motion.span 
-        className="relative z-10 inline-flex items-center gap-2"
+        className="relative z-10 inline-flex items-center gap-2 rtl:flex-row-reverse"
         whileHover={!reduceMotion ? { y: -1 } : undefined}
         transition={{ duration: 0.2 }}
       >

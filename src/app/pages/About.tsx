@@ -6,6 +6,8 @@ import { SeoHead } from "../components/shared/SeoHead";
 import { Target, Zap, Heart, Shield } from "lucide-react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faLinkedin, faInstagram, faBehance, faDribbble } from "@fortawesome/free-brands-svg-icons";
+import { useTranslation } from "react-i18next";
+import { fetchTranslations, deepMergeTranslations } from "../utils/translations";
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-e07959ec`;
@@ -19,58 +21,50 @@ interface TeamMember {
   socialLinks: Record<string, string>;
 }
 
-const values = [
-  {
-    icon: Target,
-    title: "Clarity",
-    description: "Clear communication, transparent process, no surprises."
-  },
-  {
-    icon: Zap,
-    title: "Speed",
-    description: "Fast turnaround without compromising on quality."
-  },
-  {
-    icon: Heart,
-    title: "Craft",
-    description: "Obsessive attention to detail in every frame."
-  },
-  {
-    icon: Shield,
-    title: "Reliability",
-    description: "On-time delivery, always. Your deadlines are sacred."
-  },
-];
+const VALUE_ICONS = [Target, Zap, Heart, Shield];
 
 const clientLogos = [
-  "Google", "Apple", "Nike", "Adobe", "Spotify", "Netflix", "Tesla", "Stripe", "Figma", "Notion", "Slack", "Airbnb"
+  "Google", "Apple", "Nike", "Adobe", "Spotify", "Netflix",
+  "Tesla", "Stripe", "Figma", "Notion", "Slack", "Airbnb",
 ];
 
 export function About() {
-  const [team, setTeam] = useState<TeamMember[]>([]);
+  const { t, i18n } = useTranslation();
+  const [team,    setTeam]    = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
 
+  useEffect(() => { fetchTeam(); }, []);
+
+  // Apply team translations when language changes
   useEffect(() => {
-    fetchTeam();
-  }, []);
+    if (i18n.language === 'en' || team.length === 0) return;
+    fetchTranslations(i18n.language, 'team').then(trans => {
+      if (Object.keys(trans).length > 0) {
+        setTeam(prev => prev.map(m => ({
+          ...m,
+          ...(trans[m.id] ? deepMergeTranslations(m, trans[m.id]) : {}),
+        })));
+      }
+    });
+  }, [i18n.language, team.length]);
 
   const fetchTeam = async () => {
     try {
       const response = await fetch(`${API_BASE}/team`, {
-        headers: {
-          'Authorization': `Bearer ${publicAnonKey}`,
-        },
+        headers: { 'Authorization': `Bearer ${publicAnonKey}` },
       });
       const data = await response.json();
-      if (data.success) {
-        setTeam(data.data || []);
-      }
+      if (data.success) setTeam(data.data || []);
     } catch (error) {
       console.error('Error fetching team:', error);
     } finally {
       setLoading(false);
     }
   };
+
+  // Values with translated text, icons stay in code
+  const values = (t('about.values', { returnObjects: true }) as Array<{ title: string; description: string }>)
+    .map((v, i) => ({ ...v, icon: VALUE_ICONS[i] }));
 
   return (
     <div className="min-h-screen py-24 px-6">
@@ -82,6 +76,7 @@ export function About() {
         }}
       />
       <div className="max-w-6xl mx-auto">
+
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -90,14 +85,14 @@ export function About() {
           className="text-center mb-24"
         >
           <h1 className="text-5xl md:text-6xl tracking-tight mb-6">
-            Motion design studio
+            {t('about.titleLine1')}
             <br />
             <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
-              Remote worldwide
+              {t('about.titleLine2')}
             </span>
           </h1>
           <p className="text-xl text-white/60 max-w-2xl mx-auto">
-            We're a small team of motion designers obsessed with craft, speed, and clarity.
+            {t('about.subtitle')}
           </p>
         </motion.div>
 
@@ -110,22 +105,18 @@ export function About() {
         >
           <GlassCard className="p-12">
             <div className="max-w-3xl mx-auto space-y-6 text-white/70 text-lg leading-relaxed">
+              <p>{t('about.story1')}</p>
               <p>
-                Fastoosh started in 2019 as a side project. We were frustrated with slow turnarounds 
-                and unclear communication in the motion design industry.
+                {t('about.story2Pre')}
+                <span className="text-white">{t('about.story2Bold1')}</span>
+                {t('about.story2Mid1')}
+                <span className="text-white">{t('about.story2Bold2')}</span>
+                {t('about.story2Mid2')}
+                <span className="text-white">{t('about.story2Bold3')}</span>
+                {t('about.story2Post')}
               </p>
-              <p>
-                So we built a studio focused on three things: <span className="text-white">premium craft</span>, 
-                <span className="text-white"> fast execution</span>, and <span className="text-white">crystal-clear process</span>.
-              </p>
-              <p>
-                Today, we work with ambitious startups and Fortune 500 companies worldwide. 
-                Every project gets the same attention to detail, whether it's a 15-second social ad 
-                or a full brand identity system.
-              </p>
-              <p className="text-white">
-                We're remote-first, NDA-friendly, and reply within 24-48 hours.
-              </p>
+              <p>{t('about.story3')}</p>
+              <p className="text-white">{t('about.story4')}</p>
             </div>
           </GlassCard>
         </motion.div>
@@ -137,11 +128,11 @@ export function About() {
           viewport={{ once: true }}
           className="mb-24"
         >
-          <h2 className="text-3xl text-center mb-12">What drives us</h2>
+          <h2 className="text-3xl text-center mb-12">{t('about.valuesHeading')}</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {values.map((value, index) => (
               <motion.div
-                key={value.title}
+                key={index}
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
@@ -160,86 +151,70 @@ export function About() {
         </motion.div>
 
         {/* Team */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          className="mb-24"
-        >
-          <h2 className="text-3xl text-center mb-12">Small team, big impact</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {team.map((member, index) => (
-              <motion.div
-                key={member.name}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: index * 0.1 }}
-              >
-                <GlassCard hover className="overflow-hidden">
-                  <div className="aspect-square overflow-hidden">
-                    <img 
-                      src={member.imageUrl} 
-                      alt={member.name}
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                  <div className="p-6">
-                    <h3 className="text-lg mb-1">{member.name}</h3>
-                    <p className="text-purple-400 text-sm mb-3">{member.role}</p>
-                    <p className="text-white/60 text-sm mb-4">{member.bio}</p>
-                    
-                    {/* Social Links */}
-                    {member.socialLinks && Object.keys(member.socialLinks).some(key => member.socialLinks[key]) && (
-                      <div className="flex gap-2 pt-3 border-t border-white/10">
-                        {member.socialLinks.linkedin && (
-                          <a
-                            href={member.socialLinks.linkedin}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="w-8 h-8 rounded-lg bg-white/5 hover:bg-purple-500/20 flex items-center justify-center transition-colors group"
-                          >
-                            <FontAwesomeIcon icon={faLinkedin} className="w-4 h-4 text-white/60 group-hover:text-purple-400 transition-colors" />
-                          </a>
-                        )}
-                        {member.socialLinks.instagram && (
-                          <a
-                            href={member.socialLinks.instagram}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="w-8 h-8 rounded-lg bg-white/5 hover:bg-purple-500/20 flex items-center justify-center transition-colors group"
-                          >
-                            <FontAwesomeIcon icon={faInstagram} className="w-4 h-4 text-white/60 group-hover:text-purple-400 transition-colors" />
-                          </a>
-                        )}
-                        {member.socialLinks.behance && (
-                          <a
-                            href={member.socialLinks.behance}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="w-8 h-8 rounded-lg bg-white/5 hover:bg-purple-500/20 flex items-center justify-center transition-colors group"
-                          >
-                            <FontAwesomeIcon icon={faBehance} className="w-4 h-4 text-white/60 group-hover:text-purple-400 transition-colors" />
-                          </a>
-                        )}
-                        {member.socialLinks.dribbble && (
-                          <a
-                            href={member.socialLinks.dribbble}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="w-8 h-8 rounded-lg bg-white/5 hover:bg-purple-500/20 flex items-center justify-center transition-colors group"
-                          >
-                            <FontAwesomeIcon icon={faDribbble} className="w-4 h-4 text-white/60 group-hover:text-purple-400 transition-colors" />
-                          </a>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </GlassCard>
-              </motion.div>
-            ))}
-          </div>
-        </motion.div>
+        {!loading && team.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="mb-24"
+          >
+            <h2 className="text-3xl text-center mb-12">{t('about.teamHeading')}</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              {team.map((member, index) => (
+                <motion.div
+                  key={member.name}
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: index * 0.1 }}
+                >
+                  <GlassCard hover className="overflow-hidden">
+                    <div className="aspect-square overflow-hidden">
+                      <img
+                        src={member.imageUrl}
+                        alt={member.name}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    <div className="p-6">
+                      <h3 className="text-lg mb-1">{member.name}</h3>
+                      <p className="text-purple-400 text-sm mb-3">{member.role}</p>
+                      <p className="text-white/60 text-sm mb-4">{member.bio}</p>
+                      {member.socialLinks && Object.keys(member.socialLinks).some(k => member.socialLinks[k]) && (
+                        <div className="flex gap-2 pt-3 border-t border-white/10 rtl:flex-row-reverse">
+                          {member.socialLinks.linkedin && (
+                            <a href={member.socialLinks.linkedin} target="_blank" rel="noopener noreferrer"
+                              className="w-8 h-8 rounded-lg bg-white/5 hover:bg-purple-500/20 flex items-center justify-center transition-colors group">
+                              <FontAwesomeIcon icon={faLinkedin} className="w-4 h-4 text-white/60 group-hover:text-purple-400 transition-colors" />
+                            </a>
+                          )}
+                          {member.socialLinks.instagram && (
+                            <a href={member.socialLinks.instagram} target="_blank" rel="noopener noreferrer"
+                              className="w-8 h-8 rounded-lg bg-white/5 hover:bg-purple-500/20 flex items-center justify-center transition-colors group">
+                              <FontAwesomeIcon icon={faInstagram} className="w-4 h-4 text-white/60 group-hover:text-purple-400 transition-colors" />
+                            </a>
+                          )}
+                          {member.socialLinks.behance && (
+                            <a href={member.socialLinks.behance} target="_blank" rel="noopener noreferrer"
+                              className="w-8 h-8 rounded-lg bg-white/5 hover:bg-purple-500/20 flex items-center justify-center transition-colors group">
+                              <FontAwesomeIcon icon={faBehance} className="w-4 h-4 text-white/60 group-hover:text-purple-400 transition-colors" />
+                            </a>
+                          )}
+                          {member.socialLinks.dribbble && (
+                            <a href={member.socialLinks.dribbble} target="_blank" rel="noopener noreferrer"
+                              className="w-8 h-8 rounded-lg bg-white/5 hover:bg-purple-500/20 flex items-center justify-center transition-colors group">
+                              <FontAwesomeIcon icon={faDribbble} className="w-4 h-4 text-white/60 group-hover:text-purple-400 transition-colors" />
+                            </a>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </GlassCard>
+                </motion.div>
+              ))}
+            </div>
+          </motion.div>
+        )}
 
         {/* Clients */}
         <motion.div
@@ -248,14 +223,11 @@ export function About() {
           viewport={{ once: true }}
           className="mb-24"
         >
-          <h2 className="text-3xl text-center mb-12">Trusted by</h2>
+          <h2 className="text-3xl text-center mb-12">{t('about.clientsHeading')}</h2>
           <GlassCard className="p-12">
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-8">
               {clientLogos.map((logo, index) => (
-                <div 
-                  key={index} 
-                  className="flex items-center justify-center text-white/40 hover:text-white/70 transition-colors"
-                >
+                <div key={index} className="flex items-center justify-center text-white/40 hover:text-white/70 transition-colors">
                   <span className="text-sm">{logo}</span>
                 </div>
               ))}
@@ -271,19 +243,17 @@ export function About() {
           className="text-center"
         >
           <GlassCard className="p-12 w-full">
-            <h3 className="text-3xl mb-4">Let's work together</h3>
-            <p className="text-white/60 mb-8 max-w-2xl mx-auto">
-              We're always looking for exciting projects. If you're building something ambitious, 
-              let's talk.
-            </p>
-            <NeonButton href="/work-with-us">Work with us</NeonButton>
+            <h3 className="text-3xl mb-4">{t('about.ctaHeading')}</h3>
+            <p className="text-white/60 mb-8 max-w-2xl mx-auto">{t('about.ctaSubtitle')}</p>
+            <NeonButton href="/work-with-us">{t('common.workWithUs')}</NeonButton>
             <div className="flex flex-wrap justify-center gap-6 mt-8 text-sm text-white/50">
-              <span>✓ Remote worldwide</span>
-              <span>✓ Reply in 24-48h</span>
-              <span>✓ NDA-friendly</span>
+              <span>{t('common.remoteWorldwide')}</span>
+              <span>{t('common.replyTime')}</span>
+              <span>{t('common.ndaFriendly')}</span>
             </div>
           </GlassCard>
         </motion.div>
+
       </div>
     </div>
   );

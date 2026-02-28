@@ -6,6 +6,9 @@ import { SeoHead } from "../components/shared/SeoHead";
 import { DEFAULT_HOME_CONTENT, ICON_MAP, type HomeContent } from "../components/admin/HomeTab";
 import { ArrowRight, CheckCircle2, Clock } from "lucide-react";
 import { motion } from "motion/react";
+import { useTranslation } from "react-i18next";
+import { fetchTranslations, deepMergeTranslations } from "../utils/translations";
+import { useLanguage } from "../hooks/useLanguage";
 import Player from '@vimeo/player';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 
@@ -30,6 +33,8 @@ async function retryFetch(url: string, options: RequestInit, retries = 3, delay 
 }
 
 export function Home() {
+  const { t, i18n } = useTranslation();
+  const { isRTL } = useLanguage();
   const [homeContent, setHomeContent] = useState<HomeContent>(DEFAULT_HOME_CONTENT);
   const [featuredProjects, setFeaturedProjects] = useState<any[]>([
     { id: "fintech-explainer",  title: "FinTech Product Launch",  outcome: "2.3M views, 340% increase in sign-ups",  thumbnail: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800&q=80" },
@@ -39,11 +44,62 @@ export function Home() {
     { id: "social-campaign",    title: "Social Media Campaign",   outcome: "5M impressions in 2 weeks",            thumbnail: "https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=800&q=80" },
     { id: "ui-animations",      title: "App UI Animations",       outcome: "150+ micro-interactions",              thumbnail: "https://images.unsplash.com/photo-1581291518857-4e27b48ff24e?w=800&q=80" },
   ]);
+  const [availability, setAvailability] = useState<{ 
+    status: 'available' | 'busy' | 'booked'; 
+    message: string;
+    months?: any[];
+    firstAvailable?: string | null;
+  }>({
+    status: 'available',
+    message: '',
+    months: [],
+    firstAvailable: null
+  });
 
   useEffect(() => {
     fetchHomeContent();
     fetchFeaturedProjects();
+    fetchAvailability();
   }, []);
+
+  // Apply dynamic translations when language changes
+  useEffect(() => {
+    const loadContent = async () => {
+      // Always start by fetching base English content
+      await fetchHomeContent();
+      
+      // If not English, fetch and merge translations
+      if (i18n.language !== 'en') {
+        const trans = await fetchTranslations(i18n.language, 'home');
+        if (Object.keys(trans).length > 0) {
+          setHomeContent(prev => deepMergeTranslations(prev, trans) as HomeContent);
+        }
+      }
+    };
+    
+    loadContent();
+  }, [i18n.language]);
+
+  // Apply dynamic translations to featured projects when language changes
+  useEffect(() => {
+    const loadProjectTranslations = async () => {
+      // Always reload base featured projects first
+      await fetchFeaturedProjects();
+      
+      // If not English, fetch and merge project translations
+      if (i18n.language !== 'en') {
+        const trans = await fetchTranslations(i18n.language, 'projects');
+        if (Object.keys(trans).length > 0) {
+          setFeaturedProjects(prev => prev.map(project => ({
+            ...project,
+            ...(trans[project.id] ? deepMergeTranslations(project, trans[project.id]) : {}),
+          })));
+        }
+      }
+    };
+    
+    loadProjectTranslations();
+  }, [i18n.language]);
 
   const fetchHomeContent = async () => {
     try {
@@ -74,6 +130,25 @@ export function Home() {
       }
     } catch (error) {
       console.error('Error fetching featured projects:', error);
+    }
+  };
+
+  const fetchAvailability = async () => {
+    try {
+      const res = await retryFetch(`${API_BASE}/availability-calendar/current`, {
+        headers: { Authorization: `Bearer ${publicAnonKey}` },
+      });
+      const result = await res.json();
+      if (result.success && result.data) {
+        setAvailability({
+          status: result.data.status || 'available',
+          message: result.data.message || '',
+          months: result.data.months || [],
+          firstAvailable: result.data.firstAvailable || null
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching availability:', error);
     }
   };
 
@@ -213,13 +288,18 @@ export function Home() {
             <p className="text-lg md:text-xl text-white/70 max-w-2xl mx-auto">{c.heroSubtitle}</p>
           </motion.div>
 
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.2 }} className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-            <NeonButton href="/work-with-us">{c.heroCta1Text} <ArrowRight className="w-5 h-5 ml-2 inline" /></NeonButton>
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.2 }} className="flex flex-col sm:flex-row rtl:sm:flex-row-reverse gap-4 justify-center items-center">
+            <NeonButton href="/work-with-us">{c.heroCta1Text} <ArrowRight className="w-5 h-5 ml-2 rtl:ml-0 rtl:mr-2 rtl:rotate-180 inline" /></NeonButton>
             <NeonButton href="/projects" variant="secondary">{c.heroCta2Text}</NeonButton>
           </motion.div>
 
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.6, delay: 0.4 }} className="flex justify-center pt-4">
-            <AvailabilityBadge />
+            <AvailabilityBadge 
+              status={availability.status} 
+              message={availability.message} 
+              months={availability.months}
+              firstAvailable={availability.firstAvailable}
+            />
           </motion.div>
 
           {/* Showreel */}
@@ -233,7 +313,7 @@ export function Home() {
                     <div className="w-20 h-20 mx-auto rounded-full bg-white/10 flex items-center justify-center">
                       <div className="w-0 h-0 border-l-[16px] border-l-white border-t-[12px] border-t-transparent border-b-[12px] border-b-transparent ml-1" />
                     </div>
-                    <p className="text-white/60">Showreel coming soon</p>
+                    <p className="text-white/60">{t('home.showreelComingSoon')}</p>
                   </div>
                 </div>
               )}
@@ -264,7 +344,13 @@ export function Home() {
             <h2 className="text-4xl md:text-5xl tracking-tight mb-4">{c.featuredHeading}</h2>
             <p className="text-xl text-white/60">{c.featuredSubtitle}</p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          <div className={`grid grid-cols-1 gap-8 ${
+            featuredProjects.length === 1
+              ? 'md:grid-cols-1 max-w-md mx-auto'
+              : featuredProjects.length === 2
+                ? 'md:grid-cols-2 max-w-3xl mx-auto'
+                : 'md:grid-cols-2 lg:grid-cols-3'
+          }`}>
             {featuredProjects.map((project, index) => (
               <motion.a key={project.id} href={`/projects/${project.slug || project.id}`} initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.5, delay: index * 0.1 }}>
                 <GlassCard hover neonBorder className="overflow-hidden group h-full flex flex-col">
@@ -280,7 +366,7 @@ export function Home() {
             ))}
           </div>
           <div className="text-center mt-12">
-            <NeonButton href="/projects" variant="secondary">View all projects</NeonButton>
+            <NeonButton href="/projects" variant="secondary">{t('home.viewAllProjects')}</NeonButton>
           </div>
         </div>
       </section>
@@ -318,17 +404,17 @@ export function Home() {
             <p className="text-xl text-white/60">{c.processSubtitle}</p>
           </div>
           <div className="relative">
-            <div className="absolute left-8 top-0 bottom-0 w-px bg-gradient-to-b from-purple-500/50 to-blue-500/50 hidden md:block" />
+            <div className="absolute left-8 rtl:left-auto rtl:right-8 top-0 bottom-0 w-px bg-gradient-to-b from-purple-500/50 to-blue-500/50 hidden md:block" />
             <div className="space-y-8">
               {c.processSteps.map((step, index) => (
-                <motion.div key={step.number + index} initial={{ opacity: 0, x: -20 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ duration: 0.5, delay: index * 0.1 }} className="relative">
-                  <GlassCard className="p-8 ml-0 md:ml-20">
-                    <div className="absolute -left-8 top-8 w-16 h-16 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-xl font-bold hidden md:flex">
+                <motion.div key={step.number + index} initial={{ opacity: 0, x: isRTL ? 20 : -20 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ duration: 0.5, delay: index * 0.1 }} className="relative">
+                  <GlassCard className="p-8 ml-0 md:ml-20 rtl:md:ml-0 rtl:md:mr-20">
+                    <div className="absolute -left-8 rtl:left-auto rtl:-right-8 top-8 w-16 h-16 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-xl font-bold hidden md:flex">
                       {step.number}
                     </div>
-                    <div className="flex items-start gap-4">
+                    <div className="flex items-start gap-4 rtl:flex-row-reverse">
                       <div className="md:hidden w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center flex-shrink-0">{step.number}</div>
-                      <div className="flex-1 pl-2">
+                      <div className="flex-1 pl-2 rtl:pl-0 rtl:pr-2">
                         <h3 className="text-2xl mb-2">{step.title}</h3>
                         <p className="text-white/60">{step.description}</p>
                       </div>
@@ -344,13 +430,13 @@ export function Home() {
       {/* ── Turnaround & Deliverables ─────────────────────────────────────── */}
       <section className="px-6 py-24 bg-white/[0.01]">
         <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8">
-          <motion.div initial={{ opacity: 0, x: -20 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ duration: 0.5 }}>
+          <motion.div initial={{ opacity: 0, x: isRTL ? 20 : -20 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ duration: 0.5 }}>
             <GlassCard className="p-8 h-full">
               <Clock className="w-12 h-12 text-purple-400 mb-6" />
-              <h3 className="text-2xl mb-4">Typical turnaround</h3>
+              <h3 className="text-2xl mb-4">{t('home.typicalTurnaround')}</h3>
               <div className="space-y-4 text-white/70">
                 {c.turnaroundRows.map((row, idx) => (
-                  <div key={idx} className={`flex justify-between items-center pb-3 ${idx < c.turnaroundRows.length - 1 ? 'border-b border-white/10' : ''}`}>
+                  <div key={idx} className={`flex justify-between items-center rtl:flex-row-reverse pb-3 ${idx < c.turnaroundRows.length - 1 ? 'border-b border-white/10' : ''}`}>
                     <span>{row.label}</span>
                     <span className="text-white">{row.time}</span>
                   </div>
@@ -360,13 +446,13 @@ export function Home() {
             </GlassCard>
           </motion.div>
 
-          <motion.div initial={{ opacity: 0, x: 20 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ duration: 0.5 }}>
+          <motion.div initial={{ opacity: 0, x: isRTL ? -20 : 20 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ duration: 0.5 }}>
             <GlassCard className="p-8 h-full">
               <CheckCircle2 className="w-12 h-12 text-blue-400 mb-6" />
               <h3 className="text-2xl mb-4">{c.deliverablesTitle}</h3>
               <ul className="space-y-3">
                 {c.deliverables.map((item, index) => (
-                  <li key={index} className="flex items-start gap-3">
+                  <li key={index} className="flex items-start gap-3 rtl:flex-row-reverse">
                     <CheckCircle2 className="w-5 h-5 text-green-400 mt-0.5 flex-shrink-0" />
                     <span className="text-white/70">{item}</span>
                   </li>
@@ -387,7 +473,7 @@ export function Home() {
               <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">{c.ctaHeadingGradient}</span>
             </h2>
             <p className="text-xl text-white/70 mb-8 max-w-2xl mx-auto">{c.ctaSubtitle}</p>
-            <NeonButton href="/work-with-us">{c.heroCta1Text} <ArrowRight className="w-5 h-5 ml-2 inline" /></NeonButton>
+            <NeonButton href="/work-with-us">{c.heroCta1Text} <ArrowRight className="w-5 h-5 rtl:rotate-180" /></NeonButton>
             <div className="flex flex-wrap justify-center gap-6 mt-8 text-sm text-white/50">
               {c.ctaBadges.map((badge, i) => <span key={i}>{badge}</span>)}
             </div>

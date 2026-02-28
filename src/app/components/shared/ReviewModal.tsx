@@ -169,8 +169,8 @@ export function ReviewModal({
 
             <div className="p-6">
               {/* Header */}
-              <div className="flex items-start justify-between gap-3 mb-6">
-                <div className="flex items-center gap-3">
+              <div className="flex items-start justify-between gap-3 mb-6 rtl:flex-row-reverse">
+                <div className="flex items-center gap-3 rtl:flex-row-reverse">
                   {toolImageUrl && (
                     <div className="w-11 h-11 rounded-xl overflow-hidden flex-shrink-0 border border-white/10 bg-white/5">
                       <img src={toolImageUrl} alt={toolName} className="w-full h-full object-cover" />
@@ -232,20 +232,20 @@ export function ReviewModal({
 
                   {/* Error */}
                   {error && (
-                    <div className="flex items-center gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/20">
+                    <div className="flex items-center gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/20 rtl:flex-row-reverse">
                       <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
                       <p className="text-red-400 text-xs">{error}</p>
                     </div>
                   )}
 
                   {/* Actions */}
-                  <div className="flex gap-3 pt-1">
+                  <div className="flex gap-3 pt-1 rtl:flex-row-reverse">
                     {/* Delete (only if existing review) */}
                     {existingReview && !confirmDelete && (
                       <button
                         type="button"
                         onClick={() => setConfirmDelete(true)}
-                        className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold
+                        className="inline-flex items-center gap-1.5 rtl:flex-row-reverse px-4 py-2.5 rounded-xl text-sm font-semibold
                           bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition-all"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -259,7 +259,7 @@ export function ReviewModal({
                         type="button"
                         onClick={handleDelete}
                         disabled={deleting}
-                        className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold
+                        className="inline-flex items-center gap-1.5 rtl:flex-row-reverse px-4 py-2.5 rounded-xl text-sm font-semibold
                           bg-red-500/25 hover:bg-red-500/35 text-red-300 border border-red-500/40 transition-all disabled:opacity-60"
                       >
                         {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
@@ -283,7 +283,7 @@ export function ReviewModal({
                       <button
                         type="submit"
                         disabled={loading || !rating}
-                        className="ml-auto inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold
+                        className="ml-auto rtl:ml-0 rtl:mr-auto inline-flex items-center gap-2 rtl:flex-row-reverse px-5 py-2.5 rounded-xl text-sm font-semibold
                           bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500
                           text-white shadow-lg shadow-purple-500/20 transition-all disabled:opacity-50"
                       >

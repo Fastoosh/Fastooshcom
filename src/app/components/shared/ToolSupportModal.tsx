@@ -88,7 +88,7 @@ export function ToolSupportModal({ toolName, onClose }: Props) {
             {/* Close */}
             <button
               onClick={onClose}
-              className="absolute top-4 right-4 w-7 h-7 rounded-lg flex items-center justify-center
+              className="absolute top-4 right-4 rtl:right-auto rtl:left-4 w-7 h-7 rounded-lg flex items-center justify-center
                 text-white/30 hover:text-white/70 hover:bg-white/8 transition-all"
             >
               <X className="w-4 h-4" />
@@ -122,7 +122,7 @@ export function ToolSupportModal({ toolName, onClose }: Props) {
               /* ── Form ── */
               <form onSubmit={handleSubmit} className="space-y-5">
                 {/* Header */}
-                <div className="mb-2 pr-6">
+                <div className="mb-2 pr-6 rtl:pr-0 rtl:pl-6">
                   <p className="text-xs font-bold tracking-widest uppercase text-white/30 mb-1">Tool support</p>
                   <h2 className="text-xl font-black text-white leading-tight">{toolName}</h2>
                 </div>
@@ -138,8 +138,8 @@ export function ToolSupportModal({ toolName, onClose }: Props) {
                         key={value}
                         type="button"
                         onClick={() => set('inquiryType', value)}
-                        className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-medium
-                          transition-all duration-150 text-left
+                        className={`flex items-center gap-2 rtl:flex-row-reverse px-3 py-2 rounded-xl border text-xs font-medium
+                          transition-all duration-150 text-left rtl:text-right
                           ${form.inquiryType === value
                             ? `${bg} ${color} border-current scale-[1.02]`
                             : 'bg-white/4 border-white/8 text-white/40 hover:bg-white/8 hover:text-white/60'
@@ -230,9 +230,9 @@ export function ToolSupportModal({ toolName, onClose }: Props) {
                   disabled={submitting || !form.inquiryType}
                 >
                   {submitting ? (
-                    <><Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />Sending…</>
+                    <><Loader2 className="w-3.5 h-3.5 mr-2 rtl:mr-0 rtl:ml-2 animate-spin" />Sending…</>
                   ) : (
-                    <><Send className="w-3.5 h-3.5 mr-2" />Send message</>
+                    <><Send className="w-3.5 h-3.5 mr-2 rtl:mr-0 rtl:ml-2" />Send message</>
                   )}
                 </NeonButton>
               </form>

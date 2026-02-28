@@ -1,4 +1,5 @@
 import * as kv from './kv_store.tsx';
+import { DEFAULT_HOME_CONTENT } from './defaultHomeContent.tsx';
 
 import { Hono } from "npm:hono";
 import { cors } from "npm:hono/cors";
@@ -167,8 +168,11 @@ const normalizeTool = (tool: Record<string, any>): Record<string, any> => {
     delete t.toolVersions;
   }
   // Extract hidden sentinel entries from faqs and surface them as first-class fields:
-  //   🎬  → tool.demoUrl    (video URL)
-  //   📋  → tool.howItWorks (JSON array of { title, description } steps)
+  //   🎬  → tool.demoUrl      (video URL)
+  //   📋  → tool.howItWorks   (JSON array of { title, description } steps)
+  //   🖥️  → tool.systemRequirements
+  //   🏷️  → tool.tagline
+  //   🗂️  → tool.toolCategory (type category tag)
   if (Array.isArray(t.faqs)) {
     const demoEntry = t.faqs.find((f: any) => f.question === '🎬');
     if (demoEntry) {
@@ -186,9 +190,14 @@ const normalizeTool = (tool: Record<string, any>): Record<string, any> => {
     if (taglineEntry) {
       t.tagline = taglineEntry.answer;
     }
+    const toolCategoryEntry = t.faqs.find((f: any) => f.question === '🗂️');
+    if (toolCategoryEntry) {
+      t.toolCategory = toolCategoryEntry.answer;
+    }
     // Strip sentinels so they never appear in the visible FAQ list
     t.faqs = t.faqs.filter((f: any) =>
-      f.question !== '🎬' && f.question !== '📋' && f.question !== '🖥️' && f.question !== '🏷️'
+      f.question !== '🎬' && f.question !== '📋' && f.question !== '🖥️' &&
+      f.question !== '🏷️' && f.question !== '🗂️'
     );
   }
 
@@ -1941,6 +1950,7 @@ app.post("/make-server-e07959ec/tools", requireAuth, async (c) => {
       howItWorks: toolHowItWorks,
       systemRequirements: toolSysReq,
       tagline: toolTagline,
+      toolCategory: toolCat,
       ...toolRest
     } = body;
 
@@ -1951,6 +1961,7 @@ app.post("/make-server-e07959ec/tools", requireAuth, async (c) => {
                         ? [{ question: '📋', answer: JSON.stringify(toolHowItWorks) }]        : []),
       ...(toolSysReq    ? [{ question: '🖥️', answer: toolSysReq }]                           : []),
       ...(toolTagline   ? [{ question: '🏷️', answer: toolTagline }]                          : []),
+      ...(toolCat       ? [{ question: '🗂️', answer: toolCat }]                              : []),
       ...(toolRest.faqs ?? []),
     ];
     const toolDbRow = toDbRow({ ...toolRest, faqs: toolFaqs });
@@ -2046,6 +2057,7 @@ app.put("/make-server-e07959ec/tools/:id", requireAuth, async (c) => {
     // howItWorks         → NO DB column → 📋 sentinel in faqs (JSON-encoded array)
     // systemRequirements → NO DB column → 🖥️ sentinel in faqs (plain string)
     // demoUrl            → NO DB column → 🎬 sentinel in faqs (plain string)
+    // toolCategory       → NO DB column → 🗂️ sentinel in faqs (plain string)
     const {
       versions,
       id: _bodyId,
@@ -2053,6 +2065,7 @@ app.put("/make-server-e07959ec/tools/:id", requireAuth, async (c) => {
       howItWorks: toolHowItWorks,
       systemRequirements: toolSysReq,
       tagline: toolTagline,
+      toolCategory: toolCat,
       ...toolRest
     } = body;
 
@@ -2063,6 +2076,7 @@ app.put("/make-server-e07959ec/tools/:id", requireAuth, async (c) => {
                         ? [{ question: '📋', answer: JSON.stringify(toolHowItWorks) }]        : []),
       ...(toolSysReq    ? [{ question: '🖥️', answer: toolSysReq }]                           : []),
       ...(toolTagline   ? [{ question: '🏷️', answer: toolTagline }]                          : []),
+      ...(toolCat       ? [{ question: '🗂️', answer: toolCat }]                              : []),
       ...(toolRest.faqs ?? []),
     ];
     const toolDbRow = toDbRow({ ...toolRest, faqs: toolFaqs });
@@ -4532,7 +4546,9 @@ app.get('/make-server-e07959ec/home-content', async (c) => {
         parsed = raw; // already an object returned by kv
       }
     }
-    return c.json({ success: true, data: parsed });
+    // Return default content if nothing is stored, so the translation panel has fields to work with
+    const data = parsed || DEFAULT_HOME_CONTENT;
+    return c.json({ success: true, data });
   } catch (error) {
     console.log('[home-content GET] error:', error);
     return c.json({ success: false, error: String(error) }, 500);
@@ -4625,6 +4641,97 @@ RULES: Return ONLY valid JSON, no markdown, no explanation. All strings concise 
   } catch (error) {
     console.log('[home-content AI] error:', error);
     return c.json({ success: false, error: `Generation failed: ${String(error)}` }, 500);
+  }
+});
+
+// ========== AVAILABILITY CALENDAR ==========
+
+// GET /availability-calendar — admin only
+app.get('/make-server-e07959ec/availability-calendar', requireAuth, async (c) => {
+  try {
+    const raw = await kv.get('availability_calendar');
+    let data: any = { calendar: {}, messages: { available: '', busy: '', booked: '' } };
+    
+    if (raw !== null && raw !== undefined) {
+      if (typeof raw === 'string') {
+        try { data = JSON.parse(raw); } catch { data = { calendar: {}, messages: { available: '', busy: '', booked: '' } }; }
+      } else {
+        data = raw;
+      }
+    }
+    
+    return c.json({ success: true, data });
+  } catch (error) {
+    console.log('[availability-calendar GET] error:', error);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
+// PUT /availability-calendar — admin only
+app.put('/make-server-e07959ec/availability-calendar', requireAuth, async (c) => {
+  try {
+    const body = await c.req.json();
+    await kv.set('availability_calendar', JSON.stringify(body));
+    console.log('✅ Availability calendar saved');
+    return c.json({ success: true });
+  } catch (error) {
+    console.log('[availability-calendar PUT] error:', error);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
+// GET /availability-calendar/current — public, returns current month + next 5 months
+app.get('/make-server-e07959ec/availability-calendar/current', async (c) => {
+  try {
+    const raw = await kv.get('availability_calendar');
+    let data: any = { calendar: {}, messages: { available: '', busy: '', booked: '' } };
+    
+    if (raw !== null && raw !== undefined) {
+      if (typeof raw === 'string') {
+        try { data = JSON.parse(raw); } catch { /* ignore */ }
+      } else {
+        data = raw;
+      }
+    }
+    
+    // Get current month and next 5 months
+    const now = new Date();
+    const months = [];
+    
+    for (let i = 0; i < 6; i++) {
+      const date = new Date(now.getFullYear(), now.getMonth() + i, 1);
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      const monthData = data.calendar[monthKey] || { status: 'available', message: '' };
+      
+      months.push({
+        key: monthKey,
+        month: date.toLocaleDateString('en-US', { month: 'long' }),
+        year: date.getFullYear(),
+        status: monthData.status || 'available',
+        message: monthData.message || data.messages[monthData.status] || ''
+      });
+    }
+    
+    console.log(`[availability-calendar/current] Returning ${months.length} months:`, months);
+    
+    // Find the first available month
+    const firstAvailable = months.find(m => m.status === 'available');
+    const currentMonth = months[0];
+    
+    return c.json({
+      success: true,
+      data: {
+        // For backward compatibility, keep the single status/message
+        status: currentMonth.status,
+        message: currentMonth.message,
+        // Add the full months array
+        months: months,
+        firstAvailable: firstAvailable ? `${firstAvailable.month} ${firstAvailable.year}` : null
+      }
+    });
+  } catch (error) {
+    console.log('[availability-calendar/current GET] error:', error);
+    return c.json({ success: false, error: String(error) }, 500);
   }
 });
 
@@ -5034,6 +5141,129 @@ app.post('/make-server-e07959ec/setup/brand', async (c) => {
     return c.json({ success: true });
   } catch (err) {
     return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// TRANSLATIONS  (Phase 2 — i18n dynamic content)
+// KV key format:  translations:{lang}:{type}
+//   lang  = 'fr' | 'ar'
+//   type  = 'home' | 'projects' | 'tools' | 'team' | 'categories'
+// The stored value is a nested JSON matching the source shape.
+// ═══════════════════════════════════════════════════════════════════
+
+const VALID_TRANS_LANGS = ['fr', 'ar'] as const;
+const VALID_TRANS_TYPES = ['home', 'projects', 'tools', 'team', 'categories'] as const;
+
+/** GET /translations/:lang/:type — public */
+app.get('/make-server-e07959ec/translations/:lang/:type', async (c) => {
+  const lang = c.req.param('lang');
+  const type = c.req.param('type');
+  if (!VALID_TRANS_LANGS.includes(lang as any) || !VALID_TRANS_TYPES.includes(type as any)) {
+    return c.json({ success: false, error: 'Invalid lang or type' }, 400);
+  }
+  try {
+    const raw = await kv.get(`translations:${lang}:${type}`);
+    const data = raw ? JSON.parse(raw) : {};
+    return c.json({ success: true, data });
+  } catch (err) {
+    console.log('[translations GET] error:', err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+/** PUT /translations/:lang/:type — admin only */
+app.put('/make-server-e07959ec/translations/:lang/:type', requireAuth, async (c) => {
+  const lang = c.req.param('lang');
+  const type = c.req.param('type');
+  if (!VALID_TRANS_LANGS.includes(lang as any) || !VALID_TRANS_TYPES.includes(type as any)) {
+    return c.json({ success: false, error: 'Invalid lang or type' }, 400);
+  }
+  try {
+    const body = await c.req.json();
+    await kv.set(`translations:${lang}:${type}`, JSON.stringify(body));
+    console.log(`✅ Translations saved: ${lang}:${type}`);
+    return c.json({ success: true });
+  } catch (err) {
+    console.log('[translations PUT] error:', err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+/** POST /admin/translate — Gemini batch translation.
+ *  Body: { lang, langName, fields: Record<string,string> }
+ *  Returns: { success: true, data: Record<string,string> }
+ */
+app.post('/make-server-e07959ec/admin/translate', requireAuth, async (c) => {
+  try {
+    const { lang, langName, fields } = await c.req.json() as {
+      lang: string; langName: string; fields: Record<string, string>;
+    };
+    if (!lang || !langName || !fields || Object.keys(fields).length === 0) {
+      return c.json({ success: false, error: 'lang, langName, and fields are required' }, 400);
+    }
+    const apiKey = Deno.env.get('GEMINI_API_KEY');
+    if (!apiKey) return c.json({ success: false, error: 'GEMINI_API_KEY not configured' }, 500);
+
+    const arabicNote = lang === 'ar'
+      ? '\n- Use formal Modern Standard Arabic (فصحى) with a professional, premium tone.\n- Numbers and brand names stay in their original form (Fastoosh, After Effects, Premiere Pro).'
+      : '';
+
+    const prompt = `You are a professional translator for Fastoosh, a premium motion design studio.
+
+Translate ALL values in the JSON below from English into ${langName}.
+
+Rules:
+- Maintain brand voice: premium, confident, creative, modern. Not salesy.
+- Do NOT translate: brand names (Fastoosh, After Effects, Premiere Pro, Lemon Squeezy), URLs, email addresses.
+- Keep the same tone and approximate length as the English source.
+- Empty strings remain empty strings.
+- Return ONLY valid JSON — same keys, translated values. No markdown, no explanation.${arabicNote}
+
+Input:
+${JSON.stringify(fields, null, 2)}`;
+
+    const geminiRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { responseMimeType: 'application/json', temperature: 0.25, maxOutputTokens: 16000 },
+        }),
+      }
+    );
+
+    if (!geminiRes.ok) {
+      const errText = await geminiRes.text();
+      const errorMsg = `Gemini API error (${geminiRes.status}): ${errText.substring(0, 400)}`;
+      
+      // Return 429 status code for rate limit errors so frontend can detect them
+      if (geminiRes.status === 429) {
+        return c.json({ success: false, error: errorMsg, rateLimitExceeded: true }, 429);
+      }
+      
+      return c.json({ success: false, error: errorMsg }, 500);
+    }
+
+    const geminiData = await geminiRes.json();
+    const rawText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!rawText) return c.json({ success: false, error: 'Gemini returned empty response' }, 500);
+
+    let translated: Record<string, string>;
+    try {
+      translated = JSON.parse(repairJson(rawText));
+    } catch (parseErr) {
+      console.log('[translate] JSON parse failed. Raw:', rawText.substring(0, 500));
+      return c.json({ success: false, error: `AI response was not valid JSON: ${String(parseErr)}` }, 500);
+    }
+
+    console.log(`✅ Translated ${Object.keys(translated).length} fields → ${langName}`);
+    return c.json({ success: true, data: translated });
+  } catch (err) {
+    console.log('[translate] error:', err);
+    return c.json({ success: false, error: `Translation failed: ${String(err)}` }, 500);
   }
 });
 

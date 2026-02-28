@@ -16,6 +16,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import useEmblaCarousel from 'embla-carousel-react';
 import { useTracker } from '../hooks/useTracker';
+import { useTranslation } from 'react-i18next';
+import { fetchTranslations, deepMergeTranslations } from '../utils/translations';
 
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-e07959ec`;
 
@@ -47,10 +49,12 @@ interface RichFeature {
 interface ToolVersion {
   id: string;
   versionType: 'Free' | 'Pro' | 'Studio';
+  versionTypeOriginal?: 'Free' | 'Pro' | 'Studio'; // Store original before translation
   pricingModel?: 'subscription' | 'lifetime';
   monthlyPrice?: string;
   yearlyPrice?: string;
   lifetimePrice?: string;
+  pricingDisplay?: string; // Server-computed display string (legacy / fallback)
   downloadUrl: string;
   lemonSqueezyVariantId?: string;
   features?: string[];
@@ -143,7 +147,8 @@ function parsePricing(version: ToolVersion, billingCycle: 'monthly' | 'yearly' =
   }
 
   // ── Free ──
-  if (version.versionType === 'Free') {
+  const originalType = version.versionTypeOriginal || version.versionType;
+  if (originalType === 'Free') {
     return { mainPrice: 'Free', period: '', subLabel: 'forever free', ctaPrice: 'Free', cleanFeatures };
   }
 
@@ -202,6 +207,13 @@ function parsePricing(version: ToolVersion, billingCycle: 'monthly' | 'yearly' =
     return { mainPrice: fmtYr, period: '/ yr', subLabel: 'billed annually', ctaPrice: `${fmtYr} / yr`, cleanFeatures };
   }
 
+  // Legacy fallback: server set pricingDisplay from old plain-text sentinel
+  // but didn't set pricingModel / individual price fields.
+  if (version.pricingDisplay && version.pricingDisplay !== 'Free') {
+    const display = fmt(version.pricingDisplay);
+    return { mainPrice: display, period: '', subLabel: 'one-time payment', ctaPrice: display, cleanFeatures };
+  }
+
   return { mainPrice: '—', period: '', subLabel: '', ctaPrice: '', cleanFeatures };
 }
 
@@ -210,6 +222,7 @@ function parsePricing(version: ToolVersion, billingCycle: 'monthly' | 'yearly' =
 function DemoPlayer({ url, toolId, toolName, toolSlug }: { url: string; toolId: string; toolName: string; toolSlug: string }) {
   const [playing, setPlaying] = useState(false);
   const { track } = useTracker();
+  const { t } = useTranslation();
   const yt = parseYouTube(url);
   const thumbnailUrl = yt ? `https://img.youtube.com/vi/${yt.videoId}/maxresdefault.jpg` : null;
 
@@ -227,7 +240,7 @@ function DemoPlayer({ url, toolId, toolName, toolSlug }: { url: string; toolId: 
     >
       <div className="flex items-center gap-3 mb-5">
         <div className="h-px flex-1 bg-white/10" />
-        <span className="text-xs font-semibold tracking-widest text-white/30 uppercase">See it in action</span>
+        <span className="text-xs font-semibold tracking-widest text-white/30 uppercase">{t('tools.detail.seeInAction')}</span>
         <div className="h-px flex-1 bg-white/10" />
       </div>
 
@@ -281,7 +294,7 @@ function DemoPlayer({ url, toolId, toolName, toolSlug }: { url: string; toolId: 
                 </div>
               </div>
               <span className="text-sm text-white/60 font-medium group-hover:text-white/80 transition-colors">
-                Click to play
+                {t('tools.detail.clickToPlay')}
               </span>
             </div>
           </button>
@@ -314,19 +327,54 @@ function PricingCard({
   sessionId?: string;
   billingCycle?: 'monthly' | 'yearly';
 }) {
+  const { t, i18n } = useTranslation();
   const { mainPrice, period, subLabel, ctaPrice, cleanFeatures } = parsePricing(version, billingCycle ?? 'monthly');
-  const isPro = version.versionType === 'Pro';
-  const isFree = version.versionType === 'Free';
+  // Use original versionType for logic checks (not translated)
+  const originalType = version.versionTypeOriginal || version.versionType;
+  const isPro = originalType === 'Pro';
+  const isFree = originalType === 'Free';
+
+  // Translate period for AR only — EN and FR keep the raw string untouched
+  const translatedPeriod = i18n.language === 'ar'
+    ? period === '/ mo' ? '/ شهر'
+    : period === '/ yr' ? '/ سنة'
+    : period
+    : period;
+  
+  // Translate the subLabel if it's a known key
+  let translatedSubLabel = subLabel;
+  if (subLabel === 'billed monthly') {
+    translatedSubLabel = t('tools.detail.billedMonthly');
+  } else if (subLabel === 'billed annually') {
+    translatedSubLabel = t('tools.detail.billedAnnually');
+  } else if (subLabel === 'one-time payment') {
+    translatedSubLabel = t('tools.detail.oneTimePayment');
+  } else if (subLabel === 'forever free') {
+    translatedSubLabel = t('tools.detail.foreverFree');
+  } else if (subLabel.startsWith('billed ')) {
+    // Handle "billed $90 / yr" format
+    const match = subLabel.match(/^billed (.+)$/);
+    if (match) {
+      translatedSubLabel = `${t('tools.detail.billedAnnually').replace('fée', '')} ${match[1]}`.trim();
+    }
+  }
+
+  // AR only: replace any remaining English period suffixes in the sub-label
+  if (i18n.language === 'ar') {
+    translatedSubLabel = translatedSubLabel.replace('/ yr', '/ سنة').replace('/ mo', '/ شهر');
+  }
+  
   // Prefer rich feature titles if available, otherwise fall back to plain features
   const displayFeatures = (version.richFeatures ?? []).length > 0
     ? (version.richFeatures ?? []).map(f => f.title).filter(Boolean)
     : cleanFeatures;
 
-  const config = {
-    Free:   { accent: 'text-emerald-400', dot: 'bg-emerald-400', ring: '' },
-    Pro:    { accent: 'text-purple-400',  dot: 'bg-purple-400',  ring: 'ring-1 ring-purple-500/30 border-purple-500/40' },
-    Studio: { accent: 'text-sky-400',     dot: 'bg-sky-400',     ring: '' },
-  }[version.versionType] ?? { accent: 'text-white', dot: 'bg-white', ring: '' };
+  // Use boolean checks instead of string matching to avoid translation issues
+  const config = isFree
+    ? { accent: 'text-emerald-400', dot: 'bg-emerald-400', ring: '', border: 'border-emerald-500/30', text: 'text-emerald-300' }
+    : isPro
+    ? { accent: 'text-purple-400',  dot: 'bg-purple-400',  ring: 'ring-1 ring-purple-500/30 border-purple-500/40', border: 'border-purple-500/30', text: 'text-purple-300' }
+    : { accent: 'text-sky-400', dot: 'bg-sky-400', ring: '', border: 'border-sky-500/30', text: 'text-sky-300' };
 
   // Build the checkout URL with pre-filled user data
   const buildCheckoutUrl = () => {
@@ -365,10 +413,10 @@ function PricingCard({
     >
       <GlassCard className={`relative p-7 h-full flex flex-col ${config.ring}`} neonBorder={isPro}>
         {isPro && (
-          <div className="absolute -top-3 left-1/2 -translate-x-1/2 whitespace-nowrap">
+          <div className="absolute top-3 right-3 rtl:right-auto rtl:left-3">
             <span className="px-3 py-1 rounded-full text-[11px] font-bold tracking-wide
               bg-gradient-to-r from-purple-500 to-blue-500 text-white shadow-md shadow-purple-500/30">
-              Most Popular
+              {t('tools.detail.mostPopular')}
             </span>
           </div>
         )}
@@ -376,8 +424,8 @@ function PricingCard({
         {/* Version label */}
         <div className="flex items-center gap-2 mb-5">
           <span className={`w-2 h-2 rounded-full ${config.dot}`} />
-          <span className={`text-sm font-bold tracking-wide uppercase ${config.accent}`}>
-            {version.versionType}
+          <span className={`text-sm font-bold uppercase ${config.accent}`}>
+            {t(`tools.versionTypes.${version.versionTypeOriginal}`, { defaultValue: version.versionTypeOriginal })}
           </span>
         </div>
 
@@ -385,21 +433,21 @@ function PricingCard({
         <div className="mb-6">
           {isFree ? (
             <>
-              <div className="text-4xl font-black text-emerald-400">Free</div>
-              <p className="text-white/30 text-xs mt-1">forever free</p>
+              <div className={`text-4xl font-black ${config.accent}`}>{t('tools.free')}</div>
+              <p className="text-white/30 text-xs mt-1">{t('tools.detail.foreverFree')}</p>
             </>
           ) : (
             <>
               {/* Main price + period on one line */}
               <div className="flex items-baseline gap-2">
                 <span className="text-4xl font-black text-white">{mainPrice || '—'}</span>
-                {period && (
-                  <span className="text-base font-medium text-white/40">{period}</span>
+                {translatedPeriod && (
+                  <span className="text-base font-medium text-white/40">{translatedPeriod}</span>
                 )}
               </div>
               {/* Sub-label: e.g. "$90 / yr · save 17%" or "one-time payment" */}
-              {subLabel && (
-                <p className="text-white/30 text-xs mt-1">{subLabel}</p>
+              {translatedSubLabel && (
+                <p className="text-white/30 text-xs mt-1">{translatedSubLabel}</p>
               )}
             </>
           )}
@@ -421,32 +469,46 @@ function PricingCard({
         <div className="mt-auto">
           {isFree ? (
             /* ── Free: email-gate for guests, direct for signed-in users ── */
-            <button
-              onClick={() => onFreeDownload(version)}
-              className="w-full inline-flex items-center justify-center gap-2
-                px-5 py-3 rounded-xl text-sm font-semibold transition-all
-                bg-white/8 hover:bg-emerald-500/15 border border-white/12
-                hover:border-emerald-500/30 text-emerald-300 hover:text-emerald-200"
-            >
-              <Download className="w-3.5 h-3.5" />
-              Download Free
-            </button>
+            <div>
+              <button
+                onClick={() => onFreeDownload(version)}
+                className={`w-full inline-flex items-center justify-center gap-2 rtl:flex-row-reverse
+                  px-5 py-3 rounded-xl text-sm font-semibold transition-all
+                  bg-white/8 hover:bg-white/12 border ${config.border}
+                  hover:border-opacity-50 ${config.text}`}
+              >
+                <Download className="w-3.5 h-3.5" />
+                {t('tools.detail.downloadFree')}
+              </button>
+              {!user && (
+                <p className="text-center text-white/35 text-xs mt-2 leading-snug">
+                  {t('tools.detail.freeGuestHint')}
+                </p>
+              )}
+            </div>
           ) : (
             /* ── Paid: smart checkout CTA ── */
-            <button
-              onClick={handlePaidCTA}
-              className={`w-full inline-flex items-center justify-center gap-2
-                px-5 py-3 rounded-xl text-sm font-semibold transition-all
-                ${isPro
-                  ? 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white shadow-lg shadow-purple-500/25'
-                  : 'bg-white/10 hover:bg-white/15 border border-white/15 text-white'
-                }`}
-            >
-              <ShoppingCart className="w-3.5 h-3.5" />
-              {user
-                ? `Buy Now${ctaPrice ? ` · ${ctaPrice}` : ''}`
-                : `Get ${version.versionType} — Sign in`}
-            </button>
+            <div>
+              <button
+                onClick={handlePaidCTA}
+                className={`w-full inline-flex items-center justify-center gap-2 rtl:flex-row-reverse
+                  px-5 py-3 rounded-xl text-sm font-semibold transition-all
+                  ${isPro
+                    ? 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white shadow-lg shadow-purple-500/25'
+                    : 'bg-white/10 hover:bg-white/15 border border-white/15 text-white'
+                  }`}
+              >
+                <ShoppingCart className="w-3.5 h-3.5" />
+                {user
+                  ? `${t('tools.detail.buyNow')}${ctaPrice ? ` · ${ctaPrice}` : ''}`
+                  : isPro ? t('tools.detail.getPro') : t('tools.detail.getStudio')}
+              </button>
+              {!user && (
+                <p className="text-center text-white/35 text-xs mt-2 leading-snug">
+                  {t('tools.detail.paidGuestHint')}
+                </p>
+              )}
+            </div>
           )}
         </div>
       </GlassCard>
@@ -462,7 +524,7 @@ function FaqItem({ faq, defaultOpen = false }: { faq: { question: string; answer
     <div className="border-b border-white/8 last:border-0">
       <button
         onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between py-5 text-left gap-4"
+        className="w-full flex items-center justify-between rtl:flex-row-reverse py-5 text-left rtl:text-right gap-4"
       >
         <span className="text-white/80 font-medium text-sm">{faq.question}</span>
         <span className="flex-shrink-0">
@@ -599,7 +661,7 @@ function ScreenshotCarousel({ screenshots }: { screenshots: string[] }) {
   );
 }
 
-// ── FeaturesShowcase ──────────────────────────────────────────────────────────
+// ── FeaturesShowcase ────────��─────────────────────────────────────────────────
 
 function FeaturesShowcase({
   versions,
@@ -616,15 +678,16 @@ function FeaturesShowcase({
   onSignInRequired: (msg?: string) => void;
   onBuyClick?: (v: ToolVersion) => void;
 }) {
+  const { t } = useTranslation();
   // Use Pro version features first, then Free, then first version
-  const proVersion = versions.find(v => v.versionType === 'Pro');
-  const freeVersion = versions.find(v => v.versionType === 'Free');
+  const proVersion = versions.find(v => (v.versionTypeOriginal || v.versionType) === 'Pro');
+  const freeVersion = versions.find(v => (v.versionTypeOriginal || v.versionType) === 'Free');
   const primaryVersion = proVersion ?? freeVersion ?? versions[0];
 
   const richFeatures = (primaryVersion?.richFeatures ?? []).filter(f => f.title?.trim());
   if (richFeatures.length === 0) return null;
 
-  const isFree = primaryVersion?.versionType === 'Free';
+  const isFree = (primaryVersion?.versionTypeOriginal || primaryVersion?.versionType) === 'Free';
 
   const buildCheckoutUrl = () => {
     if (!primaryVersion?.downloadUrl) return '/work-with-us';
@@ -656,7 +719,7 @@ function FeaturesShowcase({
       viewport={{ once: true }}
       className="mb-24"
     >
-      <SectionLabel>What you can do</SectionLabel>
+      <SectionLabel>{t('tools.detail.whatYouCanDo')}</SectionLabel>
 
       <div className="space-y-20 md:space-y-28">
         {richFeatures.map((feature, index) => {
@@ -679,7 +742,7 @@ function FeaturesShowcase({
                   <span className="text-[11px] font-bold tracking-[0.2em] uppercase text-purple-400/60">
                     {String(index + 1).padStart(2, '0')}
                   </span>
-                  <div className="h-px flex-1 bg-gradient-to-r from-purple-500/30 to-transparent max-w-[60px]" />
+                  <div className="h-px flex-1 bg-gradient-to-r from-purple-500/30 to-transparent rtl:bg-gradient-to-l max-w-[60px]" />
                 </div>
 
                 {/* Title */}
@@ -698,7 +761,7 @@ function FeaturesShowcase({
                 <div>
                   <button
                     onClick={handleCTA}
-                    className={`inline-flex items-center gap-2.5 px-6 py-3 rounded-xl
+                    className={`inline-flex items-center gap-2.5 rtl:flex-row-reverse px-6 py-3 rounded-xl
                       text-sm font-semibold transition-all duration-200 active:scale-[0.97]
                       ${isFree
                         ? 'bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 hover:text-emerald-200'
@@ -709,8 +772,8 @@ function FeaturesShowcase({
                       ? <Download className="w-4 h-4" />
                       : <ShoppingCart className="w-4 h-4" />}
                     {isFree
-                      ? 'Download Free'
-                      : `Get ${primaryVersion?.versionType ?? 'Pro'}`}
+                      ? t('tools.detail.downloadFree')
+                      : t('tools.detail.getPro')}
                   </button>
                 </div>
               </div>
@@ -744,6 +807,7 @@ function FeaturesShowcase({
 
 export function ToolDetail() {
   const { slug } = useParams();
+  const { t, i18n } = useTranslation();
   const { user, session, signInWithEmail, signUpWithEmail, forgotPassword, signInWithOAuth } = useUserAuth();
   const { track, setUser, sessionId } = useTracker();
   const [tool, setTool] = useState<Tool | null>(null);
@@ -758,9 +822,63 @@ export function ToolDetail() {
   const [userPurchasedProductNames, setUserPurchasedProductNames] = useState<string[]>([]);
   const [reviews, setReviews] = useState<any[]>([]);
   // Billing cycle toggle — only relevant when a subscription version has both prices
-  const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
+  const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('yearly');
+  // CMS category translations for tool status badges { "New": "Nouveau", ... }
+  const [cmsStatusTrans, setCmsStatusTrans] = useState<Record<string, string>>({});
+  const isRTL = i18n.language === 'ar';
 
   useEffect(() => { loadTool(); }, [slug]);
+
+  // Apply dynamic translations when language changes
+  useEffect(() => {
+    const applyTranslations = async () => {
+      // Always reload base English tool first
+      await loadTool();
+      
+      // If not English, fetch and merge translations
+      if (i18n.language !== 'en') {
+        const [trans, categoryTrans] = await Promise.all([
+          fetchTranslations(i18n.language, 'tools'),
+          fetchTranslations(i18n.language, 'categories'),
+        ]);
+        if (Object.keys(trans).length > 0) {
+          setTool(prev => {
+            if (!prev || !trans[prev.id]) return prev;
+            const merged = deepMergeTranslations(prev, trans[prev.id]) as Tool;
+            // Restore non-translatable version fields so enum checks (pricingModel,
+            // downloadUrl, prices, IDs) always keep the original English values.
+            if (merged.versions && prev.versions) {
+              merged.versions = merged.versions.map((mv: ToolVersion, i: number) => {
+                const orig = prev.versions![i];
+                if (!orig) return mv;
+                return {
+                  ...mv,
+                  pricingModel:          orig.pricingModel,
+                  monthlyPrice:          orig.monthlyPrice,
+                  yearlyPrice:           orig.yearlyPrice,
+                  lifetimePrice:         orig.lifetimePrice,
+                  downloadUrl:           orig.downloadUrl,
+                  lemonSqueezyVariantId: orig.lemonSqueezyVariantId,
+                  versionTypeOriginal:   orig.versionTypeOriginal ?? orig.versionType,
+                };
+              });
+            }
+            return merged;
+          });
+        }
+        // Extract toolStatuses sub-map for badge label overrides
+        if (categoryTrans.toolStatuses && typeof categoryTrans.toolStatuses === 'object') {
+          setCmsStatusTrans(categoryTrans.toolStatuses as Record<string, string>);
+        } else {
+          setCmsStatusTrans({});
+        }
+      } else {
+        setCmsStatusTrans({});
+      }
+    };
+    
+    applyTranslations();
+  }, [i18n.language]);
 
   // Sync user identity into tracker when user changes
   useEffect(() => {
@@ -797,25 +915,47 @@ export function ToolDetail() {
     try {
       setLoading(true);
       setError(null);
-      const [res, settingsRes] = await Promise.all([
-        fetch(`${API_BASE}/tools`, { headers: { Authorization: `Bearer ${publicAnonKey}` } }),
-        fetch(`${API_BASE}/settings`, { headers: { Authorization: `Bearer ${publicAnonKey}` } }),
+      const safeGet = async (url: string) => {
+        try {
+          const r = await fetch(url, { headers: { Authorization: `Bearer ${publicAnonKey}` } });
+          if (!r.ok) return null;
+          return r.json();
+        } catch {
+          // Retry once after 1 s (handles Supabase cold-start timeout)
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          try {
+            const r = await fetch(url, { headers: { Authorization: `Bearer ${publicAnonKey}` } });
+            if (!r.ok) return null;
+            return r.json();
+          } catch (retryErr) {
+            console.error('[ToolDetail] fetch failed after retry:', url, retryErr);
+            return null;
+          }
+        }
+      };
+
+      const [result, settingsData] = await Promise.all([
+        safeGet(`${API_BASE}/tools`),
+        safeGet(`${API_BASE}/settings`),
       ]);
 
-      if (settingsRes.ok) {
-        const settingsData = await settingsRes.json();
-        if (settingsData.data?.toolStatuses?.length) {
-          setStatuses(settingsData.data.toolStatuses);
-        }
+      if (settingsData?.data?.toolStatuses?.length) {
+        setStatuses(settingsData.data.toolStatuses);
       }
-      if (!res.ok) throw new Error('Network error');
-      const result = await res.json();
+      if (!result) throw new Error('Network error — could not reach server');
       if (result.success && result.data) {
         let found = result.data.find((t: Tool) => t.slug === slug)
           || result.data.find((t: Tool) => t.id === slug);
         if (found) {
           if (!found.versions && (found as any).toolVersions)
             found = { ...found, versions: (found as any).toolVersions };
+          // Preserve original versionType before translations
+          if (found.versions) {
+            found.versions = found.versions.map((v: ToolVersion) => ({
+              ...v,
+              versionTypeOriginal: v.versionTypeOriginal || v.versionType
+            }));
+          }
           setTool(found);
           // Track tool view
           track('tool_view', { toolId: found.id, toolName: found.name, toolSlug: found.slug ?? slug });
@@ -836,10 +976,17 @@ export function ToolDetail() {
   };
 
   const fetchReviews = async (toolId: string) => {
+    const url = `${API_BASE}/reviews?toolId=${encodeURIComponent(toolId)}`;
+    const opts = { headers: { Authorization: `Bearer ${publicAnonKey}` } };
     try {
-      const res = await fetch(`${API_BASE}/reviews?toolId=${encodeURIComponent(toolId)}`, {
-        headers: { Authorization: `Bearer ${publicAnonKey}` },
-      });
+      let res: Response;
+      try {
+        res = await fetch(url, opts);
+      } catch {
+        // Cold-start retry after 1 s
+        await new Promise(r => setTimeout(r, 1000));
+        res = await fetch(url, opts);
+      }
       const data = await res.json();
       if (data.success) setReviews(data.data || []);
     } catch (err) {
@@ -887,14 +1034,14 @@ export function ToolDetail() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4 px-6">
         <p className="text-white/50">{error || 'Tool not found'}</p>
-        <NeonButton href="/tools"><ArrowLeft className="w-4 h-4 mr-2" />Back to Tools</NeonButton>
+        <NeonButton href="/tools"><ArrowLeft className="w-4 h-4 mr-2 rtl:mr-0 rtl:ml-2 rtl:rotate-180" />Back to Tools</NeonButton>
       </div>
     );
   }
 
   // Cheapest paid version for the quick CTA
-  const proVersion = tool.versions?.find(v => v.versionType === 'Pro');
-  const freeVersion = tool.versions?.find(v => v.versionType === 'Free');
+  const proVersion = tool.versions?.find(v => (v.versionTypeOriginal || v.versionType) === 'Pro');
+  const freeVersion = tool.versions?.find(v => (v.versionTypeOriginal || v.versionType) === 'Free');
   const primaryVersion = proVersion ?? freeVersion ?? tool.versions?.[0];
 
   return (
@@ -913,11 +1060,11 @@ export function ToolDetail() {
         <motion.div initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }}>
           <Link
             to="/tools"
-            className="inline-flex items-center gap-1.5 text-sm text-white/40
+            className="inline-flex items-center gap-1.5 rtl:flex-row-reverse text-sm text-white/40
               hover:text-white/80 transition-colors mb-10"
           >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            All tools
+            <ArrowLeft className="w-3.5 h-3.5 rtl:rotate-180" />
+            {t('tools.detail.allTools')}
           </Link>
         </motion.div>
 
@@ -926,20 +1073,26 @@ export function ToolDetail() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.05 }}
-          className="flex flex-wrap items-center gap-2 mb-5"
+          className="flex flex-wrap items-center gap-2 rtl:flex-row-reverse rtl:justify-end mb-5"
         >
           {tool.category && (() => {
             const match = statuses.find(s => s.label === tool.category);
             const gradient = STATUS_COLOR_MAP[match?.color || 'purple'] || 'from-purple-500 to-violet-500';
             return (
               <span className={`px-2.5 py-1 text-[11px] font-bold tracking-widest uppercase rounded-full bg-gradient-to-r ${gradient} text-white`}>
-                {tool.category}
+                {cmsStatusTrans[tool.category] || t(`tools.statuses.${tool.category}`, { defaultValue: tool.category })}
               </span>
             );
           })()}
+          {tool.toolCategory && (
+            <span className="px-2.5 py-1 text-[11px] font-bold tracking-widest uppercase rounded-full
+              border border-white/20 text-white/70 bg-white/5 backdrop-blur-sm">
+              {t(`tools.categories.${tool.toolCategory}`, { defaultValue: tool.toolCategory })}
+            </span>
+          )}
           {tool.featured && (
             <span className="px-2.5 py-1 text-[11px] font-bold tracking-widest uppercase rounded-full
-              border border-purple-500/40 text-purple-300 bg-purple-500/10 flex items-center gap-1">
+              border border-purple-500/40 text-purple-300 bg-purple-500/10 flex items-center gap-1 rtl:flex-row-reverse">
               <Star className="w-2.5 h-2.5 fill-current" />Featured
             </span>
           )}
@@ -974,16 +1127,16 @@ export function ToolDetail() {
               {tool.description}
             </p>
             {/* Quick-access CTAs */}
-            <div className="flex flex-wrap gap-3">
+            <div className="flex flex-wrap gap-3 rtl:flex-row-reverse">
               {freeVersion && (
                 <button
                   onClick={() => handleFreeDownload(freeVersion)}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold
+                  className="inline-flex items-center gap-2 rtl:flex-row-reverse px-4 py-2.5 rounded-xl text-sm font-semibold
                     bg-white/8 hover:bg-emerald-500/15 border border-white/12
                     hover:border-emerald-500/30 text-emerald-300 hover:text-emerald-200 transition-all"
                 >
-                  <Download className="w-3.5 h-3.5 mr-1" />
-                  Try Free
+                  <Download className="w-3.5 h-3.5" />
+                  {t('tools.detail.tryFree')}
                 </button>
               )}
               {proVersion && (
@@ -993,8 +1146,8 @@ export function ToolDetail() {
                   rel="noopener noreferrer"
                   variant="primary"
                 >
-                  <Sparkles className="w-3.5 h-3.5 mr-2" />
-                  Get Pro
+                  <Sparkles className="w-3.5 h-3.5 mr-2 rtl:mr-0 rtl:ml-2" />
+                  {t('tools.detail.getPro')}
                 </NeonButton>
               )}
               {tool.demoUrl && (
@@ -1002,13 +1155,13 @@ export function ToolDetail() {
                   onClick={() => {
                     document.getElementById('demo-section')?.scrollIntoView({ behavior: 'smooth' });
                   }}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl
+                  className="inline-flex items-center gap-2 rtl:flex-row-reverse px-4 py-2 rounded-xl
                     text-sm text-white/50 hover:text-white/80
                     border border-white/10 hover:border-white/20
                     bg-white/5 hover:bg-white/8 transition-all"
                 >
                   <Play className="w-3.5 h-3.5" />
-                  Watch demo
+                  {t('tools.detail.watchDemo')}
                 </button>
               )}
             </div>
@@ -1016,7 +1169,7 @@ export function ToolDetail() {
 
           {/* Right: contained image — NOT full bleed, properly rounded */}
           <div className="relative rounded-2xl overflow-hidden border border-white/10
-            bg-white/5 aspect-[4/3] md:aspect-auto md:h-[280px]">
+            bg-white/5 aspect-square">
             {tool.imageUrl ? (
               <>
                 <img
@@ -1049,7 +1202,7 @@ export function ToolDetail() {
             viewport={{ once: true }}
             className="mb-20"
           >
-            <SectionLabel>Choose your version</SectionLabel>
+            <SectionLabel>{t('tools.detail.chooseYourVersion')}</SectionLabel>
 
             {/* ── Billing cycle toggle — shown only for tools with subscription + both prices ── */}
             {tool.versions?.some(v =>
@@ -1061,12 +1214,12 @@ export function ToolDetail() {
                   <motion.div
                     animate={{ opacity: billingCycle === 'yearly' ? 1 : 0.3 }}
                     transition={{ duration: 0.2 }}
-                    className="flex items-center gap-1.5 px-3 py-1 rounded-full
+                    className="flex items-center gap-1.5 rtl:flex-row-reverse px-3 py-1 rounded-full
                       bg-gradient-to-r from-emerald-500/15 to-teal-500/10
                       border border-emerald-500/25 text-emerald-400 text-[11px] font-bold tracking-wide"
                   >
                     <span>✦</span>
-                    Best value
+                    {t('tools.detail.bestValue')}
                   </motion.div>
 
                   {/* Toggle pill — fixed-width buttons so the sliding bg is always accurate */}
@@ -1094,29 +1247,56 @@ export function ToolDetail() {
                         ].join(', '),
                       }}
                     />
-                    <button
-                      onClick={() => setBillingCycle('monthly')}
-                      className={`relative z-10 w-28 py-2.5 text-sm font-semibold rounded-[10px] transition-colors duration-200 ${
-                        billingCycle === 'monthly' ? 'text-white' : 'text-white/35 hover:text-white/65'
-                      }`}
-                    >
-                      Monthly
-                    </button>
-                    <button
-                      onClick={() => setBillingCycle('yearly')}
-                      className={`relative z-10 w-28 py-2.5 text-sm font-semibold rounded-[10px] transition-colors duration-200 ${
-                        billingCycle === 'yearly' ? 'text-emerald-300' : 'text-white/35 hover:text-white/65'
-                      }`}
-                    >
-                      Yearly
-                    </button>
+                    {isRTL ? (
+                      <>
+                        <button
+                          onClick={() => setBillingCycle('yearly')}
+                          className={`relative z-10 w-28 py-2.5 text-sm font-semibold rounded-[10px] transition-colors duration-200 ${
+                            billingCycle === 'yearly' ? 'text-emerald-300' : 'text-white/35 hover:text-white/65'
+                          }`}
+                        >
+                          {t('tools.detail.yearly')}
+                        </button>
+                        <button
+                          onClick={() => setBillingCycle('monthly')}
+                          className={`relative z-10 w-28 py-2.5 text-sm font-semibold rounded-[10px] transition-colors duration-200 ${
+                            billingCycle === 'monthly' ? 'text-white' : 'text-white/35 hover:text-white/65'
+                          }`}
+                        >
+                          {t('tools.detail.monthly')}
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => setBillingCycle('monthly')}
+                          className={`relative z-10 w-28 py-2.5 text-sm font-semibold rounded-[10px] transition-colors duration-200 ${
+                            billingCycle === 'monthly' ? 'text-white' : 'text-white/35 hover:text-white/65'
+                          }`}
+                        >
+                          {t('tools.detail.monthly')}
+                        </button>
+                        <button
+                          onClick={() => setBillingCycle('yearly')}
+                          className={`relative z-10 w-28 py-2.5 text-sm font-semibold rounded-[10px] transition-colors duration-200 ${
+                            billingCycle === 'yearly' ? 'text-emerald-300' : 'text-white/35 hover:text-white/65'
+                          }`}
+                        >
+                          {t('tools.detail.yearly')}
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
             )}
 
-            <div className={`grid grid-cols-1 gap-5 ${
-              tool.versions.length === 2 ? 'sm:grid-cols-2 max-w-2xl mx-auto' : 'sm:grid-cols-3'
+            <div className={`grid gap-5 ${
+              tool.versions.length === 1 
+                ? 'grid-cols-1 max-w-sm mx-auto' 
+                : tool.versions.length === 2 
+                  ? 'grid-cols-1 sm:grid-cols-2 max-w-3xl mx-auto' 
+                  : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'
             }`}>
               {tool.versions.map((v, i) => (
                 <PricingCard
@@ -1149,9 +1329,9 @@ export function ToolDetail() {
                   onClick={() => openAuthModal()}
                   className="text-purple-400 hover:text-purple-300 underline"
                 >
-                  Sign in
+                  {t('tools.detail.signIn')}
                 </button>
-                {' '}to track your licenses and access purchases.
+                {' '}{t('tools.detail.signInToTrack')}
               </motion.p>
             )}
           </motion.section>
@@ -1180,7 +1360,7 @@ export function ToolDetail() {
             viewport={{ once: true }}
             className="mb-20"
           >
-            <SectionLabel>How it works</SectionLabel>
+            <SectionLabel>{t('tools.detail.howItWorks')}</SectionLabel>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {tool.howItWorks.map((step, i) => (
                 <motion.div
@@ -1211,8 +1391,8 @@ export function ToolDetail() {
             viewport={{ once: true }}
             className="mb-20"
           >
-            <SectionLabel>System requirements</SectionLabel>
-            <GlassCard className="p-6 flex gap-4 items-start">
+            <SectionLabel>{t('tools.detail.systemRequirements')}</SectionLabel>
+            <GlassCard className="p-6 flex gap-4 items-start rtl:flex-row-reverse">
               <div className="w-8 h-8 rounded-lg bg-blue-500/15 border border-blue-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
                 <Monitor className="w-4 h-4 text-blue-400" />
               </div>
@@ -1231,7 +1411,7 @@ export function ToolDetail() {
             viewport={{ once: true }}
             className="mb-20"
           >
-            <SectionLabel>FAQ</SectionLabel>
+            <SectionLabel>{t('tools.detail.faqs')}</SectionLabel>
             <GlassCard className="px-6 divide-y divide-white/8 max-w-3xl mx-auto">
               {tool.faqs.map((faq, i) => (
                 <FaqItem key={i} faq={faq} defaultOpen={i === 0} />
@@ -1254,7 +1434,7 @@ export function ToolDetail() {
               viewport={{ once: true }}
               className="mb-20"
             >
-              <SectionLabel>User reviews</SectionLabel>
+              <SectionLabel>{t('tools.detail.userReviews')}</SectionLabel>
 
               {/* Summary bar */}
               <div className="flex flex-col sm:flex-row gap-6 items-start sm:items-center mb-8 p-6 rounded-2xl border border-white/8 bg-white/3">
@@ -1272,7 +1452,7 @@ export function ToolDetail() {
                 {/* Distribution bars */}
                 <div className="flex-1 space-y-1.5 w-full">
                   {dist.map(({ n, count }) => (
-                    <div key={n} className="flex items-center gap-2">
+                    <div key={n} className="flex items-center gap-2 rtl:flex-row-reverse">
                       <span className="text-white/35 text-xs w-2 text-right flex-shrink-0">{n}</span>
                       <Star className="w-3 h-3 text-yellow-400/50 fill-yellow-400/50 flex-shrink-0" />
                       <div className="flex-1 h-1.5 rounded-full bg-white/8 overflow-hidden">
@@ -1302,7 +1482,7 @@ export function ToolDetail() {
                   >
                     <GlassCard className="p-5 h-full flex flex-col">
                       {/* Quote icon + stars */}
-                      <div className="flex items-start justify-between gap-2 mb-3">
+                      <div className="flex items-start justify-between gap-2 mb-3 rtl:flex-row-reverse">
                         <Quote className="w-5 h-5 text-purple-400/40 flex-shrink-0 -scale-x-100" />
                         <div className="flex gap-0.5">
                           {[1, 2, 3, 4, 5].map(n => (
@@ -1321,7 +1501,7 @@ export function ToolDetail() {
                       )}
 
                       {/* Author */}
-                      <div className="flex items-center gap-2 mt-4 pt-3 border-t border-white/6">
+                      <div className="flex items-center gap-2 mt-4 pt-3 border-t border-white/6 rtl:flex-row-reverse">
                         <div className="w-7 h-7 rounded-full bg-gradient-to-br from-purple-500/30 to-blue-500/30 border border-white/10 flex items-center justify-center flex-shrink-0">
                           <span className="text-white/60 text-[10px] font-bold">
                             {(review.userName || '?')[0].toUpperCase()}
@@ -1336,7 +1516,7 @@ export function ToolDetail() {
                           </p>
                         </div>
                         {/* Verified badge */}
-                        <span className="ml-auto flex-shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                        <span className="ml-auto rtl:ml-0 rtl:mr-auto flex-shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
                           ✓ Verified
                         </span>
                       </div>
@@ -1349,9 +1529,9 @@ export function ToolDetail() {
               {!user && (
                 <p className="text-center text-white/30 text-sm mt-6">
                   <button onClick={() => openAuthModal()} className="text-purple-400 hover:text-purple-300 underline">
-                    Sign in
+                    {t('tools.detail.signIn')}
                   </button>{' '}
-                  to leave your own review after purchasing.
+                  {t('tools.detail.signInToReview')}
                 </p>
               )}
             </motion.section>
@@ -1364,23 +1544,23 @@ export function ToolDetail() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
         >
-          <GlassCard neonBorder className="p-10 flex flex-col sm:flex-row items-center justify-between gap-6">
+          <GlassCard neonBorder className="p-10 flex flex-col sm:flex-row items-center justify-between gap-6 rtl:sm:flex-row-reverse">
             <div>
-              <div className="flex items-center gap-2 mb-1">
+              <div className="flex items-center gap-2 mb-1 rtl:flex-row-reverse">
                 <Zap className="w-4 h-4 text-purple-400" />
-                <span className="text-sm font-bold text-white">Need help?</span>
+                <span className="text-sm font-bold text-white">{t('tools.detail.needHelp')}</span>
               </div>
               <p className="text-white/40 text-sm">
-                Email support included with every purchase — we reply within 24 h.
+                {t('tools.detail.emailSupport')}
               </p>
             </div>
-            <div className="flex gap-3 flex-shrink-0">
+            <div className="flex gap-3 flex-shrink-0 rtl:flex-row-reverse">
               <NeonButton variant="secondary" onClick={() => setSupportOpen(true)}>
-                <ExternalLink className="w-3.5 h-3.5 mr-2" />
-                Contact
+                <ExternalLink className="w-3.5 h-3.5 mr-2 rtl:mr-0 rtl:ml-2" />
+                {t('tools.detail.contactSupport')}
               </NeonButton>
               <NeonButton href="/tools" variant="secondary">
-                Browse tools
+                {t('tools.detail.browseTools')}
               </NeonButton>
             </div>
           </GlassCard>

@@ -50,6 +50,7 @@ interface Tool {
   name: string;
   description: string;
   category: string;
+  toolCategory?: string;
   imageUrl: string;
   featured: boolean;
   slug?: string;
@@ -66,17 +67,20 @@ export function ToolFormNew({
   onSave,
   onCancel,
   statuses,
+  toolCategories = [],
 }: {
   tool: Tool;
   onSave: (tool: Tool) => Promise<{ success: boolean; message: string }>;
   onCancel: () => void;
   statuses: string[];
+  toolCategories?: string[];
 }) {
   const [formData, setFormData] = useState({
     ...tool,
     name: tool.name || '',
     description: tool.description || '',
     category: tool.category || '',
+    toolCategory: tool.toolCategory || '',
     imageUrl: tool.imageUrl || '',
     tagline: tool.tagline || '',
     demoUrl: tool.demoUrl || '',
@@ -93,6 +97,7 @@ export function ToolFormNew({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [uploadSuccess, setUploadSuccess] = useState(false);
   const [faqText, setFaqText] = useState('');
+  const [howItWorksText, setHowItWorksText] = useState('');
   const [formMessage, setFormMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -114,6 +119,20 @@ export function ToolFormNew({
       return `Q: ${question}\nA: ${answer}`;
     }).join('\n\n');
     setFaqText(initialText);
+  }, [tool]);
+
+  // Initialize How It Works text — separate state avoids cursor-jump from inline value recomputation
+  const howItWorksToText = (steps: Array<{ title: string; description: string }>) =>
+    steps.map((step, idx) => {
+      const title = step.title.trim();
+      const hasStepPrefix = /^Step \d+:/.test(title);
+      const displayTitle = hasStepPrefix ? title : (title ? `Step ${idx + 1}: ${title}` : `Step ${idx + 1}:`);
+      return `${displayTitle} | ${step.description}`;
+    }).join('\n');
+
+  useEffect(() => {
+    const steps = tool.howItWorks || [];
+    setHowItWorksText(steps.length === 0 ? '' : howItWorksToText(steps));
   }, [tool]);
 
   // Set first version as active if exists
@@ -327,6 +346,11 @@ export function ToolFormNew({
           .map((faq: { question: string; answer: string }) => `Q: ${faq.question}\nA: ${faq.answer}`)
           .join('\n\n');
         setFaqText(newFaqText);
+      }
+
+      if (data.howItWorks && (improveExisting || hiwEmpty)) {
+        // Sync the howItWorksText state so the textarea displays the new content
+        setHowItWorksText(howItWorksToText(data.howItWorks));
       }
 
       // Version-level fields
@@ -641,6 +665,32 @@ export function ToolFormNew({
                   setErrors(prev => ({ ...prev, description: '' }));
                 }
               }}
+              onPaste={(e) => {
+                const pastedText = e.clipboardData.getData('text');
+                const currentText = formData.description || '';
+                const textarea = e.currentTarget;
+                const start = textarea.selectionStart || 0;
+                const end = textarea.selectionEnd || 0;
+                
+                // Calculate the new text after paste
+                const beforeCursor = currentText.substring(0, start);
+                const afterCursor = currentText.substring(end);
+                let newText = beforeCursor + pastedText + afterCursor;
+                
+                // Truncate if needed
+                if (newText.length > 250) {
+                  newText = newText.substring(0, 250);
+                  e.preventDefault();
+                  setFormData({ ...formData, description: newText });
+                  setErrors(prev => ({ ...prev, description: '' }));
+                  
+                  // Set cursor position
+                  setTimeout(() => {
+                    const newCursorPos = Math.min(start + pastedText.length, 250);
+                    textarea.setSelectionRange(newCursorPos, newCursorPos);
+                  }, 0);
+                }
+              }}
               className={`bg-black/50 border-white/20 text-white transition-all duration-700 ${errors.description ? 'border-red-500' : ''} ${hlClass('description')}`}
               rows={3}
             />
@@ -657,7 +707,7 @@ export function ToolFormNew({
           )}
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">
               Status
@@ -666,6 +716,20 @@ export function ToolFormNew({
               value={formData.category}
               onChange={(v) => setFormData({ ...formData, category: v })}
               options={statuses.map((s) => ({ value: s, label: s }))}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              Tool Category
+            </label>
+            <AdminSelect
+              value={formData.toolCategory}
+              onChange={(v) => setFormData({ ...formData, toolCategory: v })}
+              options={[
+                { value: '', label: '— None —' },
+                ...toolCategories.map((c) => ({ value: c, label: c })),
+              ]}
             />
           </div>
 
@@ -842,26 +906,22 @@ export function ToolFormNew({
             How It Works (applies to all versions)
           </label>
           <Textarea
-            placeholder="Step 1: Install | Run the installer and restart After Effects&#10;Step 2: Access panel | Find the toolkit in Window > Extensions&#10;Step 3: Automate | Select tasks and let it handle the rest"
-            value={(formData.howItWorks || []).length === 0 ? 'Step 1:  | ' : (formData.howItWorks || []).map((step, idx) => {
-              const title = step.title.trim();
-              const hasStepPrefix = /^Step \d+:/.test(title);
-              const displayTitle = hasStepPrefix ? title : (title ? `Step ${idx + 1}: ${title}` : `Step ${idx + 1}:`);
-              return `${displayTitle} | ${step.description}`;
-            }).join('\n')}
-            onChange={(e) => {
-              const lines = e.target.value.split('\n');
+            placeholder={"Step 1: Install | Run the installer and restart After Effects\nStep 2: Access panel | Find the toolkit in Window > Extensions\nStep 3: Automate | Select tasks and let it handle the rest"}
+            value={howItWorksText}
+            onChange={(e) => setHowItWorksText(e.target.value)}
+            onBlur={() => {
+              const lines = howItWorksText.split('\n').filter(l => l.trim());
               const steps = lines.map((line) => {
                 const [title, description] = line.split('|').map(s => s.trim());
-                const cleanTitle = title.replace(/^Step \d+:\s*/, '');
+                const cleanTitle = (title || '').replace(/^Step \d+:\s*/, '');
                 return { title: cleanTitle || '', description: description || '' };
               });
-              setFormData({ ...formData, howItWorks: steps });
+              setFormData(prev => ({ ...prev, howItWorks: steps }));
             }}
             className={`bg-black/50 border-white/20 text-white transition-all duration-700 ${hlClass('howItWorks')}`}
             rows={5}
           />
-          <p className="text-xs text-white/40 mt-1">Format: Step X: Title | Description (one per line)</p>
+          <p className="text-xs text-white/40 mt-1">Format: Step X: Title | Description (one per line) — parsed on blur</p>
         </div>
 
         <label className="flex items-center gap-2 text-white">

@@ -2,14 +2,8 @@ import { useState, useEffect } from 'react';
 import { Link } from "react-router";
 import { Mail } from "lucide-react";
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { 
-  faLinkedin, 
-  faInstagram, 
-  faXTwitter, 
-  faDribbble, 
-  faBehance, 
-  faTiktok 
-} from '@fortawesome/free-brands-svg-icons';
+import { faLinkedin, faInstagram, faXTwitter, faDribbble, faBehance, faTiktok } from '@fortawesome/free-brands-svg-icons';
+import { useTranslation } from 'react-i18next';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import { useLogo } from '../../context/LogoContext';
 
@@ -44,6 +38,7 @@ export function Footer() {
   const [socialLinks, setSocialLinks] = useState<SocialLinks>({});
   const [contactEmail, setContactEmail] = useState('');
   const { activeLogoUrl, logoText, logoHeight } = useLogo();
+  const { t } = useTranslation();
 
   useEffect(() => {
     fetchSettings();
@@ -116,7 +111,7 @@ export function Footer() {
       style={{ backgroundColor: 'var(--fastoosh-footer-bg, rgba(0,0,0,0.30))' }}
     >
       <div className="max-w-7xl mx-auto px-6 py-16">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-12">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-12 rtl:text-right">
           {/* Brand */}
           <div className="space-y-4">
             <div className="tracking-tight">
@@ -134,34 +129,34 @@ export function Footer() {
               )}
             </div>
             <p className="text-white/60 text-sm">
-              Premium motion design studio.
+              {t('footer.tagline1')}
               <br />
-              Remote worldwide.
+              {t('footer.tagline2')}
             </p>
           </div>
 
           {/* Quick Links */}
           <div>
-            <h4 className="text-white mb-4">Studio</h4>
+            <h4 className="text-white mb-4">{t('footer.studio')}</h4>
             <ul className="space-y-2 text-sm">
               <li>
                 <Link to="/projects" className="text-white/60 hover:text-white transition-colors">
-                  Projects
+                  {t('nav.projects')}
                 </Link>
               </li>
               <li>
                 <Link to="/tools" className="text-white/60 hover:text-white transition-colors">
-                  Tools
+                  {t('nav.tools')}
                 </Link>
               </li>
               <li>
                 <Link to="/about" className="text-white/60 hover:text-white transition-colors">
-                  About
+                  {t('nav.about')}
                 </Link>
               </li>
               <li>
                 <Link to="/work-with-us" className="text-white/60 hover:text-white transition-colors">
-                  Work with us
+                  {t('nav.workWithUs')}
                 </Link>
               </li>
             </ul>
@@ -169,25 +164,25 @@ export function Footer() {
 
           {/* Contact */}
           <div>
-            <h4 className="text-white mb-4">Get in touch</h4>
+            <h4 className="text-white mb-4">{t('footer.getInTouch')}</h4>
             {contactEmail ? (
               <a
                 href={`mailto:${contactEmail}`}
-                className="text-white/60 hover:text-white transition-colors text-sm inline-flex items-center gap-2"
+                className="text-white/60 hover:text-white transition-colors text-sm inline-flex items-center gap-2 rtl:flex-row-reverse"
               >
-                <Mail className="w-4 h-4" />
+                <Mail className="w-4 h-4 rtl:order-2" />
                 {contactEmail}
               </a>
             ) : (
-              <p className="text-white/40 text-sm">No contact email configured</p>
+              <p className="text-white/40 text-sm">{t('footer.noEmail')}</p>
             )}
           </div>
 
           {/* Social */}
           <div>
-            <h4 className="text-white mb-4">Follow</h4>
+            <h4 className="text-white mb-4">{t('footer.follow')}</h4>
             {activeSocialLinks.length > 0 ? (
-              <div className="flex gap-4 flex-wrap">
+              <div className="flex gap-4 flex-wrap justify-start rtl:justify-end rtl:flex-row-reverse">
                 {activeSocialLinks.map((social) => (
                   <a 
                     key={social.key}
@@ -202,14 +197,14 @@ export function Footer() {
                 ))}
               </div>
             ) : (
-              <p className="text-white/40 text-sm">No social links configured</p>
+              <p className="text-white/40 text-sm">{t('footer.noSocial')}</p>
             )}
           </div>
         </div>
 
-        <div className="mt-16 pt-8 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-white/40">
-          <p>© 2026 Fastoosh. All rights reserved.</p>
-          <p className="text-white/60">Remote worldwide • Reply in 24-48h • NDA-friendly</p>
+        <div className="mt-16 pt-8 border-t border-white/5 flex flex-col md:flex-row rtl:md:flex-row-reverse justify-between items-center gap-4 text-sm text-white/40">
+          <p>{t('footer.copyright')}</p>
+          <p className="text-white/60">{t('footer.badges')}</p>
         </div>
       </div>
     </footer>

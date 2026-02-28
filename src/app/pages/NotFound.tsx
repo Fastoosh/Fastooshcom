@@ -21,7 +21,7 @@ export function NotFound() {
             The page you're looking for doesn't exist or has been moved.
           </p>
           <NeonButton href="/">
-            <Home className="w-5 h-5 mr-2 inline" />
+            <Home className="w-5 h-5 mr-2 rtl:mr-0 rtl:ml-2 inline" />
             Back to home
           </NeonButton>
         </GlassCard>
