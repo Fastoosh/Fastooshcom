@@ -1,0 +1,21 @@
+Response Body
+
+{
+  "id": "a20b5772-4af1-42f2-821d-a3e127147aa3"
+}
+Request Body
+
+{
+  "bcc": [],
+  "cc": [],
+  "from": "Fastoosh <contact@contact.fastoosh.com>",
+  "replyTo": [
+    "youssefdari7@gmail.com"
+  ],
+  "subject": "✉️ New inquiry from Hamada — Product explainer",
+  "to": [
+    "youssef@fastoosh.com"
+  ],
+  "html": "\n      <div style=\"font-family:sans-serif;max-width:600px;margin:0 auto;background:#0a0a0a;color:#e5e5e5;border-radius:12px;overflow:hidden;\">\n        <div style=\"background:linear-gradient(135deg,#7c3aed,#4f46e5);padding:28px 32px;\">\n          <p style=\"margin:0 0 4px;font-size:12px;color:rgba(255,255,255,0.7);letter-spacing:0.1em;text-transform:uppercase;\">Fastoosh Studio</p>\n          <h1 style=\"margin:0;font-size:22px;color:#fff;\">✉️ New Work Inquiry</h1>\n        </div>\n        <div style=\"padding:32px;\">\n          <p style=\"margin:0 0 24px;font-size:15px;color:#d4d4d4;line-height:1.6;\">\n            Someone reached out through the <strong style=\"color:#fff;\">Work With Us</strong> page. Here are the details:\n          </p>\n          <table style=\"width:100%;border-collapse:collapse;margin-bottom:28px;\">\n            <tr>\n              <td style=\"padding:10px 14px;background:#1a1a1a;border-radius:6px 6px 0 0;color:#a3a3a3;font-size:13px;width:130px;\">Name</td>\n              <td style=\"padding:10px 14px;background:#1a1a1a;border-radius:6px 6px 0 0;color:#fff;font-size:13px;\">Hamada</td>\n            </tr>\n            <tr>\n              <td style=\"padding:10px 14px;background:#141414;color:#a3a3a3;font-size:13px;\">Email</td>\n              <td style=\"padding:10px 14px;background:#141414;font-size:13px;\"><a href=\"mailto:youssefdari7@gmail.com\" style=\"color:#a78bfa;text-decoration:none;\">youssefdari7@gmail.com</a></td>\n            </tr>\n            <tr><td style=\"padding:10px 14px;background:#1a1a1a;color:#a3a3a3;font-size:13px;\">Project Type</td><td style=\"padding:10px 14px;background:#1a1a1a;color:#fff;font-size:13px;\">Product explainer</td></tr>\n            <tr><td style=\"padding:10px 14px;background:#141414;color:#a3a3a3;font-size:13px;\">Timeline</td><td style=\"padding:10px 14px;background:#141414;color:#fff;font-size:13px;\">ASAP (rush)</td></tr>\n            <tr><td style=\"padding:10px 14px;background:#1a1a1a;color:#a3a3a3;font-size:13px;\">Budget</td><td style=\"padding:10px 14px;background:#1a1a1a;color:#fff;font-size:13px;\">$5k – $10k</td></tr>\n          </table>\n          <p style=\"margin:0 0 8px;font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;\">Message</p>\n          <div style=\"background:#111;border-left:3px solid #7c3aed;padding:16px 20px;border-radius:0 6px 6px 0;\">\n            <p style=\"margin:0;font-size:14px;color:#d4d4d4;line-height:1.7;white-space:pre-wrap;\">bbbb</p>\n          </div>\n          <div style=\"margin-top:28px;text-align:center;\">\n            <a href=\"mailto:youssefdari7@gmail.com?subject=Re: Your inquiry — Fastoosh\"\n               style=\"display:inline-block;padding:12px 28px;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;text-decoration:none;border-radius:8px;font-size:14px;font-weight:600;\">\n              Reply to Hamada\n            </a>\n          </div>\n          <p style=\"margin-top:28px;font-size:12px;color:#525252;text-align:center;\">Submitted on Sunday, March 1, 2026 at 9:34 PM</p>\n        </div>\n      </div>\n    ",
+  "text": "Fastoosh Studio\n\n\n✉️ NEW WORK INQUIRY\n\nSomeone reached out through the Work With Us page. Here are the details:\n\nName Hamada Email youssefdari7@gmail.com Project TypeProduct explainer TimelineASAP (rush) Budget$5k – $10k\n\nMessage\n\nbbbb\n\nReply to Hamada youssefdari7@gmail.com?subject=Re: Your inquiry — Fastoosh\n\nSubmitted on Sunday, March 1, 2026 at 9:34 PM"
+}

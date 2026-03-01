@@ -8,6 +8,7 @@ import { Input } from '../components/ui/input';
 import { Textarea } from '../components/ui/textarea';
 import { AdminSelect } from '../components/admin/AdminSelect';
 import { Plus, Pencil, Trash2, Save, X, LogOut, Upload, Sparkles } from 'lucide-react';
+import { AIImproveModal, type AIImproveContext } from '../components/admin/AIImproveModal';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import { ToolFormNew } from '../components/admin/ToolFormNew';
 import { LeadsTab } from '../components/admin/LeadsTab';
@@ -19,6 +20,8 @@ import { invalidateSiteSettingsCache } from '../components/shared/SeoHead';
 import { bustApiCache } from '../utils/api';
 import { StyleTab } from '../components/admin/StyleTab';
 import { TranslationTab } from '../components/admin/TranslationTab';
+import { ReferrersTab } from '../components/admin/ReferrersTab';
+import { VimeoPicker } from '../components/admin/VimeoPicker';
 
 import { ScrollingGradientBackground } from '../components/shared/ScrollingGradientBackground';
 
@@ -724,12 +727,18 @@ export function Admin() {
             <TabsTrigger value="leads">Leads</TabsTrigger>
             <TabsTrigger value="reviews">Reviews</TabsTrigger>
             <TabsTrigger value="seo">SEO</TabsTrigger>
-            <TabsTrigger value="translations">🌐 Translations</TabsTrigger>
+            <TabsTrigger value="traffic">🌐 Traffic</TabsTrigger>
+            <TabsTrigger value="translations">🌍 Translations</TabsTrigger>
           </TabsList>
 
           {/* DASHBOARD TAB */}
           <TabsContent value="dashboard">
-            <DashboardTab />
+            <DashboardTab onNavigate={setActiveTab} />
+          </TabsContent>
+
+          {/* TRAFFIC TAB */}
+          <TabsContent value="traffic">
+            <ReferrersTab />
           </TabsContent>
 
           {/* PROJECTS TAB */}
@@ -1295,6 +1304,44 @@ async function fetchWithRetry(url: string, options: RequestInit, retries = 1): P
 
 // ========== PROJECT FORM ==========
 
+/**
+ * Fetches the thumbnail for a Vimeo URL via the public oEmbed endpoint (CORS-safe)
+ * and renders it like any other image card in the gallery.
+ */
+function VimeoThumb({ url, vimeoId }: { url: string; vimeoId: string }) {
+  const [thumb, setThumb] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    fetch(`https://vimeo.com/api/oembed.json?url=${encodeURIComponent(url)}&width=480`)
+      .then(r => r.json())
+      .then(d => { if (!cancelled && d?.thumbnail_url) setThumb(d.thumbnail_url); })
+      .catch(() => { /* private or unavailable — keep logo fallback */ });
+    return () => { cancelled = true; };
+  }, [url]);
+
+  if (thumb) {
+    return (
+      <img
+        src={thumb}
+        alt={`Vimeo ${vimeoId}`}
+        className="w-full h-full object-cover"
+        onError={() => setThumb(null)}
+      />
+    );
+  }
+
+  /* Fallback: Vimeo logo + ID while loading or if thumbnail unavailable */
+  return (
+    <div className="w-full h-full flex flex-col items-center justify-center gap-1 bg-[#1ab7ea]/5">
+      <svg className="w-7 h-7 text-[#1ab7ea]" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M22.875 8.396c-.097 2.114-1.577 5.01-4.437 8.688C15.476 20.83 12.958 22.667 10.884 22.667c-1.253 0-2.31-1.156-3.173-3.467l-1.728-6.34C5.25 10.549 4.567 9.393 3.834 9.393c-.155 0-.7.327-1.63.977L1 9.016a354.35 354.35 0 0 0 2.609-2.329C5.15 5.3 6.296 4.59 7.076 4.514c1.988-.19 3.21 1.168 3.666 4.073.494 3.126.838 5.071 1.03 5.836.572 2.597 1.2 3.895 1.884 3.895.532 0 1.33-.842 2.394-2.525 1.063-1.683 1.63-2.963 1.7-3.84.152-1.452-.419-2.178-1.7-2.178a4.74 4.74 0 0 0-1.884.42c1.25-4.09 3.637-6.077 7.16-5.96 2.612.077 3.843 1.77 3.693 5.08l-.144.08z"/>
+      </svg>
+      <span className="text-[10px] text-[#1ab7ea]/70 font-mono">{vimeoId}</span>
+    </div>
+  );
+}
+
 function ProjectForm({
   project,
   onSave,
@@ -1320,7 +1367,7 @@ function ProjectForm({
   });
   const [uploading, setUploading] = useState(false);
   const [imageInputMode, setImageInputMode] = useState<'url' | 'upload'>('url');
-  const [screenshotsInputMode, setScreenshotsInputMode] = useState<'url' | 'upload'>('url');
+  const [screenshotsInputMode, setScreenshotsInputMode] = useState<'url' | 'upload' | 'vimeo'>('url');
   const [uploadingScreenshots, setUploadingScreenshots] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formMessage, setFormMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -1336,8 +1383,26 @@ function ProjectForm({
   const [thumbnailOptions, setThumbnailOptions] = useState<string[]>([]);
   const [loadingThumbnails, setLoadingThumbnails] = useState(false);
   const [showVideoCapture, setShowVideoCapture] = useState(false);
+  const [showVimeoPicker, setShowVimeoPicker]   = useState(false);
+  const [showScreenshotsVimeoPicker, setShowScreenshotsVimeoPicker] = useState(false);
   const [capturedFrames, setCapturedFrames] = useState<string[]>([]);
   const [selectedThumbnailIndex, setSelectedThumbnailIndex] = useState<number | null>(null);
+  // Per-field AI improve modal
+  const [aiModal, setAiModal] = useState<null | {
+    fieldLabel: string; fieldKey: string; currentValue: string;
+    context: AIImproveContext; onApply: (v: string) => void;
+  }>(null);
+
+  const openProjectAiModal = (
+    fieldKey: string, fieldLabel: string, currentValue: string,
+    onApply: (v: string) => void
+  ) => {
+    setAiModal({
+      fieldKey, fieldLabel, currentValue,
+      context: { entityType: 'project', title: formData.title, category: formData.category },
+      onApply,
+    });
+  };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1388,13 +1453,15 @@ function ProjectForm({
       const token = localStorage.getItem('admin_token');
       const uploadedUrls: string[] = [];
       
-      // Upload each file
+      // Upload each file — route videos to /upload-video, images to /upload-image
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
+        const isVideo = file.type.startsWith('video/');
+        const endpoint = isVideo ? `${API_BASE}/upload-video` : `${API_BASE}/upload-image`;
         const uploadFormData = new FormData();
         uploadFormData.append('file', file);
 
-        const response = await fetch(`${API_BASE}/upload-image`, {
+        const response = await fetch(endpoint, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${publicAnonKey}`,
@@ -1684,9 +1751,10 @@ function ProjectForm({
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">
-            Short Description *
-          </label>
+          <div className="flex items-center justify-between mb-2">
+            <label className="block text-sm font-medium text-gray-300">Short Description *</label>
+            <button type="button" onClick={() => openProjectAiModal('description', 'Description', formData.description || '', (v) => setFormData(prev => ({ ...prev, description: v.slice(0, 250) })))} className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-purple-300 hover:text-white bg-purple-500/10 hover:bg-purple-500/20 border border-purple-400/15 transition-all duration-150"><Sparkles className="w-3 h-3" />Improve</button>
+          </div>
           <div className="relative">
             <Textarea
               placeholder="Brief description shown on project cards"
@@ -1844,6 +1912,17 @@ function ProjectForm({
                 onChange={(e) => setFormData({ ...formData, videoUrl: e.target.value })}
                 className="bg-black/50 border-white/20 text-white flex-1"
               />
+              {/* Browse Vimeo library */}
+              <Button
+                type="button"
+                onClick={() => setShowVimeoPicker(true)}
+                className="cursor-pointer bg-[#1ab7ea]/20 hover:bg-[#1ab7ea]/30 border border-[#1ab7ea]/40 text-[#1ab7ea] whitespace-nowrap"
+              >
+                <svg className="w-4 h-4 mr-1.5" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M22.875 8.396c-.097 2.114-1.577 5.01-4.437 8.688C15.476 20.83 12.958 22.667 10.884 22.667c-1.253 0-2.31-1.156-3.173-3.467l-1.728-6.34C5.25 10.549 4.567 9.393 3.834 9.393c-.155 0-.7.327-1.63.977L1 9.016a354.35 354.35 0 0 0 2.609-2.329C5.15 5.3 6.296 4.59 7.076 4.514c1.988-.19 3.21 1.168 3.666 4.073.494 3.126.838 5.071 1.03 5.836.572 2.597 1.2 3.895 1.884 3.895.532 0 1.33-.842 2.394-2.525 1.063-1.683 1.63-2.963 1.7-3.84.152-1.452-.419-2.178-1.7-2.178a4.74 4.74 0 0 0-1.884.42c1.25-4.09 3.637-6.077 7.16-5.96 2.612.077 3.843 1.77 3.693 5.08l-.144.08z"/>
+                </svg>
+                Browse Vimeo
+              </Button>
               <Button
                 type="button"
                 onClick={() => {
@@ -1853,8 +1932,6 @@ function ProjectForm({
                   }
                   setFormMessage(null);
                   setShowVideoCapture(true);
-                  // Don't reset captured frames - keep them so user can add more
-                  // setCapturedFrames([]);
                 }}
                 className="cursor-pointer bg-gradient-to-r from-purple-600 to-blue-600 text-white whitespace-nowrap"
               >
@@ -1862,11 +1939,45 @@ function ProjectForm({
               </Button>
             </div>
             <p className="text-xs text-gray-400">
-              Enter a YouTube or Vimeo URL above, then click "Capture Thumbnails" to watch and capture frames
+              Paste a YouTube / Vimeo URL, or click <span className="text-[#1ab7ea]">Browse Vimeo</span> to pick directly from your library
             </p>
           </div>
         </div>
         
+        {/* Vimeo Video Picker — main video URL field */}
+        {showVimeoPicker && (
+          <VimeoPicker
+            onSelect={(url, title) => {
+              setFormData({ ...formData, videoUrl: url });
+              setShowVimeoPicker(false);
+              setFormMessage({ type: 'success', text: `✅ Video selected: "${title}"` });
+            }}
+            onClose={() => setShowVimeoPicker(false)}
+          />
+        )}
+
+        {/* Vimeo Video Picker — media gallery (keeps picker open for multi-pick) */}
+        {showScreenshotsVimeoPicker && (
+          <VimeoPicker
+            selectedUrls={formData.screenshots || []}
+            onSelect={(url, title) => {
+              setFormData(prev => {
+                const already = (prev.screenshots || []).includes(url);
+                const next = already
+                  ? (prev.screenshots || []).filter(u => u !== url)
+                  : [...(prev.screenshots || []), url];
+                setFormMessage({
+                  type: 'success',
+                  text: already ? `🗑 "${title}" removed from gallery` : `✅ "${title}" added to gallery`,
+                });
+                return { ...prev, screenshots: next };
+              });
+              // Keep picker open so user can add/remove multiple videos
+            }}
+            onClose={() => setShowScreenshotsVimeoPicker(false)}
+          />
+        )}
+
         {/* Video Thumbnail Capture Tool */}
         {showVideoCapture && (
           <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -2153,9 +2264,10 @@ function ProjectForm({
         )}
         
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">
-            Tags
-          </label>
+          <div className="flex items-center justify-between mb-2">
+            <label className="block text-sm font-medium text-gray-300">Tags</label>
+            <button type="button" onClick={() => openProjectAiModal('tags', 'Tags', formData.tags.join(', '), (v) => setFormData(prev => ({ ...prev, tags: v.split(',').map(t => t.trim()).filter(Boolean) })))} className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-purple-300 hover:text-white bg-purple-500/10 hover:bg-purple-500/20 border border-purple-400/15 transition-all duration-150"><Sparkles className="w-3 h-3" />Improve</button>
+          </div>
           <Input
             placeholder="Motion Design, Brand, Product (comma-separated)"
             value={formData.tags.join(', ')}
@@ -2172,9 +2284,10 @@ function ProjectForm({
           
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Client Name (Optional)
-              </label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-gray-300">Client Name <span className="text-white/30 font-normal">(Optional)</span></label>
+                <button type="button" onClick={() => openProjectAiModal('client', 'Client Name', formData.client || '', (v) => setFormData(prev => ({ ...prev, client: v })))} className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-purple-300 hover:text-white bg-purple-500/10 hover:bg-purple-500/20 border border-purple-400/15 transition-all duration-150"><Sparkles className="w-3 h-3" />Improve</button>
+              </div>
               <Input
                 placeholder="e.g., TechCorp Financial"
                 value={formData.client || ''}
@@ -2184,9 +2297,10 @@ function ProjectForm({
             </div>
             
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Goal (Optional)
-              </label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-gray-300">Goal <span className="text-white/30 font-normal">(Optional)</span></label>
+                <button type="button" onClick={() => openProjectAiModal('goal', 'Goal', formData.goal || '', (v) => setFormData(prev => ({ ...prev, goal: v })))} className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-purple-300 hover:text-white bg-purple-500/10 hover:bg-purple-500/20 border border-purple-400/15 transition-all duration-150"><Sparkles className="w-3 h-3" />Improve</button>
+              </div>
               <Textarea
                 placeholder="Describe the project goal and objectives"
                 value={formData.goal || ''}
@@ -2197,9 +2311,10 @@ function ProjectForm({
             </div>
             
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Approach (Optional)
-              </label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-gray-300">Approach <span className="text-white/30 font-normal">(Optional)</span></label>
+                <button type="button" onClick={() => openProjectAiModal('approach', 'Approach', formData.approach || '', (v) => setFormData(prev => ({ ...prev, approach: v })))} className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-purple-300 hover:text-white bg-purple-500/10 hover:bg-purple-500/20 border border-purple-400/15 transition-all duration-150"><Sparkles className="w-3 h-3" />Improve</button>
+              </div>
               <Textarea
                 placeholder="Explain the creative approach and process"
                 value={formData.approach || ''}
@@ -2210,9 +2325,10 @@ function ProjectForm({
             </div>
           
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Deliverables (Optional)
-              </label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-gray-300">Deliverables <span className="text-white/30 font-normal">(Optional)</span></label>
+                <button type="button" onClick={() => openProjectAiModal('deliverables', 'Deliverables', (formData.deliverables || []).join('\n'), (v) => setFormData(prev => ({ ...prev, deliverables: v.split('\n').filter(d => d.trim()) })))} className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-purple-300 hover:text-white bg-purple-500/10 hover:bg-purple-500/20 border border-purple-400/15 transition-all duration-150"><Sparkles className="w-3 h-3" />Improve</button>
+              </div>
               <Textarea
                 placeholder="Enter each deliverable on a new line&#10;e.g.:&#10;90-second explainer video&#10;Social media cutdowns&#10;Brand guidelines"
                 value={(formData.deliverables || []).join('\n')}
@@ -2223,9 +2339,10 @@ function ProjectForm({
             </div>
             
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Outcome (Optional)
-              </label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-gray-300">Outcome <span className="text-white/30 font-normal">(Optional)</span></label>
+                <button type="button" onClick={() => openProjectAiModal('outcome', 'Outcome', formData.outcome || '', (v) => setFormData(prev => ({ ...prev, outcome: v })))} className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-purple-300 hover:text-white bg-purple-500/10 hover:bg-purple-500/20 border border-purple-400/15 transition-all duration-150"><Sparkles className="w-3 h-3" />Improve</button>
+              </div>
               <Textarea
                 placeholder="Describe the results and impact"
                 value={formData.outcome || ''}
@@ -2237,106 +2354,145 @@ function ProjectForm({
             
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">
-                Screenshots / Additional Images (Optional)
+                Media Gallery — Images, GIFs &amp; Videos (Optional)
               </label>
-              
-              {/* Toggle between URL and Upload */}
-              <div className="flex gap-2 mb-2">
-                <button
-                  type="button"
-                  onClick={() => setScreenshotsInputMode('url')}
-                  className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                    screenshotsInputMode === 'url'
-                      ? 'bg-purple-500 text-white'
-                      : 'bg-white/10 text-gray-400 hover:bg-white/20'
-                  }`}
-                >
-                  Paste URLs
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setScreenshotsInputMode('upload')}
-                  className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                    screenshotsInputMode === 'upload'
-                      ? 'bg-purple-500 text-white'
-                      : 'bg-white/10 text-gray-400 hover:bg-white/20'
-                  }`}
-                >
-                  Upload Files
-                </button>
+
+              {/* Tab bar */}
+              <div className="flex gap-2 mb-3">
+                {(['url', 'upload', 'vimeo'] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setScreenshotsInputMode(mode)}
+                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                      screenshotsInputMode === mode
+                        ? 'bg-purple-500 text-white'
+                        : 'bg-white/10 text-gray-400 hover:bg-white/20'
+                    }`}
+                  >
+                    {mode === 'url' && 'Paste URLs'}
+                    {mode === 'upload' && 'Upload Files'}
+                    {mode === 'vimeo' && (
+                      <span className="flex items-center gap-1.5">
+                        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M22.875 8.396c-.097 2.114-1.577 5.01-4.437 8.688C15.476 20.83 12.958 22.667 10.884 22.667c-1.253 0-2.31-1.156-3.173-3.467l-1.728-6.34C5.25 10.549 4.567 9.393 3.834 9.393c-.155 0-.7.327-1.63.977L1 9.016a354.35 354.35 0 0 0 2.609-2.329C5.15 5.3 6.296 4.59 7.076 4.514c1.988-.19 3.21 1.168 3.666 4.073.494 3.126.838 5.071 1.03 5.836.572 2.597 1.2 3.895 1.884 3.895.532 0 1.33-.842 2.394-2.525 1.063-1.683 1.63-2.963 1.7-3.84.152-1.452-.419-2.178-1.7-2.178a4.74 4.74 0 0 0-1.884.42c1.25-4.09 3.637-6.077 7.16-5.96 2.612.077 3.843 1.77 3.693 5.08l-.144.08z"/>
+                        </svg>
+                        Browse Vimeo
+                      </span>
+                    )}
+                  </button>
+                ))}
               </div>
-              
-              {screenshotsInputMode === 'url' ? (
+
+              {/* Paste URLs panel */}
+              {screenshotsInputMode === 'url' && (
                 <Textarea
-                  placeholder="Enter image URLs (one per line)&#10;e.g.:&#10;https://images.unsplash.com/photo-xxx&#10;https://images.unsplash.com/photo-yyy"
+                  placeholder="Enter image or video URLs (one per line)&#10;e.g.:&#10;https://images.unsplash.com/photo-xxx&#10;https://vimeo.com/123456789"
                   value={(formData.screenshots || []).join('\n')}
                   onChange={(e) => setFormData({ ...formData, screenshots: e.target.value.split('\n') })}
                   className="bg-black/50 border-white/20 text-white"
                   rows={4}
                 />
-              ) : (
+              )}
+
+              {/* Upload panel — images AND videos */}
+              {screenshotsInputMode === 'upload' && (
                 <div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      type="button"
-                      onClick={() => document.getElementById('screenshotsUpload')?.click()}
-                      disabled={uploadingScreenshots}
-                      className="cursor-pointer bg-white/10 hover:bg-white/20 text-white"
-                    >
-                      {uploadingScreenshots ? (
-                        <>Uploading...</>
-                      ) : (
-                        <>
-                          <Upload className="w-4 h-4 mr-2" />
-                          Select Multiple Screenshots
-                        </>
-                      )}
-                    </Button>
-                  </div>
+                  <Button
+                    type="button"
+                    onClick={() => document.getElementById('screenshotsUpload')?.click()}
+                    disabled={uploadingScreenshots}
+                    className="cursor-pointer bg-white/10 hover:bg-white/20 text-white"
+                  >
+                    {uploadingScreenshots ? (
+                      <>Uploading…</>
+                    ) : (
+                      <>
+                        <Upload className="w-4 h-4 mr-2" />
+                        Select Images or Videos
+                      </>
+                    )}
+                  </Button>
                   <input
                     type="file"
                     id="screenshotsUpload"
-                    accept="image/*"
+                    accept="image/*,video/mp4,video/webm,video/quicktime,video/x-msvideo"
                     multiple
                     onChange={handleScreenshotsUpload}
                     className="hidden"
                   />
                   <p className="text-xs text-gray-400 mt-2">
-                    You can select multiple images at once
+                    Supports PNG, JPEG, GIF, WebP and MP4, WebM, MOV, AVI · Multiple files at once
                   </p>
                   {errors.screenshotsUpload && (
                     <p className="text-red-400 text-sm mt-1">{errors.screenshotsUpload}</p>
                   )}
                 </div>
               )}
-              
-              {/* Show current screenshots with remove button */}
-              {formData.screenshots && formData.screenshots.length > 0 && (
-                <div className="mt-3 space-y-2">
-                  <p className="text-xs text-gray-400">Current Screenshots ({formData.screenshots.length}):</p>
-                  <div className="space-y-2 max-h-48 overflow-y-auto">
-                    {formData.screenshots.map((url, index) => (
-                      <div key={index} className="flex items-center gap-2 bg-black/30 p-2 rounded">
-                        <img 
-                          src={url} 
-                          alt={`Screenshot ${index + 1}`} 
-                          className="w-16 h-16 object-cover rounded"
-                          onError={(e) => {
-                            e.currentTarget.style.display = 'none';
-                          }}
-                        />
-                        <span className="text-xs text-gray-400 flex-1 truncate">{url}</span>
-                        <Button
-                          type="button"
-                          onClick={() => removeScreenshot(index)}
-                          variant="destructive"
-                          size="sm"
-                          className="cursor-pointer text-white"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </Button>
-                      </div>
-                    ))}
+
+              {/* Vimeo picker panel */}
+              {screenshotsInputMode === 'vimeo' && (
+                <div className="flex items-center gap-3 py-2">
+                  <Button
+                    type="button"
+                    onClick={() => setShowScreenshotsVimeoPicker(true)}
+                    className="cursor-pointer bg-[#1ab7ea]/20 hover:bg-[#1ab7ea]/30 border border-[#1ab7ea]/40 text-[#1ab7ea]"
+                  >
+                    <svg className="w-4 h-4 mr-1.5" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M22.875 8.396c-.097 2.114-1.577 5.01-4.437 8.688C15.476 20.83 12.958 22.667 10.884 22.667c-1.253 0-2.31-1.156-3.173-3.467l-1.728-6.34C5.25 10.549 4.567 9.393 3.834 9.393c-.155 0-.7.327-1.63.977L1 9.016a354.35 354.35 0 0 0 2.609-2.329C5.15 5.3 6.296 4.59 7.076 4.514c1.988-.19 3.21 1.168 3.666 4.073.494 3.126.838 5.071 1.03 5.836.572 2.597 1.2 3.895 1.884 3.895.532 0 1.33-.842 2.394-2.525 1.063-1.683 1.63-2.963 1.7-3.84.152-1.452-.419-2.178-1.7-2.178a4.74 4.74 0 0 0-1.884.42c1.25-4.09 3.637-6.077 7.16-5.96 2.612.077 3.843 1.77 3.693 5.08l-.144.08z"/>
+                    </svg>
+                    Open Vimeo Library
+                  </Button>
+                  <p className="text-xs text-gray-400">
+                    Pick one or more videos — each selection adds a Vimeo URL to the gallery
+                  </p>
+                </div>
+              )}
+
+              {/* ── Gallery preview ── */}
+              {formData.screenshots && formData.screenshots.filter(u => u.trim()).length > 0 && (
+                <div className="mt-4 space-y-2">
+                  <p className="text-xs text-gray-400 font-medium">
+                    Gallery ({formData.screenshots.filter(u => u.trim()).length} item{formData.screenshots.filter(u => u.trim()).length !== 1 ? 's' : ''})
+                  </p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-64 overflow-y-auto pr-1">
+                    {formData.screenshots.map((url, index) => {
+                      if (!url.trim()) return null;
+                      const isVimeo = url.includes('vimeo.com');
+                      const isDirectVideo = /\.(mp4|webm|mov|avi)(\?|$)/i.test(url);
+                      const vimeoId = isVimeo ? url.split('vimeo.com/').pop()?.split('?')[0]?.split('/').pop() : null;
+                      return (
+                        <div key={index} className="relative group rounded-lg overflow-hidden border border-white/10 bg-black/30 aspect-video">
+                          {isVimeo ? (
+                            /* Vimeo card — real thumbnail fetched via oEmbed */
+                            <VimeoThumb url={url} vimeoId={vimeoId!} />
+                          ) : isDirectVideo ? (
+                            /* Direct video */
+                            <video src={url} className="w-full h-full object-cover" muted preload="metadata" />
+                          ) : (
+                            /* Image */
+                            <img
+                              src={url}
+                              alt={`Media ${index + 1}`}
+                              className="w-full h-full object-cover"
+                              onError={(e) => { e.currentTarget.style.opacity = '0.2'; }}
+                            />
+                          )}
+                          {/* Remove button */}
+                          <button
+                            type="button"
+                            onClick={() => removeScreenshot(index)}
+                            className="absolute top-1 right-1 w-6 h-6 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg z-10"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                          {/* Type badge */}
+                          <div className="absolute bottom-1 left-1 text-[9px] px-1.5 py-0.5 rounded bg-black/70 text-gray-300 font-mono opacity-0 group-hover:opacity-100 transition-opacity">
+                            {isVimeo ? 'Vimeo' : isDirectVideo ? 'Video' : 'Image'}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -2377,6 +2533,18 @@ function ProjectForm({
           </Button>
         </div>
       </div>
+
+      {/* Per-field AI Improve Modal */}
+      {aiModal && (
+        <AIImproveModal
+          fieldLabel={aiModal.fieldLabel}
+          fieldKey={aiModal.fieldKey}
+          currentValue={aiModal.currentValue}
+          context={aiModal.context}
+          onApply={aiModal.onApply}
+          onClose={() => setAiModal(null)}
+        />
+      )}
     </div>
   );
 }

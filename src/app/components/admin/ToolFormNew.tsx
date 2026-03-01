@@ -6,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { AdminSelect } from './AdminSelect';
 import { Plus, Save, X, Upload, Copy, Trash2, Sparkles, ChevronLeft, ChevronRight, GripVertical, ImageIcon } from 'lucide-react';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
+import { AIImproveModal, type AIImproveContext } from './AIImproveModal';
 
 // ── Rich Feature type ─────────────────────────────────────────────────────────
 export interface RichFeature {
@@ -104,12 +105,34 @@ export function ToolFormNew({
   const [generatingVersionId, setGeneratingVersionId] = useState<string | null>(null);
   const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
   const [sourceDuplicateVersionId, setSourceDuplicateVersionId] = useState<string>('');
-  // AI options
+  // AI options (bulk)
   const [aiInstruction, setAiInstruction] = useState('');
   const [improveExisting, setImproveExisting] = useState(false);
   const [showAiOptions, setShowAiOptions] = useState(false);
   // Glow highlight for auto-filled fields
   const [highlightedFields, setHighlightedFields] = useState<Set<string>>(new Set());
+  // Per-field AI improve modal
+  const [aiModal, setAiModal] = useState<null | {
+    fieldLabel: string; fieldKey: string; currentValue: string;
+    context: AIImproveContext; onApply: (v: string) => void;
+  }>(null);
+
+  const openToolAiModal = (
+    fieldKey: string, fieldLabel: string, currentValue: string,
+    onApply: (v: string) => void,
+    versionType?: string,
+  ) => {
+    setAiModal({
+      fieldKey, fieldLabel, currentValue,
+      context: {
+        entityType: 'tool',
+        name: formData.name,
+        category: formData.toolCategory || formData.category,
+        ...(versionType ? { versionType } : {}),
+      },
+      onApply,
+    });
+  };
 
   // Initialize FAQ text
   useEffect(() => {
@@ -652,9 +675,10 @@ export function ToolFormNew({
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">
-            Description *
-          </label>
+          <div className="flex items-center justify-between mb-2">
+            <label className="block text-sm font-medium text-gray-300">Description *</label>
+            <button type="button" onClick={() => openToolAiModal('description', 'Description', formData.description || '', (v) => { setFormData(prev => ({ ...prev, description: v.slice(0, 250) })); setErrors(prev => ({ ...prev, description: '' })); })} className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-purple-300 hover:text-white bg-purple-500/10 hover:bg-purple-500/20 border border-purple-400/15 transition-all duration-150"><Sparkles className="w-3 h-3" />Improve</button>
+          </div>
           <div className="relative">
             <Textarea
               placeholder="Describe what this tool does"
@@ -828,9 +852,10 @@ export function ToolFormNew({
 
         {/* FAQs (tool-wide) */}
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">
-            FAQs (applies to all versions)
-          </label>
+          <div className="flex items-center justify-between mb-2">
+            <label className="block text-sm font-medium text-gray-300">FAQs <span className="text-white/30 font-normal">(applies to all versions)</span></label>
+            <button type="button" onClick={() => openToolAiModal('faqs', 'FAQs', faqText, (v) => { setFaqText(v); setFormData(prev => ({ ...prev, faqs: parseFaqText(v) })); })} className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-purple-300 hover:text-white bg-purple-500/10 hover:bg-purple-500/20 border border-purple-400/15 transition-all duration-150"><Sparkles className="w-3 h-3" />Improve</button>
+          </div>
           <Textarea
             placeholder="Q: Does it work with CC 2024?&#10;A: Yes, fully compatible with After Effects 2022-2024.&#10;&#10;Q: Can I use it for commercial projects?&#10;A: Absolutely. One license covers all your commercial work."
             value={faqText}
@@ -875,9 +900,10 @@ export function ToolFormNew({
 
         {/* Tagline (tool-wide) */}
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">
-            Tagline (applies to all versions)
-          </label>
+          <div className="flex items-center justify-between mb-2">
+            <label className="block text-sm font-medium text-gray-300">Tagline <span className="text-white/30 font-normal">(applies to all versions)</span></label>
+            <button type="button" onClick={() => openToolAiModal('tagline', 'Tagline', formData.tagline || '', (v) => setFormData(prev => ({ ...prev, tagline: v })))} className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-purple-300 hover:text-white bg-purple-500/10 hover:bg-purple-500/20 border border-purple-400/15 transition-all duration-150"><Sparkles className="w-3 h-3" />Improve</button>
+          </div>
           <Input
             placeholder="Perfect for freelancers and small studios"
             value={formData.tagline || ''}
@@ -888,9 +914,10 @@ export function ToolFormNew({
 
         {/* System Requirements (tool-wide) */}
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">
-            System Requirements (applies to all versions)
-          </label>
+          <div className="flex items-center justify-between mb-2">
+            <label className="block text-sm font-medium text-gray-300">System Requirements <span className="text-white/30 font-normal">(applies to all versions)</span></label>
+            <button type="button" onClick={() => openToolAiModal('systemRequirements', 'System Requirements', formData.systemRequirements || '', (v) => setFormData(prev => ({ ...prev, systemRequirements: v })))} className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-purple-300 hover:text-white bg-purple-500/10 hover:bg-purple-500/20 border border-purple-400/15 transition-all duration-150"><Sparkles className="w-3 h-3" />Improve</button>
+          </div>
           <Textarea
             placeholder="After Effects 2022 or later, macOS 11+ or Windows 10+"
             value={formData.systemRequirements || ''}
@@ -902,9 +929,19 @@ export function ToolFormNew({
 
         {/* How It Works (tool-wide) */}
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">
-            How It Works (applies to all versions)
-          </label>
+          <div className="flex items-center justify-between mb-2">
+            <label className="block text-sm font-medium text-gray-300">How It Works <span className="text-white/30 font-normal">(applies to all versions)</span></label>
+            <button type="button" onClick={() => openToolAiModal('howItWorks', 'How It Works', howItWorksText, (v) => {
+              setHowItWorksText(v);
+              const lines = v.split('\n').filter(l => l.trim());
+              const steps = lines.map((line) => {
+                const [title, description] = line.split('|').map(s => s.trim());
+                const cleanTitle = (title || '').replace(/^Step \d+:\s*/, '');
+                return { title: cleanTitle || '', description: description || '' };
+              });
+              setFormData(prev => ({ ...prev, howItWorks: steps }));
+            })} className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-purple-300 hover:text-white bg-purple-500/10 hover:bg-purple-500/20 border border-purple-400/15 transition-all duration-150"><Sparkles className="w-3 h-3" />Improve</button>
+          </div>
           <Textarea
             placeholder={"Step 1: Install | Run the installer and restart After Effects\nStep 2: Access panel | Find the toolkit in Window > Extensions\nStep 3: Automate | Select tasks and let it handle the rest"}
             value={howItWorksText}
@@ -999,6 +1036,7 @@ export function ToolFormNew({
                     onRegenerate={() => handleRegenerateVersion(version.id)}
                     isRegenerating={generatingVersionId === version.id}
                     highlightedFields={highlightedFields}
+                    onOpenAiModal={(fk, fl, cv, apply) => openToolAiModal(fk, fl, cv, apply, version.versionType)}
                   />
                 )}
               </TabsContent>
@@ -1035,6 +1073,18 @@ export function ToolFormNew({
           </Button>
         </div>
       </div>
+
+      {/* Per-field AI Improve Modal */}
+      {aiModal && (
+        <AIImproveModal
+          fieldLabel={aiModal.fieldLabel}
+          fieldKey={aiModal.fieldKey}
+          currentValue={aiModal.currentValue}
+          context={aiModal.context}
+          onApply={aiModal.onApply}
+          onClose={() => setAiModal(null)}
+        />
+      )}
 
       {/* Duplicate Modal */}
       {duplicateModalOpen && sourceVersion && (
@@ -1100,6 +1150,7 @@ function VersionEditor({
   onRegenerate,
   isRegenerating = false,
   highlightedFields = new Set<string>(),
+  onOpenAiModal,
 }: {
   version: ToolVersion;
   onUpdate: (updates: Partial<ToolVersion>) => void;
@@ -1111,6 +1162,7 @@ function VersionEditor({
   onRegenerate?: () => void;
   isRegenerating?: boolean;
   highlightedFields?: Set<string>;
+  onOpenAiModal?: (fieldKey: string, fieldLabel: string, currentValue: string, onApply: (v: string) => void) => void;
 }) {
   const vhl = (subKey: string) =>
     highlightedFields.has(`${version.id}:${subKey}`)
@@ -1332,9 +1384,12 @@ function VersionEditor({
 
       {/* What's Included */}
       <div>
-        <label className="block text-sm font-medium text-gray-300 mb-2">
-          What's Included (Optional)
-        </label>
+        <div className="flex items-center justify-between mb-2">
+          <label className="block text-sm font-medium text-gray-300">What's Included <span className="text-white/30 font-normal">(Optional)</span></label>
+          {onOpenAiModal && (
+            <button type="button" onClick={() => onOpenAiModal('whatsIncluded', "What's Included", (version.whatsIncluded || []).join('\n'), (v) => onUpdate({ whatsIncluded: v.split('\n').filter(Boolean) }))} className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-purple-300 hover:text-white bg-purple-500/10 hover:bg-purple-500/20 border border-purple-400/15 transition-all duration-150"><Sparkles className="w-3 h-3" />Improve</button>
+          )}
+        </div>
         <Textarea
           placeholder="Enter items (one per line)"
           value={(version.whatsIncluded || []).join('\n')}
@@ -1349,9 +1404,12 @@ function VersionEditor({
 
       {/* Activation Steps */}
       <div>
-        <label className="block text-sm font-medium text-gray-300 mb-1">
-          🔑 How to Activate (Optional)
-        </label>
+        <div className="flex items-center justify-between mb-1">
+          <label className="block text-sm font-medium text-gray-300">🔑 How to Activate <span className="text-white/30 font-normal">(Optional)</span></label>
+          {onOpenAiModal && (
+            <button type="button" onClick={() => onOpenAiModal('activationSteps', 'Activation Steps', (version.activationSteps || []).join('\n'), (v) => onUpdate({ activationSteps: v.split('\n').filter(Boolean) }))} className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-purple-300 hover:text-white bg-purple-500/10 hover:bg-purple-500/20 border border-purple-400/15 transition-all duration-150"><Sparkles className="w-3 h-3" />Improve</button>
+          )}
+        </div>
         <p className="text-xs text-white/40 mb-2">
           Step-by-step instructions shown to the user in their Account page after purchase. One step per line. Leave empty to use the site default.
         </p>

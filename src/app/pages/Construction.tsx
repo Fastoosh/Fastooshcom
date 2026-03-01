@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router";
 import { motion } from "motion/react";
 import { GlassCard } from "../components/shared/GlassCard";
@@ -6,9 +6,31 @@ import { NeonButton } from "../components/shared/NeonButton";
 import { Mail, Globe, Construction as ConstructionIcon } from "lucide-react";
 import fastooshLogo from "figma:asset/146d4e74197e43854d1765af396281d8ee56010c.png";
 import { ScrollingGradientBackground } from "../components/shared/ScrollingGradientBackground";
+import { useTracker } from "../hooks/useTracker";
 
 export function Construction() {
   const navigate = useNavigate();
+  const { track } = useTracker();
+  const entryTime = useRef(Date.now());
+
+  // ── Page tracking (this page is outside Layout/RouteTracker) ────────────────
+  useEffect(() => {
+    // Note: React fires CHILD effects before PARENT effects.
+    // This effect (child) runs before TrackingProvider's init effect (parent),
+    // so sidRef.current is still '' here — flush() would exit early.
+    // TrackingProvider schedules setTimeout(flush, 0) in its init effect,
+    // which runs in the next event-loop tick after ALL effects complete,
+    // picking up this page_view event with the correct session ID.
+    track('page_view', { path: '/', title: 'Fastoosh — Coming Soon' });
+
+    return () => {
+      track('page_exit', {
+        path:     '/',
+        duration: Math.round((Date.now() - entryTime.current) / 1000),
+      });
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Safety net: if Supabase ignored our redirectTo (URL not yet whitelisted)
   // it falls back to the Site URL (fastoosh.com root = this page).

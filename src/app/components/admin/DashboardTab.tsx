@@ -10,7 +10,7 @@ import {
   CheckCheck, ChevronDown, ChevronUp, BarChart2, LayoutDashboard,
   Inbox, Calendar, Tag, Clock, ArrowUpRight, Activity,
   Sparkles, Circle, CheckCircle2, ExternalLink, DollarSign, ShoppingCart,
-  RotateCcw, BadgeDollarSign, TrendingDown, Play,
+  RotateCcw, BadgeDollarSign, TrendingDown, Play, Globe,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
@@ -134,6 +134,31 @@ interface DashboardData {
   activity: ActivityItem[];
 }
 
+interface CountryRow { code: string; sessions: number; converted: number; }
+
+// ── Country helpers ─────────────────────────────────────────────────────────────
+function countryFlag(code: string): string {
+  if (!code || code === 'Unknown' || code.length !== 2) return '🌍';
+  const offset = 0x1F1E6 - 65;
+  try { return String.fromCodePoint(code.charCodeAt(0) + offset, code.charCodeAt(1) + offset); }
+  catch { return '🌍'; }
+}
+const COUNTRY_NAMES: Record<string, string> = {
+  US:'United States', GB:'United Kingdom', FR:'France', DE:'Germany', MA:'Morocco',
+  DZ:'Algeria', TN:'Tunisia', SA:'Saudi Arabia', AE:'UAE', EG:'Egypt',
+  CA:'Canada', AU:'Australia', BR:'Brazil', IN:'India', JP:'Japan',
+  NL:'Netherlands', ES:'Spain', IT:'Italy', PT:'Portugal', SE:'Sweden',
+  BE:'Belgium', CH:'Switzerland', PL:'Poland', TR:'Turkey', KR:'South Korea',
+  SG:'Singapore', MY:'Malaysia', NG:'Nigeria', ZA:'South Africa', MX:'Mexico',
+  LB:'Lebanon', JO:'Jordan', KW:'Kuwait', QA:'Qatar', BH:'Bahrain', OM:'Oman',
+  IQ:'Iraq', IR:'Iran', PK:'Pakistan', ID:'Indonesia', PH:'Philippines',
+  UA:'Ukraine', RU:'Russia', CN:'China', AR:'Argentina', CO:'Colombia',
+};
+function countryName(code: string): string {
+  if (!code || code === 'Unknown') return 'Unknown';
+  return COUNTRY_NAMES[code] ?? code;
+}
+
 // ── Colour tokens ──────────────────────────────────────────────────────────────
 
 const NEON_PURPLE = '#a855f7';
@@ -184,7 +209,7 @@ function StatCard({ label, value, icon, color, sub, pulse, onClick }: StatCardPr
     <motion.div
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      whileHover={{ scale: 1.02 }}
+      whileHover={onClick ? { scale: 1.02 } : {}}
       onClick={onClick}
       className={`relative overflow-hidden rounded-2xl border bg-white/3 backdrop-blur-sm p-5 flex flex-col gap-2 ${
         onClick ? 'cursor-pointer' : ''
@@ -425,11 +450,12 @@ function MessageCard({ msg, expanded, onExpand, onMarkRead, onDelete, marking }:
 
 // ── Main Component ─────────────────────────────────────────────────────────────
 
-export function DashboardTab() {
-  const [data,        setData]        = useState<DashboardData | null>(null);
-  const [messages,    setMessages]    = useState<Message[]>([]);
-  const [loading,     setLoading]     = useState(true);
-  const [refreshing,  setRefreshing]  = useState(false);
+export function DashboardTab({ onNavigate }: { onNavigate?: (tab: string) => void }) {
+  const [data,          setData]          = useState<DashboardData | null>(null);
+  const [messages,      setMessages]      = useState<Message[]>([]);
+  const [countriesData, setCountriesData] = useState<CountryRow[]>([]);
+  const [loading,       setLoading]       = useState(true);
+  const [refreshing,    setRefreshing]    = useState(false);
   const [view,        setView]        = useState<'overview' | 'analytics' | 'revenue' | 'behavior' | 'messages' | 'videos'>('overview');
   const [msgFilter,   setMsgFilter]   = useState<'all' | 'contact' | 'support' | 'unread'>('all');
   const [expandedMsg, setExpandedMsg] = useState<string | null>(null);
@@ -445,12 +471,14 @@ export function DashboardTab() {
   const loadDashboard = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const [dashRes, msgRes] = await Promise.all([
+      const [dashRes, msgRes, refRes] = await Promise.all([
         fetch(`${API_BASE}/admin/dashboard`, { headers: getAuthHeaders() }),
         fetch(`${API_BASE}/admin/messages`,  { headers: getAuthHeaders() }),
+        fetch(`${API_BASE}/admin/referrers`, { headers: getAuthHeaders() }),
       ]);
       const dashJson = await dashRes.json();
       const msgJson  = await msgRes.json();
+      const refJson  = await refRes.json();
 
       if (dashJson.success) {
         setData(dashJson.data);
@@ -461,6 +489,9 @@ export function DashboardTab() {
         });
       }
       if (msgJson.success) setMessages(msgJson.data || []);
+      if (refJson.success && Array.isArray(refJson.data?.byCountry)) {
+        setCountriesData(refJson.data.byCountry.filter((r: CountryRow) => r.code !== 'Unknown').slice(0, 5));
+      }
     } catch (err) {
       console.error('[DashboardTab] load error:', err);
     } finally {
@@ -689,6 +720,7 @@ export function DashboardTab() {
           icon={<Sparkles className="w-5 h-5" />}
           color={NEON_GREEN}
           sub="Signed up accounts"
+          onClick={() => onNavigate?.('leads')}
         />
         <StatCard
           label="Messages"
@@ -705,6 +737,7 @@ export function DashboardTab() {
           icon={<Wrench className="w-5 h-5" />}
           color="#fbbf24"
           sub="Published tools"
+          onClick={() => onNavigate?.('tools')}
         />
         <StatCard
           label="Projects"
@@ -712,6 +745,7 @@ export function DashboardTab() {
           icon={<FolderOpen className="w-5 h-5" />}
           color="#fb7185"
           sub="In portfolio"
+          onClick={() => onNavigate?.('projects')}
         />
         <StatCard
           label="30-Day Growth"
@@ -825,6 +859,48 @@ export function DashboardTab() {
                       </div>
                     );
                   })}
+                </div>
+              )}
+            </GlassCard>
+
+            {/* Countries mini-widget */}
+            <GlassCard className="p-5">
+              <div className="flex items-center gap-2 mb-4">
+                <Globe className="w-4 h-4 text-cyan-400" />
+                <h3 className="text-white font-semibold">Top Countries</h3>
+                <span className="text-white/25 text-xs ml-auto">All time</span>
+              </div>
+              {countriesData.length === 0 ? (
+                <p className="text-white/30 text-sm text-center py-4">No country data yet</p>
+              ) : (
+                <div className="space-y-2.5">
+                  {(() => {
+                    const max = countriesData[0]?.sessions ?? 1;
+                    return countriesData.map((c, i) => {
+                      const pct = Math.round((c.sessions / max) * 100);
+                      return (
+                        <div key={c.code}>
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="text-white/20 text-xs font-mono w-4 flex-shrink-0">#{i + 1}</span>
+                              <span className="text-base leading-none flex-shrink-0">{countryFlag(c.code)}</span>
+                              <span className="text-white/75 text-xs truncate">{countryName(c.code)}</span>
+                            </div>
+                            <span className="text-white/50 text-xs ml-2 flex-shrink-0 tabular-nums">{c.sessions}</span>
+                          </div>
+                          <div className="h-1 rounded-full bg-white/5">
+                            <div
+                              className="h-1 rounded-full transition-all duration-500"
+                              style={{
+                                width: `${pct}%`,
+                                background: `linear-gradient(90deg, #22d3ee, #60a5fa)`,
+                              }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    });
+                  })()}
                 </div>
               )}
             </GlassCard>

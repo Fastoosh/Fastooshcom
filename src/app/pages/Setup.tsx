@@ -33,8 +33,9 @@ const ENV_DEFS: Omit<EnvVar, 'status'>[] = [
   { key: 'SUPABASE_URL',               label: 'Supabase URL',                required: true,  hint: 'Auto-injected by Supabase Edge Functions.', docUrl: 'https://supabase.com/dashboard/project/_/settings/api' },
   { key: 'SUPABASE_ANON_KEY',          label: 'Supabase Anon Key',           required: true,  hint: 'Auto-injected by Supabase Edge Functions.', docUrl: 'https://supabase.com/dashboard/project/_/settings/api' },
   { key: 'SUPABASE_SERVICE_ROLE_KEY',  label: 'Supabase Service Role Key',   required: true,  hint: 'Auto-injected by Supabase Edge Functions.', docUrl: 'https://supabase.com/dashboard/project/_/settings/api' },
-  { key: 'RESEND_API_KEY',             label: 'Resend API Key',              required: true,  hint: 'Used for transactional emails & security alerts.', docUrl: 'https://resend.com/api-keys' },
-  { key: 'GEMINI_API_KEY',             label: 'Gemini AI API Key',           required: true,  hint: 'Powers AI content generation in the admin panel.', docUrl: 'https://aistudio.google.com/app/apikey' },
+  { key: 'RESEND_API_KEY',             label: 'Resend API Key',              required: true,  hint: 'Transactional emails, security alerts & password-reset emails.', docUrl: 'https://resend.com/api-keys' },
+  { key: 'GEMINI_API_KEY',             label: 'Gemini AI API Key',           required: true,  hint: 'Powers AI content generation & auto-translation in the admin panel.', docUrl: 'https://aistudio.google.com/app/apikey' },
+  { key: 'VIMEO_ACCESS_TOKEN',         label: 'Vimeo Access Token',          required: false, hint: 'Required for the Vimeo video picker in the admin media gallery.', docUrl: 'https://developer.vimeo.com/apps' },
   { key: 'LEMON_SQUEEZY_API_KEY',      label: 'Lemon Squeezy API Key',       required: false, hint: 'Required only if you sell tools via Lemon Squeezy.', docUrl: 'https://app.lemonsqueezy.com/settings/api' },
   { key: 'LEMON_SQUEEZY_WEBHOOK_SECRET', label: 'Lemon Squeezy Webhook Secret', required: false, hint: 'Required only if you sell tools via Lemon Squeezy.', docUrl: 'https://app.lemonsqueezy.com/settings/webhooks' },
 ];
@@ -166,6 +167,7 @@ export function Setup() {
   const [brand, setBrand] = useState({
     studioName: '', contactEmail: '', siteUrl: '', calendlyUrl: '',
     showreelUrl: '', instagram: '', linkedin: '', twitter: '', tiktok: '',
+    behance: '', dribbble: '',
   });
 
   // Seed step
@@ -334,12 +336,16 @@ export function Setup() {
                       <p className="text-white/40 text-sm">~5 minutes to complete</p>
                     </div>
                   </div>
-                  <p className="text-white/60 text-sm leading-relaxed mb-6">
-                    This wizard will help you deploy this web app to a new client's infrastructure.
-                    It walks you through every step in the correct order — from verifying API keys to
-                    creating the first admin account, configuring basic brand settings, and optionally
-                    seeding the database with sample content so the client can see the site live immediately.
+                  <p className="text-white/60 text-sm leading-relaxed mb-3">
+                    This wizard deploys the full Fastoosh studio platform for a new client. It covers
+                    API keys (Supabase, Resend, Gemini AI, Vimeo, Lemon Squeezy), OAuth social sign-in,
+                    the first admin account, brand basics, and optional sample content seeding.
                   </p>
+                  <div className="flex flex-wrap gap-2 mb-6">
+                    {['i18n (EN · FR · AR)', 'Vimeo Media Gallery', 'UTM & Traffic Analytics', 'Forgot-Password via Resend', 'Lemon Squeezy Payments', 'Gemini AI Translations', 'Google & Discord OAuth'].map(tag => (
+                      <span key={tag} className="text-[10px] font-medium px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-white/40">{tag}</span>
+                    ))}
+                  </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-8">
                     {[
                       { icon: Terminal,  label: 'Check all API keys',          color: 'text-blue-400',    bg: 'bg-blue-500/10',    border: 'border-blue-500/20' },
@@ -722,6 +728,8 @@ export function Setup() {
                       { field: 'linkedin',  placeholder: 'https://linkedin.com/in/…' },
                       { field: 'twitter',   placeholder: 'https://twitter.com/…' },
                       { field: 'tiktok',    placeholder: 'https://tiktok.com/@…' },
+                      { field: 'behance',   placeholder: 'https://behance.net/…' },
+                      { field: 'dribbble',  placeholder: 'https://dribbble.com/…' },
                     ].map(({ field, placeholder }) => (
                       <div key={field}>
                         <label className="block text-xs text-white/40 mb-1.5 capitalize">{field}</label>
@@ -864,7 +872,11 @@ export function Setup() {
                       <li>• Upload their logo in Admin → Style</li>
                       <li>• Add their real showreel URL in Admin → Settings</li>
                       <li>• Verify their Resend domain for email deliverability</li>
-                      <li>• Set up Lemon Squeezy products if they sell tools</li>
+                      <li>• Add <code className="text-violet-300/80 font-mono">VIMEO_ACCESS_TOKEN</code> in Supabase → Edge Functions → Secrets to enable the Vimeo video picker</li>
+                      <li>• Run AI translations in Admin → Translations for French &amp; Arabic content</li>
+                      <li>• Monitor visitor traffic in Admin → Traffic once the site goes live</li>
+                      <li>• Set up Lemon Squeezy products &amp; webhook if they sell tools</li>
+                      <li>• Test the forgot-password email flow end-to-end</li>
                       {(oauthGoogle || oauthDiscord) && (
                         <li>• Test {oauthGoogle && 'Google'}{oauthGoogle && oauthDiscord && ' and '}{oauthDiscord && 'Discord'} sign-in on the live site</li>
                       )}

@@ -109,7 +109,7 @@ app.use(
   cors({
     origin: "*",
     allowHeaders: ["Content-Type", "Authorization", "X-Admin-Token", "X-User-Token"],
-    allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     exposeHeaders: ["Content-Length"],
     maxAge: 600,
   }),
@@ -1038,6 +1038,168 @@ ${schemaLines}}`;
   } catch (error) {
     console.log('Error in generate-project-content:', error);
     return c.json({ success: false, error: `Content generation failed: ${String(error)}` }, 500);
+  }
+});
+
+// ========== AI FIELD-LEVEL IMPROVE ==========
+
+app.post("/make-server-e07959ec/admin/improve-field", requireAuth, async (c) => {
+  try {
+    const { fieldKey, currentValue, context, instruction = '', isAlternative = false } = await c.req.json();
+
+    const apiKey = Deno.env.get('GEMINI_API_KEY');
+    if (!apiKey) return c.json({ success: false, error: 'GEMINI_API_KEY not configured' }, 500);
+    if (!fieldKey) return c.json({ success: false, error: 'fieldKey is required' }, 400);
+
+    const entityName = context?.name || context?.title || 'this item';
+    const entityType = context?.entityType === 'project' ? 'project' : 'tool';
+    const versionCtx  = context?.versionType ? ` (${context.versionType} version)` : '';
+    const categoryCtx = context?.category    ? ` in category "${context.category}"` : '';
+
+    const instructionLine = instruction?.trim()
+      ? `\nUser instruction: "${instruction.trim()}" — let this guide your tone, focus, and style.`
+      : '';
+
+    const alternativeDirective = isAlternative
+      ? '\nIMPORTANT: Produce a COMPLETELY DIFFERENT version — different angle, different phrasing, different structure. Do NOT rephrase the current text verbatim.'
+      : '\nImprove and refine the existing content �� make it more compelling, specific, and professional.';
+
+    type FieldRule = { label: string; rule: string; format: string };
+    const fieldRules: Record<string, FieldRule> = {
+      description: {
+        label: 'Short Description',
+        rule: 'Professional, benefit-focused, concrete. HARD LIMIT: 250 characters maximum (count carefully). No buzzword fluff.',
+        format: 'Return plain text only (no JSON, no quotes around the result).',
+      },
+      tagline: {
+        label: 'Tagline',
+        rule: 'Max 10 words. Punchy, active voice. E.g. "Automate the boring. Amplify the creative."',
+        format: 'Return plain text only — one single line.',
+      },
+      systemRequirements: {
+        label: 'System Requirements',
+        rule: 'Concise technical requirements. Use middle dot (·) as separator for multiple items.',
+        format: 'Return plain text only.',
+      },
+      howItWorks: {
+        label: 'How It Works',
+        rule: 'Exactly 4 steps. Each step has a short title (2-4 words) and a 1-sentence description.',
+        format: 'Return plain text, one step per line, format: "Step N: Title | Description".',
+      },
+      faqs: {
+        label: 'FAQs',
+        rule: '4 realistic buyer questions with helpful, concise answers.',
+        format: 'Return plain text in this exact format (blank line between each Q/A pair):\nQ: Question 1\nA: Answer 1\n\nQ: Question 2\nA: Answer 2',
+      },
+      whatsIncluded: {
+        label: "What's Included",
+        rule: '3-4 items that buyers receive. E.g. "After Effects .jsx script file", "PDF quick-start guide", "Free updates for 12 months".',
+        format: 'Return plain text, one item per line.',
+      },
+      activationSteps: {
+        label: 'Activation Steps',
+        rule: '4 clear post-purchase steps. Specific and actionable. Written as imperative sentences.',
+        format: 'Return plain text, one step per line. No numbering — the UI numbers them automatically.',
+      },
+      goal: {
+        label: 'Project Goal',
+        rule: '2-3 sentences describing the project objectives and what success looks like.',
+        format: 'Return plain text only.',
+      },
+      approach: {
+        label: 'Creative Approach',
+        rule: '2-3 sentences explaining the creative process, techniques, and tools used.',
+        format: 'Return plain text only.',
+      },
+      outcome: {
+        label: 'Project Outcome',
+        rule: '2-3 sentences describing results, measurable impact, and client satisfaction.',
+        format: 'Return plain text only.',
+      },
+      tags: {
+        label: 'Tags',
+        rule: '4-6 relevant tags. Each tag is 1-3 words. Relevant to the project/tool category.',
+        format: 'Return comma-separated values only. E.g. "Motion Design, Branding, 3D Animation"',
+      },
+      deliverables: {
+        label: 'Deliverables',
+        rule: '3-6 specific deliverable items. E.g. "90-second explainer video", "Social media cutdowns (9:16)", "Brand guidelines PDF".',
+        format: 'Return plain text, one item per line.',
+      },
+      client: {
+        label: 'Client',
+        rule: 'A concise, professional client name or company description.',
+        format: 'Return plain text only — just the name or short description.',
+      },
+    };
+
+    const field = fieldRules[fieldKey];
+    if (!field) {
+      return c.json({ success: false, error: `Unknown fieldKey: "${fieldKey}"` }, 400);
+    }
+
+    const entityLine = entityType === 'project'
+      ? `Project: "${entityName}"${categoryCtx}`
+      : `Tool: "${entityName}"${categoryCtx}${versionCtx}`;
+
+    const prompt = `You are a professional copywriter for Fastoosh, a premium motion design studio.
+${entityLine}
+Field to improve: ${field.label}${instructionLine}${alternativeDirective}
+
+Current content:
+"""
+${currentValue?.trim() || '(empty — generate from scratch based on context)'}
+"""
+
+Rules for this field:
+${field.rule}
+
+Output format:
+${field.format}
+
+Return ONLY the improved text — no labels, no explanations, no markdown fences, no surrounding quotes.`;
+
+    console.log(`[improve-field] fieldKey=${fieldKey} entity="${entityName}" alt=${isAlternative}${instruction ? ` inst="${instruction.substring(0, 60)}"` : ''}`);
+
+    const geminiRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: isAlternative ? 0.95 : 0.72,
+            maxOutputTokens: 1024,
+          },
+        }),
+      }
+    );
+
+    if (!geminiRes.ok) {
+      const errText = await geminiRes.text();
+      return c.json({ success: false, error: `Gemini API error (${geminiRes.status}): ${errText}` }, 500);
+    }
+
+    const geminiData = await geminiRes.json();
+    const rawText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+
+    if (!rawText) {
+      return c.json({ success: false, error: 'Gemini returned an empty response' }, 500);
+    }
+
+    // Strip any accidental markdown code fences
+    const cleaned = rawText
+      .replace(/^```[\w]*\n?/m, '')
+      .replace(/```$/m, '')
+      .trim();
+
+    console.log(`[improve-field] ✅ "${entityName}" / ${fieldKey} — ${cleaned.length} chars`);
+    return c.json({ success: true, data: { result: cleaned } });
+
+  } catch (error) {
+    console.log('Error in improve-field:', error);
+    return c.json({ success: false, error: `Field improvement failed: ${String(error)}` }, 500);
   }
 });
 
@@ -3075,6 +3237,25 @@ app.post("/make-server-e07959ec/webhooks/lemon-squeezy", async (c) => {
 
 // ========== CONTACT FORM ENDPOINT ==========
 
+// Shared helper — fetches the admin notification email from site_settings.
+// Falls back to undefined if not configured; callers must handle that case.
+async function getAdminEmail(): Promise<string | undefined> {
+  const { data: row, error } = await supabase
+    .from('site_settings')
+    .select('value')
+    .eq('key', 'contactEmail')
+    .maybeSingle();
+
+  if (error) {
+    console.error('[getAdminEmail] DB error fetching contactEmail:', error.message, error);
+    return undefined;
+  }
+
+  const email = (row?.value as string | undefined)?.trim() || undefined;
+  console.log('[getAdminEmail] contactEmail from site_settings:', email ?? '(not set — row was null/empty)');
+  return email;
+}
+
 // Submit contact form (public, sends email)
 app.post("/make-server-e07959ec/contact", async (c) => {
   try {
@@ -3113,52 +3294,70 @@ app.post("/make-server-e07959ec/contact", async (c) => {
 
     const resendApiKey = Deno.env.get('RESEND_API_KEY');
     if (!resendApiKey) {
-      console.log('Error: RESEND_API_KEY not configured');
-      return c.json({ 
-        success: false, 
-        error: "Email service not configured" 
-      }, 500);
+      console.log('[contact] RESEND_API_KEY not configured — message saved to KV only');
+      return c.json({ success: true, message: "Your message has been sent successfully! We'll reply within 24-48 hours." });
+    }
+
+    const adminEmail = await getAdminEmail();
+    if (!adminEmail) {
+      console.warn('[contact] ⚠️ contactEmail not found in site_settings — go to Admin → Settings and save your contact email. Notification skipped.');
+      return c.json({ success: true, message: "Your message has been sent successfully! We'll reply within 24-48 hours." });
     }
 
     const resend = new Resend(resendApiKey);
+    const submittedAt = new Date().toLocaleString('en-US', { dateStyle: 'full', timeStyle: 'short' });
 
     const emailHtml = `
-      <h2>New Contact Form Submission</h2>
-      <p><strong>From:</strong> ${name} (${email})</p>
-      
-      ${projectType ? `<p><strong>Project Type:</strong> ${projectType}</p>` : ''}
-      ${timeline ? `<p><strong>Timeline:</strong> ${timeline}</p>` : ''}
-      ${budget ? `<p><strong>Budget:</strong> ${budget}</p>` : ''}
-      
-      <h3>Message:</h3>
-      <p>${message.replace(/\n/g, '<br>')}</p>
-      
-      <hr>
-      <p style="color: #666; font-size: 12px;">
-        Submitted on ${new Date().toLocaleString('en-US', { 
-          dateStyle: 'full', 
-          timeStyle: 'short' 
-        })}
-      </p>
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;background:#0a0a0a;color:#e5e5e5;border-radius:12px;overflow:hidden;">
+        <div style="background:linear-gradient(135deg,#7c3aed,#4f46e5);padding:28px 32px;">
+          <p style="margin:0 0 4px;font-size:12px;color:rgba(255,255,255,0.7);letter-spacing:0.1em;text-transform:uppercase;">Fastoosh Studio</p>
+          <h1 style="margin:0;font-size:22px;color:#fff;">✉️ New Work Inquiry</h1>
+        </div>
+        <div style="padding:32px;">
+          <p style="margin:0 0 24px;font-size:15px;color:#d4d4d4;line-height:1.6;">
+            Someone reached out through the <strong style="color:#fff;">Work With Us</strong> page. Here are the details:
+          </p>
+          <table style="width:100%;border-collapse:collapse;margin-bottom:28px;">
+            <tr>
+              <td style="padding:10px 14px;background:#1a1a1a;border-radius:6px 6px 0 0;color:#a3a3a3;font-size:13px;width:130px;">Name</td>
+              <td style="padding:10px 14px;background:#1a1a1a;border-radius:6px 6px 0 0;color:#fff;font-size:13px;">${name}</td>
+            </tr>
+            <tr>
+              <td style="padding:10px 14px;background:#141414;color:#a3a3a3;font-size:13px;">Email</td>
+              <td style="padding:10px 14px;background:#141414;font-size:13px;"><a href="mailto:${email}" style="color:#a78bfa;text-decoration:none;">${email}</a></td>
+            </tr>
+            ${projectType ? `<tr><td style="padding:10px 14px;background:#1a1a1a;color:#a3a3a3;font-size:13px;">Project Type</td><td style="padding:10px 14px;background:#1a1a1a;color:#fff;font-size:13px;">${projectType}</td></tr>` : ''}
+            ${timeline ? `<tr><td style="padding:10px 14px;background:#141414;color:#a3a3a3;font-size:13px;">Timeline</td><td style="padding:10px 14px;background:#141414;color:#fff;font-size:13px;">${timeline}</td></tr>` : ''}
+            ${budget ? `<tr><td style="padding:10px 14px;background:#1a1a1a;color:#a3a3a3;font-size:13px;">Budget</td><td style="padding:10px 14px;background:#1a1a1a;color:#fff;font-size:13px;">${budget}</td></tr>` : ''}
+          </table>
+          <p style="margin:0 0 8px;font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;">Message</p>
+          <div style="background:#111;border-left:3px solid #7c3aed;padding:16px 20px;border-radius:0 6px 6px 0;">
+            <p style="margin:0;font-size:14px;color:#d4d4d4;line-height:1.7;white-space:pre-wrap;">${message.replace(/\n/g, '<br>')}</p>
+          </div>
+          <div style="margin-top:28px;text-align:center;">
+            <a href="mailto:${email}?subject=Re: Your inquiry — Fastoosh"
+               style="display:inline-block;padding:12px 28px;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;text-decoration:none;border-radius:8px;font-size:14px;font-weight:600;">
+              Reply to ${name}
+            </a>
+          </div>
+          <p style="margin-top:28px;font-size:12px;color:#525252;text-align:center;">Submitted on ${submittedAt}</p>
+        </div>
+      </div>
     `;
 
     const { data, error } = await resend.emails.send({
       from: 'Fastoosh <contact@contact.fastoosh.com>',
-      to: ['youssefdari7@gmail.com'],
-      subject: `New Contact: ${name} - ${projectType || 'General Inquiry'}`,
+      to: adminEmail,
+      subject: `✉️ New inquiry from ${name}${projectType ? ` — ${projectType}` : ''}`,
       html: emailHtml,
       replyTo: email,
     });
 
     if (error) {
-      console.log(`Error sending email: ${JSON.stringify(error)}`);
-      return c.json({ 
-        success: false, 
-        error: 'Failed to send email' 
-      }, 500);
+      console.log(`[contact] Error sending admin notification: ${JSON.stringify(error)}`);
+    } else {
+      console.log(`[contact] Admin notification sent to ${adminEmail}. Resend ID: ${data?.id}`);
     }
-
-    console.log(`Contact form email sent. Resend ID: ${data?.id}`);
 
     return c.json({ 
       success: true, 
@@ -3207,59 +3406,76 @@ app.post("/make-server-e07959ec/tool-support", async (c) => {
 
     const resendApiKey = Deno.env.get('RESEND_API_KEY');
     if (!resendApiKey) {
-      console.log('Error: RESEND_API_KEY not configured for tool-support');
-      return c.json({ success: false, error: "Email service not configured" }, 500);
+      console.log('[tool-support] RESEND_API_KEY not configured — message saved to KV only');
+      return c.json({ success: true, message: "Message sent! We'll reply within 24 hours." });
+    }
+
+    const adminEmail = await getAdminEmail();
+    if (!adminEmail) {
+      console.warn('[tool-support] ⚠️ contactEmail not found in site_settings — go to Admin → Settings and save your contact email. Notification skipped.');
+      return c.json({ success: true, message: "Message sent! We'll reply within 24 hours." });
     }
 
     const resend = new Resend(resendApiKey);
+    const submittedAt = new Date().toLocaleString('en-US', { dateStyle: 'full', timeStyle: 'short' });
 
     const emailHtml = `
-      <div style="font-family:sans-serif;max-width:560px;margin:0 auto;color:#111">
-        <h2 style="margin:0 0 20px;font-size:20px;color:#111">Tool Support Request</h2>
-
-        <table style="border-collapse:collapse;width:100%;margin-bottom:24px">
-          <tr style="background:#f5f5f5">
-            <td style="padding:10px 14px;color:#555;font-size:13px;width:130px">Tool</td>
-            <td style="padding:10px 14px;font-weight:700;font-size:13px;color:#111">${toolName}</td>
-          </tr>
-          <tr style="background:#ebebeb">
-            <td style="padding:10px 14px;color:#555;font-size:13px">Inquiry type</td>
-            <td style="padding:10px 14px;font-size:13px;color:#111">${inquiryType}</td>
-          </tr>
-          <tr style="background:#f5f5f5">
-            <td style="padding:10px 14px;color:#555;font-size:13px">Name</td>
-            <td style="padding:10px 14px;font-size:13px;color:#111">${name}</td>
-          </tr>
-          <tr style="background:#ebebeb">
-            <td style="padding:10px 14px;color:#555;font-size:13px">Email</td>
-            <td style="padding:10px 14px;font-size:13px"><a href="mailto:${email}" style="color:#7c3aed">${email}</a></td>
-          </tr>
-        </table>
-
-        <h3 style="margin:0 0 8px;font-size:13px;color:#555;text-transform:uppercase;letter-spacing:0.05em">Message</h3>
-        <p style="margin:0;white-space:pre-wrap;line-height:1.7;font-size:14px;color:#111;background:#f9f9f9;padding:14px;border-left:3px solid #7c3aed">${message.replace(/\n/g, '<br>')}</p>
-
-        <hr style="border:none;border-top:1px solid #e5e5e5;margin:24px 0"/>
-        <p style="color:#999;font-size:11px;margin:0">
-          Submitted on ${new Date().toLocaleString('en-US', { dateStyle: 'full', timeStyle: 'short' })}
-        </p>
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;background:#0a0a0a;color:#e5e5e5;border-radius:12px;overflow:hidden;">
+        <div style="background:linear-gradient(135deg,#0e7490,#4f46e5);padding:28px 32px;">
+          <p style="margin:0 0 4px;font-size:12px;color:rgba(255,255,255,0.7);letter-spacing:0.1em;text-transform:uppercase;">Fastoosh Tools</p>
+          <h1 style="margin:0;font-size:22px;color:#fff;">🛠️ New Support Request</h1>
+        </div>
+        <div style="padding:32px;">
+          <p style="margin:0 0 24px;font-size:15px;color:#d4d4d4;line-height:1.6;">
+            A customer submitted a support request for one of your tools.
+          </p>
+          <table style="width:100%;border-collapse:collapse;margin-bottom:28px;">
+            <tr>
+              <td style="padding:10px 14px;background:#1a1a1a;border-radius:6px 6px 0 0;color:#a3a3a3;font-size:13px;width:130px;">Tool</td>
+              <td style="padding:10px 14px;background:#1a1a1a;border-radius:6px 6px 0 0;color:#fff;font-size:13px;font-weight:700;">${toolName}</td>
+            </tr>
+            <tr>
+              <td style="padding:10px 14px;background:#141414;color:#a3a3a3;font-size:13px;">Inquiry Type</td>
+              <td style="padding:10px 14px;background:#141414;color:#fff;font-size:13px;">${inquiryType}</td>
+            </tr>
+            <tr>
+              <td style="padding:10px 14px;background:#1a1a1a;color:#a3a3a3;font-size:13px;">Name</td>
+              <td style="padding:10px 14px;background:#1a1a1a;color:#fff;font-size:13px;">${name}</td>
+            </tr>
+            <tr>
+              <td style="padding:10px 14px;background:#141414;border-radius:0 0 6px 6px;color:#a3a3a3;font-size:13px;">Email</td>
+              <td style="padding:10px 14px;background:#141414;border-radius:0 0 6px 6px;font-size:13px;"><a href="mailto:${email}" style="color:#67e8f9;text-decoration:none;">${email}</a></td>
+            </tr>
+          </table>
+          <p style="margin:0 0 8px;font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;">Message</p>
+          <div style="background:#111;border-left:3px solid #0e7490;padding:16px 20px;border-radius:0 6px 6px 0;">
+            <p style="margin:0;font-size:14px;color:#d4d4d4;line-height:1.7;white-space:pre-wrap;">${message.replace(/\n/g, '<br>')}</p>
+          </div>
+          <div style="margin-top:28px;text-align:center;">
+            <a href="mailto:${email}?subject=Re: ${toolName} Support — Fastoosh"
+               style="display:inline-block;padding:12px 28px;background:linear-gradient(135deg,#0e7490,#4f46e5);color:#fff;text-decoration:none;border-radius:8px;font-size:14px;font-weight:600;">
+              Reply to ${name}
+            </a>
+          </div>
+          <p style="margin-top:28px;font-size:12px;color:#525252;text-align:center;">Submitted on ${submittedAt}</p>
+        </div>
       </div>
     `;
 
     const { data, error } = await resend.emails.send({
       from: 'Fastoosh Tools <support@contact.fastoosh.com>',
-      to: ['youssefdari7@gmail.com'],
-      subject: `[${inquiryType}] ${toolName} — ${name}`,
+      to: adminEmail,
+      subject: `🛠️ [${inquiryType}] ${toolName} — ${name}`,
       html: emailHtml,
       replyTo: email,
     });
 
     if (error) {
-      console.log(`Error sending tool support email: ${JSON.stringify(error)}`);
-      return c.json({ success: false, error: 'Failed to send email' }, 500);
+      console.log(`[tool-support] Error sending admin notification: ${JSON.stringify(error)}`);
+    } else {
+      console.log(`[tool-support] Admin notification sent to ${adminEmail}. Resend ID: ${data?.id}`);
     }
 
-    console.log(`Tool support email sent. Resend ID: ${data?.id}`);
     return c.json({ success: true, message: "Message sent! We'll reply within 24 hours." });
   } catch (error) {
     console.log(`Error in tool-support route: ${error}`);
@@ -3664,6 +3880,36 @@ app.post('/make-server-e07959ec/track/event', async (c) => {
       return c.json({ success: false, error: 'sessionId and events[] required' }, 400);
     }
 
+    // ── Country detection via IP geolocation ─────────────────────────────────
+    // CF-IPCountry is only injected inside Cloudflare *Workers* — NOT in
+    // Supabase Edge Functions, which run on Deno Deploy (Fly.io).
+    // cf-connecting-ip IS forwarded (it's the real client IP from CF's proxy),
+    // so we use that as input to a free, no-key geolocation API instead.
+    const clientIp = (
+      c.req.header('cf-connecting-ip') ||
+      c.req.header('x-real-ip') ||
+      (c.req.header('x-forwarded-for') ?? '').split(',')[0].trim() ||
+      ''
+    ).trim();
+
+    let country = 'Unknown';
+    if (clientIp && clientIp !== '::1' && !clientIp.startsWith('127.')) {
+      try {
+        const geoRes = await fetch(`https://api.country.is/${clientIp}`, {
+          signal: AbortSignal.timeout(1500),
+        });
+        if (geoRes.ok) {
+          const geo = await geoRes.json() as { ip: string; country: string };
+          const cc  = (geo.country || '').toUpperCase();
+          if (cc && cc !== 'XX' && cc !== 'T1') country = cc;
+        }
+      } catch {
+        // geo API timeout or unavailable — 'Unknown' is acceptable
+      }
+    }
+
+    console.log(`[track/event] sid=${sessionId} events=${events.length} country=${country} utmSource=${meta?.utmSource ?? 'null'} utmMedium=${meta?.utmMedium ?? 'null'} utmCampaign=${meta?.utmCampaign ?? 'null'}`);
+
     let session: any = await kv.get(`session:${sessionId}`);
     if (!session) {
       session = {
@@ -3679,11 +3925,24 @@ app.post('/make-server-e07959ec/track/event', async (c) => {
         utmSource:   meta?.utmSource   || null,
         utmMedium:   meta?.utmMedium   || null,
         utmCampaign: meta?.utmCampaign || null,
+        country,
       };
+      console.log(`[track/event] NEW session created utmSource=${session.utmSource} country=${session.country}`);
     }
 
     if (meta?.userId    && !session.userId)    session.userId    = meta.userId;
     if (meta?.userEmail && !session.userEmail) session.userEmail = meta.userEmail;
+
+    // Backfill UTM if this session was created before UTM params arrived
+    // (e.g. first flush was the beforeunload beacon which lacked UTM)
+    if (meta?.utmSource   && !session.utmSource)   session.utmSource   = meta.utmSource;
+    if (meta?.utmMedium   && !session.utmMedium)   session.utmMedium   = meta.utmMedium;
+    if (meta?.utmCampaign && !session.utmCampaign) session.utmCampaign = meta.utmCampaign;
+
+    // Backfill country for sessions created before geo was fixed (stored 'Unknown')
+    if ((!session.country || session.country === 'Unknown') && country !== 'Unknown') {
+      session.country = country;
+    }
 
     const all: any[] = [...(session.events || []), ...events];
     session.events     = all.slice(-500);
@@ -3850,6 +4109,125 @@ app.get('/make-server-e07959ec/admin/behavior', requireAuth, async (c) => {
     });
   } catch (error) {
     console.log('[admin/behavior] Error:', error);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
+// ── Source classification ──────────────────────────────────────────────────────
+function classifySource(referrer: string, utmSource?: string | null, utmMedium?: string | null): string {
+  const utm    = (utmSource || '').toLowerCase().trim();
+  const ref    = (referrer  || '').toLowerCase().trim();
+  const medium = (utmMedium || '').toLowerCase().trim();
+  if (utm) {
+    if (utm.includes('linkedin'))                                           return 'LinkedIn';
+    if (utm.includes('youtube') || utm === 'yt')                           return 'YouTube';
+    if (utm.includes('twitter') || utm === 'x' || utm.includes('tweet'))   return 'X / Twitter';
+    if (utm.includes('instagram') || utm === 'ig')                         return 'Instagram';
+    if (utm.includes('tiktok'))                                             return 'TikTok';
+    if (utm.includes('facebook') || utm === 'fb')                          return 'Facebook';
+    if (utm.includes('discord'))                                            return 'Discord';
+    if (utm.includes('email') || utm.includes('newsletter') || medium === 'email' || medium === 'newsletter') return 'Email / Newsletter';
+    if (utm.includes('google') || medium === 'cpc' || medium === 'ppc')    return 'Google';
+    return utm.charAt(0).toUpperCase() + utm.slice(1);
+  }
+  if (!ref) return 'Direct / DM';
+  if (ref.includes('linkedin.com'))                              return 'LinkedIn';
+  if (ref.includes('youtube.com') || ref.includes('youtu.be'))  return 'YouTube';
+  if (ref.includes('twitter.com') || ref.includes('x.com') || ref.includes('t.co')) return 'X / Twitter';
+  if (ref.includes('instagram.com'))                             return 'Instagram';
+  if (ref.includes('tiktok.com'))                                return 'TikTok';
+  if (ref.includes('facebook.com') || ref.includes('fb.com'))   return 'Facebook';
+  if (ref.includes('discord.com')  || ref.includes('discord.gg')) return 'Discord';
+  if (ref.includes('google.'))                                   return 'Google';
+  if (medium === 'email' || medium === 'newsletter')             return 'Email / Newsletter';
+  try { return new URL(referrer).hostname.replace(/^www\./, ''); } catch { return 'Other'; }
+}
+
+// GET /admin/referrers — backlink / traffic-source analytics
+app.get('/make-server-e07959ec/admin/referrers', requireAuth, async (c) => {
+  try {
+    const { from, to } = c.req.query();
+    let allSessions: any[] = await kv.getByPrefix('session:');
+    if (from) { const d = new Date(from); allSessions = allSessions.filter((s: any) => new Date(s.startedAt) >= d); }
+    if (to)   { const d = new Date(to); d.setHours(23, 59, 59, 999); allSessions = allSessions.filter((s: any) => new Date(s.startedAt) <= d); }
+
+    type SD = { sessions: number; converted: number; buyClicks: number; bounces: number; totalDuration: number; pageVisits: Record<string, number> };
+    const sourceMap: Record<string, SD> = {};
+
+    for (const s of allSessions) {
+      const src = classifySource(s.referrer || '', s.utmSource, s.utmMedium);
+      if (!sourceMap[src]) sourceMap[src] = { sessions: 0, converted: 0, buyClicks: 0, bounces: 0, totalDuration: 0, pageVisits: {} };
+      const sd = sourceMap[src];
+      sd.sessions++;
+      if (s.converted)                sd.converted++;
+      if ((s.buyClickCount || 0) > 0) sd.buyClicks++;
+      if (s.isBounce)                 sd.bounces++;
+      sd.totalDuration += s.totalDuration || 0;
+      for (const e of (s.events || []) as any[]) {
+        if (e.type === 'page_view' && e.data?.path) {
+          const p = e.data.path;
+          sd.pageVisits[p] = (sd.pageVisits[p] || 0) + 1;
+        }
+      }
+    }
+
+    const sources = Object.entries(sourceMap)
+      .map(([name, d]) => ({
+        name, sessions: d.sessions, converted: d.converted, buyClicks: d.buyClicks, bounces: d.bounces,
+        convRate:    d.sessions > 0 ? +(d.converted / d.sessions * 100).toFixed(1) : 0,
+        bounceRate:  d.sessions > 0 ? Math.round(d.bounces / d.sessions * 100) : 0,
+        avgDuration: d.sessions > 0 ? Math.round(d.totalDuration / d.sessions) : 0,
+        topPages:    Object.entries(d.pageVisits).sort(([, a], [, b]) => b - a).slice(0, 5).map(([page, count]) => ({ page, count })),
+      }))
+      .sort((a, b) => b.sessions - a.sessions);
+
+    const topNames = sources.slice(0, 6).map(s => s.name);
+    const now = new Date();
+    const dailyMap: Record<string, Record<string, number>> = {};
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(now); d.setDate(d.getDate() - i);
+      const ds = d.toISOString().split('T')[0];
+      dailyMap[ds] = {};
+      for (const src of topNames) dailyMap[ds][src] = 0;
+    }
+    for (const s of allSessions) {
+      const ds  = (s.startedAt || '').split('T')[0];
+      const src = classifySource(s.referrer || '', s.utmSource, s.utmMedium);
+      if (dailyMap[ds] && topNames.includes(src)) dailyMap[ds][src] = (dailyMap[ds][src] || 0) + 1;
+    }
+    const dailySeries = Object.entries(dailyMap).map(([date, vals]) => ({ date, ...vals }));
+
+    const pageSourceMap: Record<string, Record<string, number>> = {};
+    for (const s of allSessions) {
+      const src = classifySource(s.referrer || '', s.utmSource, s.utmMedium);
+      for (const e of (s.events || []) as any[]) {
+        if (e.type === 'page_view' && e.data?.path) {
+          const p = e.data.path;
+          if (!pageSourceMap[p]) pageSourceMap[p] = {};
+          pageSourceMap[p][src] = (pageSourceMap[p][src] || 0) + 1;
+        }
+      }
+    }
+    const pageBreakdown = Object.entries(pageSourceMap)
+      .map(([page, srcs]) => ({ page, total: Object.values(srcs).reduce((a, b) => a + b, 0), sources: srcs }))
+      .sort((a, b) => b.total - a.total).slice(0, 15);
+
+    // ── Country breakdown ──────────────────────────────────────────────────
+    const countryMap: Record<string, { sessions: number; converted: number }> = {};
+    for (const s of allSessions) {
+      const cc = (s.country || 'Unknown').toUpperCase();
+      if (!countryMap[cc]) countryMap[cc] = { sessions: 0, converted: 0 };
+      countryMap[cc].sessions++;
+      if (s.converted) countryMap[cc].converted++;
+    }
+    const byCountry = Object.entries(countryMap)
+      .map(([code, d]) => ({ code, sessions: d.sessions, converted: d.converted }))
+      .sort((a, b) => b.sessions - a.sessions)
+      .slice(0, 30);
+
+    return c.json({ success: true, data: { sources, dailySeries, pageBreakdown, topSourceNames: topNames, total: allSessions.length, byCountry } });
+  } catch (error) {
+    console.log('[admin/referrers] Error:', error);
     return c.json({ success: false, error: String(error) }, 500);
   }
 });
@@ -4085,7 +4463,7 @@ app.get('/make-server-e07959ec/admin/dashboard', requireAuth, async (c) => {
       series.push({ date: dateStr, downloads, signups, messages: msgs, revenue, sales });
     }
 
-    // ── Top tools by download count ──────────────────────────────────────────
+    // ── Top tools by download count ──��───────────────────────────────────────
     const toolCountMap: Record<string, { name: string; category: string; slug: string; count: number }> = {};
     for (const lead of kvLeads as any[]) {
       const key = lead.toolSlug || lead.toolName || 'Unknown';
@@ -5088,6 +5466,7 @@ app.get('/make-server-e07959ec/setup/check-env', (c) => {
     'GEMINI_API_KEY',
     'LEMON_SQUEEZY_API_KEY',
     'LEMON_SQUEEZY_WEBHOOK_SECRET',
+    'VIMEO_ACCESS_TOKEN',
   ];
   const vars: Record<string, boolean> = {};
   for (const k of keys) vars[k] = !!Deno.env.get(k);
@@ -5482,6 +5861,250 @@ app.post('/make-server-e07959ec/auth/forgot-password', async (c) => {
     console.log('[forgot-password] Unexpected error:', err);
     // Always 200 to prevent enumeration
     return c.json({ success: true });
+  }
+});
+
+// ── UTM Saved Links ────────────────────────────────────────────────────────────
+
+// GET /utm-saved — list all saved UTM links, newest first (admin only)
+app.get('/make-server-e07959ec/utm-saved', requireAuth, async (c) => {
+  try {
+    const items = await kv.getByPrefix('utm:saved:');
+    const links = items
+      .filter((v: any) => v && v.id)
+      .sort((a: any, b: any) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime());
+    return c.json({ success: true, data: links });
+  } catch (err) {
+    console.log('[utm-saved] GET error:', err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// POST /utm-saved — persist a new UTM link (admin only)
+app.post('/make-server-e07959ec/utm-saved', requireAuth, async (c) => {
+  try {
+    const body = await c.req.json();
+    const { label, platform, page, source, medium, campaign, content, url, tags } = body;
+    if (!source || !url) {
+      return c.json({ success: false, error: 'source and url are required' }, 400);
+    }
+    const id = String(Date.now());
+    const entry = {
+      id,
+      label:    (label || source).trim(),
+      platform: platform ?? null,
+      page,
+      source,
+      medium:   medium   ?? '',
+      campaign: campaign ?? '',
+      content:  content  ?? '',
+      url,
+      tags:     Array.isArray(tags) ? tags.map((t: string) => t.trim().toLowerCase()).filter(Boolean) : [],
+      savedAt:  new Date().toISOString(),
+    };
+    await kv.set(`utm:saved:${id}`, entry);
+    return c.json({ success: true, data: entry });
+  } catch (err) {
+    console.log('[utm-saved] POST error:', err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// GET /utm-saved/stats — session counts keyed by utm source|medium|campaign (admin only)
+// NOTE: registered BEFORE the PATCH/DELETE /:id routes to avoid path collision
+app.get('/make-server-e07959ec/utm-saved/stats', requireAuth, async (c) => {
+  try {
+    const allSessions: any[] = await kv.getByPrefix('session:');
+    const exact:          Record<string, { sessions: number; converted: number }> = {};
+    const bySourceMedium: Record<string, { sessions: number; converted: number }> = {};
+    const bySource:       Record<string, { sessions: number; converted: number }> = {};
+
+    const inc = (map: typeof exact, key: string, converted: boolean) => {
+      if (!map[key]) map[key] = { sessions: 0, converted: 0 };
+      map[key].sessions++;
+      if (converted) map[key].converted++;
+    };
+
+    let utmSessionCount = 0;
+    const utmSamples: { src: string; med: string; cmp: string }[] = [];
+
+    for (const s of allSessions) {
+      const src  = (s.utmSource   || '').toLowerCase();
+      const med  = (s.utmMedium   || '').toLowerCase();
+      const cmp  = (s.utmCampaign || '').toLowerCase();
+      const conv = !!s.converted;
+      if (!src) continue;
+      utmSessionCount++;
+      if (utmSamples.length < 10) utmSamples.push({ src, med, cmp });
+      inc(exact,          `${src}|${med}|${cmp}`, conv);
+      inc(bySourceMedium, `${src}|${med}`,         conv);
+      inc(bySource,        src,                    conv);
+    }
+
+    console.log(`[utm-saved/stats] total=${allSessions.length} withUTM=${utmSessionCount} keys=${Object.keys(exact).join(', ') || 'none'}`);
+
+    return c.json({
+      success: true,
+      data: { exact, bySourceMedium, bySource },
+      // Diagnostic fields visible in admin
+      _diag: {
+        totalSessions: allSessions.length,
+        utmSessions:   utmSessionCount,
+        utmKeys:       Object.keys(exact),
+        samples:       utmSamples,
+      },
+    });
+  } catch (err) {
+    console.log('[utm-saved/stats] GET error:', err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// PATCH /utm-saved/:id — update label and/or tags of an existing saved link (admin only)
+app.patch('/make-server-e07959ec/utm-saved/:id', requireAuth, async (c) => {
+  try {
+    const id      = c.req.param('id');
+    const body    = await c.req.json();
+    const current = await kv.get(`utm:saved:${id}`);
+    if (!current) return c.json({ success: false, error: 'Not found' }, 404);
+    const updated = {
+      ...current,
+      label: typeof body.label === 'string' ? body.label.trim() || current.label : current.label,
+      tags:  Array.isArray(body.tags)
+        ? body.tags.map((t: string) => t.trim().toLowerCase()).filter(Boolean)
+        : current.tags ?? [],
+    };
+    await kv.set(`utm:saved:${id}`, updated);
+    return c.json({ success: true, data: updated });
+  } catch (err) {
+    console.log('[utm-saved] PATCH error:', err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// DELETE /utm-saved/:id — remove a saved UTM link (admin only)
+app.delete('/make-server-e07959ec/utm-saved/:id', requireAuth, async (c) => {
+  try {
+    const id = c.req.param('id');
+    await kv.del(`utm:saved:${id}`);
+    return c.json({ success: true });
+  } catch (err) {
+    console.log('[utm-saved] DELETE error:', err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// GET /admin/debug/sessions — returns the 20 most-recent raw KV sessions (admin only)
+// Lets admins verify that page-view tracking is actually writing data to KV.
+app.get('/make-server-e07959ec/admin/debug/sessions', requireAuth, async (c) => {
+  try {
+    const all: any[] = await kv.getByPrefix('session:');
+    const recent = all
+      .filter((s: any) => s && s.startedAt)
+      .sort((a: any, b: any) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())
+      .slice(0, 20)
+      .map((s: any) => ({
+        sessionId:   s.sessionId,
+        startedAt:   s.startedAt,
+        device:      s.device,
+        browser:     s.browser,
+        utmSource:   s.utmSource   ?? null,
+        utmMedium:   s.utmMedium   ?? null,
+        utmCampaign: s.utmCampaign ?? null,
+        referrer:    s.referrer    ?? '',
+        pageViews:   (s.events || []).filter((e: any) => e.type === 'page_view').length,
+        pages:       [...new Set((s.events || []).filter((e: any) => e.type === 'page_view').map((e: any) => e.data?.path))],
+        converted:   !!s.converted,
+      }));
+    return c.json({ success: true, data: { total: all.length, recent } });
+  } catch (err) {
+    console.log('[admin/debug/sessions] error:', err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// ========== VIMEO INTEGRATION ==========
+
+// GET /admin/vimeo/videos — proxy to Vimeo API, returns the admin's video library
+app.get('/make-server-e07959ec/admin/vimeo/videos', requireAuth, async (c) => {
+  try {
+    const accessToken = Deno.env.get('VIMEO_ACCESS_TOKEN');
+    if (!accessToken) {
+      console.error('[vimeo] VIMEO_ACCESS_TOKEN is not set');
+      return c.json({ success: false, error: 'Vimeo access token not configured on server.' }, 500);
+    }
+
+    const page      = c.req.query('page')      || '1';
+    const query     = c.req.query('query')     || '';
+    const sort      = c.req.query('sort')      || 'date';
+    const direction = c.req.query('direction') || 'desc';
+    const perPage   = 20;
+
+    // Allowlist sort values to prevent injection
+    const VALID_SORTS = ['date', 'alphabetical', 'plays', 'likes', 'comments', 'duration'];
+    const safeSort      = VALID_SORTS.includes(sort) ? sort : 'date';
+    const safeDirection = direction === 'asc' ? 'asc' : 'desc';
+
+    let vimeoUrl =
+      `https://api.vimeo.com/me/videos` +
+      `?page=${page}&per_page=${perPage}` +
+      `&fields=uri,name,description,duration,pictures,link,modified_time` +
+      `&sort=${safeSort}&direction=${safeDirection}`;
+
+    if (query.trim()) {
+      vimeoUrl += `&query=${encodeURIComponent(query.trim())}`;
+    }
+
+    const res = await fetch(vimeoUrl, {
+      headers: {
+        Authorization: `bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/vnd.vimeo.*+json;version=3.4',
+      },
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`[vimeo] API error ${res.status}:`, errText);
+      // Always return 200 so Supabase's edge-function proxy never rewrites the body
+      return c.json({ success: false, error: `Vimeo API returned ${res.status}: ${errText}` });
+    }
+
+    const data = await res.json();
+
+    const videos = (data.data || []).map((v: any) => {
+      // Pick the best thumbnail ≥ 640 px wide, fallback to largest available
+      const sizes: any[] = v.pictures?.sizes ?? [];
+      const thumb =
+        sizes.find((s: any) => s.width >= 640)?.link_with_play_button ||
+        sizes.find((s: any) => s.width >= 640)?.link ||
+        sizes[sizes.length - 1]?.link ||
+        null;
+
+      const id = (v.uri as string)?.split('/').pop() ?? '';
+
+      return {
+        id,
+        title: v.name ?? '(Untitled)',
+        description: v.description ?? '',
+        duration: v.duration ?? 0,
+        link: v.link ?? `https://vimeo.com/${id}`,
+        thumbnail: thumb,
+        modifiedTime: v.modified_time ?? null,
+      };
+    });
+
+    return c.json({
+      success:    true,
+      videos,
+      total:      data.total      ?? 0,
+      page:       data.page       ?? 1,
+      perPage:    data.per_page   ?? perPage,
+      totalPages: Math.ceil((data.total ?? 0) / perPage),
+    });
+  } catch (err) {
+    console.error('[vimeo] Unexpected error:', err);
+    return c.json({ success: false, error: String(err) }, 500);
   }
 });
 

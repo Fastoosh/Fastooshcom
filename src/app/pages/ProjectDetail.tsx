@@ -13,6 +13,43 @@ import { fetchTranslations, deepMergeTranslations } from '../utils/translations'
 
 const API_BASE = `https://${supabaseProjectId}.supabase.co/functions/v1/make-server-e07959ec`;
 
+// ── Smart Vimeo embed: detects real aspect ratio via oEmbed ───────────────────
+function SmartVimeoEmbed({ embedSrc, title }: { embedSrc: string; title: string }) {
+  const [ratio, setRatio] = useState<number | null>(null);
+
+  // Extract numeric video ID from a player.vimeo.com/video/NNNN URL
+  const videoId = embedSrc.match(/\/video\/(\d+)/)?.[1];
+
+  useEffect(() => {
+    if (!videoId) return;
+    let cancelled = false;
+    fetch(`https://vimeo.com/api/oembed.json?url=https://vimeo.com/${videoId}`)
+      .then(r => r.json())
+      .then(d => {
+        if (!cancelled && d.width && d.height) {
+          setRatio(d.width / d.height);
+        }
+      })
+      .catch(() => { /* keep default 16/9 on network error */ });
+    return () => { cancelled = true; };
+  }, [videoId]);
+
+  // While loading use 16/9 as placeholder; switches to real ratio once fetched
+  const aspectRatio = ratio ?? 16 / 9;
+
+  return (
+    <div style={{ aspectRatio: String(aspectRatio) }} className="w-full">
+      <iframe
+        src={embedSrc}
+        className="w-full h-full"
+        allow="autoplay; fullscreen; picture-in-picture; clipboard-write; encrypted-media"
+        allowFullScreen
+        title={title}
+      />
+    </div>
+  );
+}
+
 // Fallback project data
 const fallbackProject = {
   title: "FinTech Product Launch",
@@ -231,7 +268,7 @@ export function ProjectDetail() {
     // Vimeo
     if (url.includes('vimeo.com')) {
       const videoId = url.split('vimeo.com/')[1]?.split('?')[0]?.split('/').pop();
-      return videoId ? `https://player.vimeo.com/video/${videoId}?autoplay=1` : null;
+      return videoId ? `https://player.vimeo.com/video/${videoId}?autoplay=1&title=0&byline=0&portrait=0` : null;
     }
     
     // Already an embed URL - add autoplay if not present
@@ -406,24 +443,53 @@ export function ProjectDetail() {
             </motion.div>
           )}
 
-          {/* Stills */}
-          {project.images && project.images.length > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {project.images.map((image: string, index: number) => (
-                <motion.div
-                  key={index}
-                  initial={{ opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: index * 0.1 }}
-                >
-                  <GlassCard className="overflow-hidden">
-                    <img src={image} alt={`${t('projects.detail.stills')} ${index + 1}`} className="w-full" />
-                  </GlassCard>
-                </motion.div>
-              ))}
-            </div>
-          )}
+          {/* Media Gallery — images, direct videos, and Vimeo embeds */}
+          {project.images && project.images.filter((u: string) => u?.trim()).length > 0 && (() => {
+            const getVimeoEmbedId = (url: string) =>
+              url.split('vimeo.com/').pop()?.split('?')[0]?.split('/').pop() ?? null;
+
+            const isVimeo     = (url: string) => url.includes('vimeo.com');
+            const isDirectVid = (url: string) => /\.(mp4|webm|mov|avi)(\?|$)/i.test(url);
+
+            return (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {project.images.filter((u: string) => u?.trim()).map((url: string, index: number) => (
+                  <motion.div
+                    key={index}
+                    initial={{ opacity: 0, y: 20 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ delay: index * 0.1 }}
+                  >
+                    <GlassCard className="overflow-hidden">
+                      {isVimeo(url) ? (
+                        /* ── Vimeo embed ── */
+                        <SmartVimeoEmbed
+                          embedSrc={`https://player.vimeo.com/video/${getVimeoEmbedId(url)}?badge=0&autopause=0&player_id=0&app_id=58479&title=0&byline=0&portrait=0`}
+                          title={`${t('projects.detail.stills')} ${index + 1}`}
+                        />
+                      ) : isDirectVid(url) ? (
+                        /* ── Direct video file ── */
+                        <video
+                          src={url}
+                          controls
+                          className="w-full"
+                          preload="metadata"
+                        />
+                      ) : (
+                        /* ── Static image ── */
+                        <img
+                          src={url}
+                          alt={`${t('projects.detail.stills')} ${index + 1}`}
+                          className="w-full"
+                        />
+                      )}
+                    </GlassCard>
+                  </motion.div>
+                ))}
+              </div>
+            );
+          })()}
 
           {/* Outcome */}
           {project.outcome && (
