@@ -1,6 +1,5 @@
 import { createBrowserRouter } from "react-router";
 import { Layout } from "./components/layout/Layout";
-import { Construction } from "./pages/Construction";
 import { Home } from "./pages/Home";
 import { Projects } from "./pages/Projects";
 import { Tools } from "./pages/Tools";
@@ -18,8 +17,6 @@ import { AuthCallback } from "./pages/AuthCallback";
 import { ResetPassword } from "./pages/ResetPassword";
 
 export const router = createBrowserRouter([
-  // Construction / coming-soon page (no layout)
-  { path: "/", Component: Construction },
   // Auth routes — dedicated pages, no navbar
   { path: "/auth/callback",       Component: AuthCallback  },
   { path: "/auth/reset-password", Component: ResetPassword },
@@ -35,7 +32,7 @@ export const router = createBrowserRouter([
     path: "/",
     Component: Layout,
     children: [
-      { path: "home",              Component: Home        },
+      { index: true,               Component: Home        },
       { path: "projects",          Component: Projects    },
       { path: "projects/:slug",    Component: ProjectDetail },
       { path: "tools",             Component: Tools       },
