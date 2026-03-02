@@ -1052,7 +1052,7 @@ app.post("/make-server-e07959ec/admin/improve-field", requireAuth, async (c) => 
     if (!fieldKey) return c.json({ success: false, error: 'fieldKey is required' }, 400);
 
     const entityName = context?.name || context?.title || 'this item';
-    const entityType = context?.entityType === 'project' ? 'project' : 'tool';
+    const entityType = (context?.entityType as string) || 'tool';
     const versionCtx  = context?.versionType ? ` (${context.versionType} version)` : '';
     const categoryCtx = context?.category    ? ` in category "${context.category}"` : '';
 
@@ -1131,6 +1131,98 @@ app.post("/make-server-e07959ec/admin/improve-field", requireAuth, async (c) => 
         rule: 'A concise, professional client name or company description.',
         format: 'Return plain text only — just the name or short description.',
       },
+      // ── Home page fields ──────────────────────────────────────────────────
+      heroLine1: {
+        label: 'Hero Heading Line 1',
+        rule: 'Short, powerful phrase (3-6 words). Plain text. E.g. "Premium motion design", "Stunning visuals", "Motion that moves".',
+        format: 'Return plain text only — one short phrase.',
+      },
+      heroLine2: {
+        label: 'Hero Heading Line 2 (gradient)',
+        rule: 'Completes the hero headline from Line 1. 3-6 words. Aspirational. E.g. "for ambitious teams", "that drives results".',
+        format: 'Return plain text only — one short phrase.',
+      },
+      heroSubtitle: {
+        label: 'Hero Subtitle',
+        rule: '1-2 sentences, 100-200 characters. Describes what Fastoosh does and the value delivered. Clear, benefit-focused, no buzzwords.',
+        format: 'Return plain text only.',
+      },
+      heroCta: {
+        label: 'CTA Button Label',
+        rule: 'Action-oriented, 2-4 words. E.g. "Work with us", "Start a project", "Get in touch".',
+        format: 'Return plain text only — a short action phrase.',
+      },
+      testimonialQuote: {
+        label: 'Testimonial Quote',
+        rule: '2-3 sentences. Sounds genuine and specific, from a satisfied client. Mentions quality, speed, or business impact. No clichés.',
+        format: 'Return plain text only — quote body without surrounding quotation marks.',
+      },
+      sectionHeading: {
+        label: 'Section Heading',
+        rule: '2-5 words. Clear, compelling section title that fits a premium motion design studio.',
+        format: 'Return plain text only — a short heading phrase.',
+      },
+      sectionSubtitle: {
+        label: 'Section Subtitle',
+        rule: '1 sentence, 50-100 characters. Adds context below a section heading. Conversational and direct.',
+        format: 'Return plain text only.',
+      },
+      capabilityTitle: {
+        label: 'Capability Card Title',
+        rule: '2-3 words describing a core studio competency. E.g. "Premium Craft", "Fast Turnaround", "Business Impact".',
+        format: 'Return plain text only — a short title.',
+      },
+      capabilityDescription: {
+        label: 'Capability Card Description',
+        rule: '1-2 sentences, max 130 characters. Explains the capability in concrete, benefit-driven terms. No jargon.',
+        format: 'Return plain text only.',
+      },
+      processStepTitle: {
+        label: 'Process Step Title',
+        rule: '1-2 words describing a production phase. E.g. "Discovery", "Concept", "Production", "Delivery".',
+        format: 'Return plain text only — a very short title.',
+      },
+      processStepDescription: {
+        label: 'Process Step Description',
+        rule: '1 sentence, max 80 characters. Concise description of what happens in this phase.',
+        format: 'Return plain text only.',
+      },
+      turnaroundNote: {
+        label: 'Turnaround Timeline Note',
+        rule: 'A short footer note about rush options or caveats. Max 50 chars. E.g. "Rush options available".',
+        format: 'Return plain text only — one short note.',
+      },
+      deliverableItem: {
+        label: 'Deliverable Item',
+        rule: 'A single specific deliverable. Max 70 chars. E.g. "Final rendered videos (all formats)", "Editable source files (AEP)".',
+        format: 'Return plain text only — one item on a single line.',
+      },
+      ctaHeading: {
+        label: 'CTA Heading (first line)',
+        rule: '3-5 words. Opening of a closing CTA — leaves room for a gradient word. E.g. "Ready to create something", "Let\'s build something".',
+        format: 'Return plain text only — a short incomplete phrase.',
+      },
+      ctaGradient: {
+        label: 'CTA Gradient Phrase',
+        rule: '1-3 words. Completes the CTA heading in gradient. Impactful. E.g. "extraordinary?", "legendary.", "together?".',
+        format: 'Return plain text only — one word or very short phrase.',
+      },
+      ctaSubtitle: {
+        label: 'CTA Subtitle',
+        rule: '1-2 sentences, 100-160 characters. Encourages action. Mention reply time (24-48h) or remote collaboration.',
+        format: 'Return plain text only.',
+      },
+      // ── Team member fields ────────────────────────────────────────────────
+      teamBio: {
+        label: 'Team Member Bio',
+        rule: '2-3 sentences. Professional and warm. Highlights expertise, background, and contribution to Fastoosh\'s motion design work. Avoid generic phrases.',
+        format: 'Return plain text only — no bullet points, no headings, no line breaks.',
+      },
+      teamRole: {
+        label: 'Team Member Role / Job Title',
+        rule: 'A clear professional job title. E.g. "Motion Design Director", "Lead After Effects Artist", "Brand Strategist". 2-5 words.',
+        format: 'Return plain text only — just the job title.',
+      },
     };
 
     const field = fieldRules[fieldKey];
@@ -1138,9 +1230,17 @@ app.post("/make-server-e07959ec/admin/improve-field", requireAuth, async (c) => 
       return c.json({ success: false, error: `Unknown fieldKey: "${fieldKey}"` }, 400);
     }
 
-    const entityLine = entityType === 'project'
-      ? `Project: "${entityName}"${categoryCtx}`
-      : `Tool: "${entityName}"${categoryCtx}${versionCtx}`;
+    let entityLine: string;
+    if (entityType === 'home') {
+      entityLine = `Page: Fastoosh home page (premium motion design studio website)`;
+    } else if (entityType === 'team') {
+      const memberRole = context?.role ? ` — ${context.role}` : '';
+      entityLine = `Team member: "${entityName}"${memberRole} at Fastoosh (premium motion design studio)`;
+    } else if (entityType === 'project') {
+      entityLine = `Project: "${entityName}"${categoryCtx}`;
+    } else {
+      entityLine = `Tool: "${entityName}"${categoryCtx}${versionCtx}`;
+    }
 
     const prompt = `You are a professional copywriter for Fastoosh, a premium motion design studio.
 ${entityLine}

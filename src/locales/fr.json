@@ -39,7 +39,8 @@
     "nextAvailable": "Prochaine disponibilité",
     "bookProject": "Réserver un projet",
     "fullyBookedTitle": "Complet pour les prochains mois",
-    "fullyBookedSubtitle": "Revenez bientôt pour les nouvelles disponibilités"
+    "fullyBookedSubtitle": "Revenez bientôt pour les nouvelles disponibilités",
+    "until": "jusqu'en"
   },
   "home": {
     "showreelComingSoon": "Showreel bientôt disponible",

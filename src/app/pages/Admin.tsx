@@ -2581,6 +2581,9 @@ function TeamMemberForm({
   const [improveExisting, setImproveExisting] = useState(false);
   const [showAiOptions, setShowAiOptions] = useState(false);
   const [highlightedFields, setHighlightedFields] = useState<Set<string>>(new Set());
+  const [activeImprove, setActiveImprove] = useState<{ fieldKey: string; fieldLabel: string; currentValue: string; onApply: (v: string) => void } | null>(null);
+  const openImprove = (fieldKey: string, fieldLabel: string, currentValue: string, onApply: (v: string) => void) =>
+    setActiveImprove({ fieldKey, fieldLabel, currentValue, onApply });
 
   const applyHighlight = (fields: string[]) => {
     if (fields.length === 0) return;
@@ -2795,9 +2798,12 @@ function TeamMemberForm({
         </div>
         
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">
-            Role *
-          </label>
+          <div className="flex items-center gap-1.5 mb-2">
+            <label className="text-sm font-medium text-gray-300">Role *</label>
+            <button type="button" onClick={() => openImprove('teamRole', 'Team Member Role', formData.role || '', v => { setFormData(p => ({ ...p, role: v })); setErrors(prev => ({ ...prev, role: '' })); })} title="AI Improve" className="inline-flex items-center justify-center w-5 h-5 rounded text-purple-400/50 hover:text-purple-300 hover:bg-purple-500/15 transition-all">
+              <Sparkles className="w-3 h-3" />
+            </button>
+          </div>
           <Input
             placeholder="e.g., Motion Design Director"
             value={formData.role || ''}
@@ -2813,9 +2819,12 @@ function TeamMemberForm({
         </div>
         
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">
-            Bio *
-          </label>
+          <div className="flex items-center gap-1.5 mb-2">
+            <label className="text-sm font-medium text-gray-300">Bio *</label>
+            <button type="button" onClick={() => openImprove('teamBio', 'Team Member Bio', formData.bio || '', v => { setFormData(p => ({ ...p, bio: v })); setErrors(prev => ({ ...prev, bio: '' })); applyHighlight(['bio']); })} title="AI Improve" className="inline-flex items-center justify-center w-5 h-5 rounded text-purple-400/50 hover:text-purple-300 hover:bg-purple-500/15 transition-all">
+              <Sparkles className="w-3 h-3" />
+            </button>
+          </div>
           <Textarea
             placeholder="Brief bio about the team member"
             value={formData.bio || ''}
@@ -3001,6 +3010,16 @@ function TeamMemberForm({
           </Button>
         </div>
       </div>
+      {activeImprove && (
+        <AIImproveModal
+          fieldLabel={activeImprove.fieldLabel}
+          fieldKey={activeImprove.fieldKey}
+          currentValue={activeImprove.currentValue}
+          context={{ entityType: 'team', name: formData.name || 'Team Member', role: formData.role || '' }}
+          onApply={activeImprove.onApply}
+          onClose={() => setActiveImprove(null)}
+        />
+      )}
     </div>
   );
 }

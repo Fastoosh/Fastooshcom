@@ -39,7 +39,8 @@
     "nextAvailable": "التوفر القادم",
     "bookProject": "احجز مشروعاً",
     "fullyBookedTitle": "محجوز بالكامل للأشهر القادمة",
-    "fullyBookedSubtitle": "تحقق مرة أخرى قريباً للتوفر الجديد"
+    "fullyBookedSubtitle": "تحقق مرة أخرى قريباً للتوفر الجديد",
+    "until": "حتى"
   },
   "home": {
     "showreelComingSoon": "الشوريل قادم قريباً",

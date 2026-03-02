@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { GlassCard } from '../shared/GlassCard';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
 import { AdminSelect } from './AdminSelect';
+import { AIImproveModal } from './AIImproveModal';
 import {
   Save, Sparkles, ChevronDown, ChevronRight, Loader2, Plus, Trash2,
   X, CheckCircle2, AlertCircle, Wand2, RotateCcw,
@@ -128,6 +129,16 @@ const SECTIONS: Array<{ id: Section; label: string; icon: any; description: stri
   { id: 'deliverables', label: 'Deliverables',      icon: CheckCircle, description: '"What you get" list' },
   { id: 'cta',          label: 'Final CTA',         icon: Target,      description: 'Bottom call-to-action section' },
 ];
+
+// ── Improve state type ────────────────────────────────────────────────────────
+type ImproveState = {
+  fieldKey: string;
+  fieldLabel: string;
+  currentValue: string;
+  onApply: (val: string) => void;
+} | null;
+
+const HOME_CONTEXT = { entityType: 'home' as const };
 
 // ── Main component ─────────────────────────────────────────────────────────────
 export function HomeTab() {
@@ -371,11 +382,21 @@ export function HomeTab() {
 }
 
 // ── Shared label ──────────────────────────────────────────────────────────────
-function FieldLabel({ label, hint }: { label: string; hint?: string }) {
+function FieldLabel({ label, hint, onAI }: { label: string; hint?: string; onAI?: () => void }) {
   return (
-    <div className="mb-1">
+    <div className="mb-1 flex items-center gap-1">
       <label className="text-white/60 text-xs font-medium">{label}</label>
-      {hint && <span className="text-white/25 text-xs ml-2">{hint}</span>}
+      {hint && <span className="text-white/25 text-xs ml-1">{hint}</span>}
+      {onAI && (
+        <button
+          type="button"
+          onClick={onAI}
+          title="AI Improve"
+          className="ml-0.5 inline-flex items-center justify-center w-4 h-4 rounded text-purple-400/50 hover:text-purple-300 hover:bg-purple-500/15 transition-all"
+        >
+          <Sparkles className="w-2.5 h-2.5" />
+        </button>
+      )}
     </div>
   );
 }
@@ -385,6 +406,9 @@ function HeroSection({ content, setContent }: { content: HomeContent; setContent
   const set = (key: keyof HomeContent, val: string) => setContent((p: HomeContent) => ({ ...p, [key]: val }));
   const [uploading, setUploading] = useState(false);
   const [videoInputMode, setVideoInputMode] = useState<'url' | 'upload'>('url');
+  const [activeImprove, setActiveImprove] = useState<ImproveState>(null);
+  const ai = (fieldKey: string, fieldLabel: string, currentValue: string, onApply: (v: string) => void) =>
+    setActiveImprove({ fieldKey, fieldLabel, currentValue, onApply });
 
   const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -413,25 +437,25 @@ function HeroSection({ content, setContent }: { content: HomeContent; setContent
     <div className="space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <FieldLabel label="Heading Line 1" hint="(plain text)" />
+          <FieldLabel label="Heading Line 1" hint="(plain text)" onAI={() => ai('heroLine1', 'Heading Line 1', content.heroLine1, v => set('heroLine1', v))} />
           <Input value={content.heroLine1} onChange={e => set('heroLine1', e.target.value)} placeholder="Premium motion design" className="bg-white/5 border-white/10 text-white" />
         </div>
         <div>
-          <FieldLabel label="Heading Line 2" hint="(shown in gradient)" />
+          <FieldLabel label="Heading Line 2" hint="(shown in gradient)" onAI={() => ai('heroLine2', 'Heading Line 2', content.heroLine2, v => set('heroLine2', v))} />
           <Input value={content.heroLine2} onChange={e => set('heroLine2', e.target.value)} placeholder="for ambitious teams" className="bg-white/5 border-white/10 text-white" />
         </div>
       </div>
       <div>
-        <FieldLabel label="Subtitle" />
+        <FieldLabel label="Subtitle" onAI={() => ai('heroSubtitle', 'Hero Subtitle', content.heroSubtitle, v => set('heroSubtitle', v))} />
         <Textarea value={content.heroSubtitle} onChange={e => set('heroSubtitle', e.target.value)} rows={2} className="bg-white/5 border-white/10 text-white resize-none" />
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <FieldLabel label="Primary CTA Button" hint="(links to /work-with-us)" />
+          <FieldLabel label="Primary CTA Button" hint="(links to /work-with-us)" onAI={() => ai('heroCta', 'Primary CTA Button', content.heroCta1Text, v => set('heroCta1Text', v))} />
           <Input value={content.heroCta1Text} onChange={e => set('heroCta1Text', e.target.value)} placeholder="Work with us" className="bg-white/5 border-white/10 text-white" />
         </div>
         <div>
-          <FieldLabel label="Secondary CTA Button" hint="(links to /projects)" />
+          <FieldLabel label="Secondary CTA Button" hint="(links to /projects)" onAI={() => ai('heroCta', 'Secondary CTA Button', content.heroCta2Text, v => set('heroCta2Text', v))} />
           <Input value={content.heroCta2Text} onChange={e => set('heroCta2Text', e.target.value)} placeholder="View projects" className="bg-white/5 border-white/10 text-white" />
         </div>
       </div>
@@ -490,6 +514,17 @@ function HeroSection({ content, setContent }: { content: HomeContent; setContent
         )}
       </div>
 
+      {activeImprove && (
+        <AIImproveModal
+          fieldLabel={activeImprove.fieldLabel}
+          fieldKey={activeImprove.fieldKey}
+          currentValue={activeImprove.currentValue}
+          context={HOME_CONTEXT}
+          onApply={activeImprove.onApply}
+          onClose={() => setActiveImprove(null)}
+        />
+      )}
+
       {/* Preview */}
       <div className="p-3 bg-white/5 rounded-xl border border-white/10">
         <p className="text-white/30 text-xs mb-2 font-medium">Heading preview</p>
@@ -515,10 +550,14 @@ function HeroSection({ content, setContent }: { content: HomeContent; setContent
 // ── Testimonial ───────────────────────────────────────────────────────────────
 function TestimonialSection({ content, setContent }: { content: HomeContent; setContent: any }) {
   const set = (key: keyof HomeContent, val: string) => setContent((p: HomeContent) => ({ ...p, [key]: val }));
+  const [activeImprove, setActiveImprove] = useState<ImproveState>(null);
+  const ai = (fieldKey: string, fieldLabel: string, currentValue: string, onApply: (v: string) => void) =>
+    setActiveImprove({ fieldKey, fieldLabel, currentValue, onApply });
+
   return (
     <div className="space-y-4">
       <div>
-        <FieldLabel label="Quote" />
+        <FieldLabel label="Quote" onAI={() => ai('testimonialQuote', 'Testimonial Quote', content.testimonialQuote, v => set('testimonialQuote', v))} />
         <Textarea value={content.testimonialQuote} onChange={e => set('testimonialQuote', e.target.value)} rows={3} className="bg-white/5 border-white/10 text-white resize-none" placeholder="The most impressive motion design work..." />
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -538,6 +577,9 @@ function TestimonialSection({ content, setContent }: { content: HomeContent; set
           {content.testimonialRole && `, ${content.testimonialRole}`}
         </footer>
       </div>
+      {activeImprove && (
+        <AIImproveModal fieldLabel={activeImprove.fieldLabel} fieldKey={activeImprove.fieldKey} currentValue={activeImprove.currentValue} context={HOME_CONTEXT} onApply={activeImprove.onApply} onClose={() => setActiveImprove(null)} />
+      )}
     </div>
   );
 }
@@ -545,19 +587,26 @@ function TestimonialSection({ content, setContent }: { content: HomeContent; set
 // ── Featured ──────────────────────────────────────────────────────────────────
 function FeaturedSection({ content, setContent }: { content: HomeContent; setContent: any }) {
   const set = (key: keyof HomeContent, val: string) => setContent((p: HomeContent) => ({ ...p, [key]: val }));
+  const [activeImprove, setActiveImprove] = useState<ImproveState>(null);
+  const ai = (fieldKey: string, fieldLabel: string, currentValue: string, onApply: (v: string) => void) =>
+    setActiveImprove({ fieldKey, fieldLabel, currentValue, onApply });
+
   return (
     <div className="space-y-4">
       <div>
-        <FieldLabel label="Section Heading" />
+        <FieldLabel label="Section Heading" onAI={() => ai('sectionHeading', 'Featured Work Heading', content.featuredHeading, v => set('featuredHeading', v))} />
         <Input value={content.featuredHeading} onChange={e => set('featuredHeading', e.target.value)} placeholder="Featured work" className="bg-white/5 border-white/10 text-white" />
       </div>
       <div>
-        <FieldLabel label="Section Subtitle" />
+        <FieldLabel label="Section Subtitle" onAI={() => ai('sectionSubtitle', 'Featured Work Subtitle', content.featuredSubtitle, v => set('featuredSubtitle', v))} />
         <Input value={content.featuredSubtitle} onChange={e => set('featuredSubtitle', e.target.value)} placeholder="Selected projects for ambitious brands" className="bg-white/5 border-white/10 text-white" />
       </div>
       <p className="text-white/30 text-xs">
         The featured projects grid is automatically populated from projects marked as "Featured" in the Projects tab.
       </p>
+      {activeImprove && (
+        <AIImproveModal fieldLabel={activeImprove.fieldLabel} fieldKey={activeImprove.fieldKey} currentValue={activeImprove.currentValue} context={HOME_CONTEXT} onApply={activeImprove.onApply} onClose={() => setActiveImprove(null)} />
+      )}
     </div>
   );
 }
@@ -571,11 +620,14 @@ function CapabilitiesSection({ content, setContent }: { content: HomeContent; se
     setContent((p: HomeContent) => ({ ...p, capabilities: [...p.capabilities, { icon: 'sparkles', title: '', description: '' }] }));
   const removeCap = (idx: number) =>
     setContent((p: HomeContent) => ({ ...p, capabilities: p.capabilities.filter((_, i) => i !== idx) }));
+  const [activeImprove, setActiveImprove] = useState<ImproveState>(null);
+  const ai = (fieldKey: string, fieldLabel: string, currentValue: string, onApply: (v: string) => void) =>
+    setActiveImprove({ fieldKey, fieldLabel, currentValue, onApply });
 
   return (
     <div className="space-y-4">
       <div>
-        <FieldLabel label="Section Heading" />
+        <FieldLabel label="Section Heading" onAI={() => ai('sectionHeading', 'Capabilities Heading', content.capabilitiesHeading, setHeading)} />
         <Input value={content.capabilitiesHeading} onChange={e => setHeading(e.target.value)} placeholder="Why work with us" className="bg-white/5 border-white/10 text-white" />
       </div>
       <div className="space-y-3">
@@ -607,11 +659,11 @@ function CapabilitiesSection({ content, setContent }: { content: HomeContent; se
                   />
                 </div>
                 <div>
-                  <FieldLabel label="Title" />
+                  <FieldLabel label="Title" onAI={() => ai('capabilityTitle', `Card ${idx + 1} Title`, cap.title, v => updateCap(idx, 'title', v))} />
                   <Input value={cap.title} onChange={e => updateCap(idx, 'title', e.target.value)} placeholder="Premium Craft" className="bg-black/40 border-white/10 text-white text-sm" />
                 </div>
                 <div>
-                  <FieldLabel label="Description" />
+                  <FieldLabel label="Description" onAI={() => ai('capabilityDescription', `Card ${idx + 1} Description`, cap.description, v => updateCap(idx, 'description', v))} />
                   <Input value={cap.description} onChange={e => updateCap(idx, 'description', e.target.value)} placeholder="Every frame matters…" className="bg-black/40 border-white/10 text-white text-sm" />
                 </div>
               </div>
@@ -623,6 +675,9 @@ function CapabilitiesSection({ content, setContent }: { content: HomeContent; se
         <Button type="button" variant="outline" onClick={addCap} className="w-full border-dashed border-white/20 text-white/40 hover:text-white hover:border-purple-500/40">
           <Plus className="w-3.5 h-3.5 mr-1.5" />Add capability card
         </Button>
+      )}
+      {activeImprove && (
+        <AIImproveModal fieldLabel={activeImprove.fieldLabel} fieldKey={activeImprove.fieldKey} currentValue={activeImprove.currentValue} context={HOME_CONTEXT} onApply={activeImprove.onApply} onClose={() => setActiveImprove(null)} />
       )}
     </div>
   );
@@ -637,16 +692,19 @@ function ProcessSection({ content, setContent }: { content: HomeContent; setCont
     setContent((p: HomeContent) => ({ ...p, processSteps: [...p.processSteps, { number: String(p.processSteps.length + 1).padStart(2, '0'), title: '', description: '' }] }));
   const removeStep = (idx: number) =>
     setContent((p: HomeContent) => ({ ...p, processSteps: p.processSteps.filter((_, i) => i !== idx) }));
+  const [activeImprove, setActiveImprove] = useState<ImproveState>(null);
+  const ai = (fieldKey: string, fieldLabel: string, currentValue: string, onApply: (v: string) => void) =>
+    setActiveImprove({ fieldKey, fieldLabel, currentValue, onApply });
 
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <FieldLabel label="Section Heading" />
+          <FieldLabel label="Section Heading" onAI={() => ai('sectionHeading', 'Process Heading', content.processHeading, v => set('processHeading', v))} />
           <Input value={content.processHeading} onChange={e => set('processHeading', e.target.value)} placeholder="Our process" className="bg-white/5 border-white/10 text-white" />
         </div>
         <div>
-          <FieldLabel label="Subtitle" />
+          <FieldLabel label="Subtitle" onAI={() => ai('sectionSubtitle', 'Process Subtitle', content.processSubtitle, v => set('processSubtitle', v))} />
           <Input value={content.processSubtitle} onChange={e => set('processSubtitle', e.target.value)} placeholder="Clear, structured, and collaborative" className="bg-white/5 border-white/10 text-white" />
         </div>
       </div>
@@ -658,8 +716,18 @@ function ProcessSection({ content, setContent }: { content: HomeContent; setCont
               {step.number}
             </div>
             <Input value={step.number} onChange={e => updateStep(idx, 'number', e.target.value)} placeholder="01" className="bg-black/40 border-white/10 text-white w-14 text-sm" />
-            <Input value={step.title} onChange={e => updateStep(idx, 'title', e.target.value)} placeholder="Discovery" className="bg-black/40 border-white/10 text-white text-sm flex-1" />
-            <Input value={step.description} onChange={e => updateStep(idx, 'description', e.target.value)} placeholder="Deep dive into your goals…" className="bg-black/40 border-white/10 text-white text-sm flex-[2]" />
+            <div className="flex-1 relative">
+              <Input value={step.title} onChange={e => updateStep(idx, 'title', e.target.value)} placeholder="Discovery" className="bg-black/40 border-white/10 text-white text-sm w-full pr-7" />
+              <button type="button" onClick={() => ai('processStepTitle', `Step ${idx + 1} Title`, step.title, v => updateStep(idx, 'title', v))} title="AI Improve" className="absolute right-2 top-1/2 -translate-y-1/2 text-purple-400/40 hover:text-purple-300 transition-colors">
+                <Sparkles className="w-3 h-3" />
+              </button>
+            </div>
+            <div className="flex-[2] relative">
+              <Input value={step.description} onChange={e => updateStep(idx, 'description', e.target.value)} placeholder="Deep dive into your goals…" className="bg-black/40 border-white/10 text-white text-sm w-full pr-7" />
+              <button type="button" onClick={() => ai('processStepDescription', `Step ${idx + 1} Description`, step.description, v => updateStep(idx, 'description', v))} title="AI Improve" className="absolute right-2 top-1/2 -translate-y-1/2 text-purple-400/40 hover:text-purple-300 transition-colors">
+                <Sparkles className="w-3 h-3" />
+              </button>
+            </div>
             {content.processSteps.length > 1 && (
               <button onClick={() => removeStep(idx)} className="text-red-400/60 hover:text-red-400 transition-colors flex-shrink-0">
                 <Trash2 className="w-3.5 h-3.5" />
@@ -673,6 +741,9 @@ function ProcessSection({ content, setContent }: { content: HomeContent; setCont
           <Plus className="w-3.5 h-3.5 mr-1.5" />Add step
         </Button>
       )}
+      {activeImprove && (
+        <AIImproveModal fieldLabel={activeImprove.fieldLabel} fieldKey={activeImprove.fieldKey} currentValue={activeImprove.currentValue} context={HOME_CONTEXT} onApply={activeImprove.onApply} onClose={() => setActiveImprove(null)} />
+      )}
     </div>
   );
 }
@@ -680,6 +751,9 @@ function ProcessSection({ content, setContent }: { content: HomeContent; setCont
 // ── Turnaround ────────────────────────────────────────────────────────────────
 function TurnaroundSection({ content, setContent }: { content: HomeContent; setContent: any }) {
   const set = (key: keyof HomeContent, val: string) => setContent((p: HomeContent) => ({ ...p, [key]: val }));
+  const [activeImprove, setActiveImprove] = useState<ImproveState>(null);
+  const ai = (fieldKey: string, fieldLabel: string, currentValue: string, onApply: (v: string) => void) =>
+    setActiveImprove({ fieldKey, fieldLabel, currentValue, onApply });
   const updateRow = (idx: number, key: string, val: string) =>
     setContent((p: HomeContent) => ({ ...p, turnaroundRows: p.turnaroundRows.map((r, i) => i === idx ? { ...r, [key]: val } : r) }));
   const addRow = () =>
@@ -709,9 +783,12 @@ function TurnaroundSection({ content, setContent }: { content: HomeContent; setC
         </Button>
       )}
       <div>
-        <FieldLabel label="Note below table" />
+        <FieldLabel label="Note below table" onAI={() => ai('turnaroundNote', 'Timeline Note', content.turnaroundNote, v => set('turnaroundNote', v))} />
         <Input value={content.turnaroundNote} onChange={e => set('turnaroundNote', e.target.value)} placeholder="Rush options available" className="bg-white/5 border-white/10 text-white" />
       </div>
+      {activeImprove && (
+        <AIImproveModal fieldLabel={activeImprove.fieldLabel} fieldKey={activeImprove.fieldKey} currentValue={activeImprove.currentValue} context={HOME_CONTEXT} onApply={activeImprove.onApply} onClose={() => setActiveImprove(null)} />
+      )}
     </div>
   );
 }
@@ -719,6 +796,9 @@ function TurnaroundSection({ content, setContent }: { content: HomeContent; setC
 // ── Deliverables ──────────────────────────────────────────────────────────────
 function DeliverablesSection({ content, setContent }: { content: HomeContent; setContent: any }) {
   const set = (key: keyof HomeContent, val: string) => setContent((p: HomeContent) => ({ ...p, [key]: val }));
+  const [activeImprove, setActiveImprove] = useState<ImproveState>(null);
+  const ai = (fieldKey: string, fieldLabel: string, currentValue: string, onApply: (v: string) => void) =>
+    setActiveImprove({ fieldKey, fieldLabel, currentValue, onApply });
   const updateItem = (idx: number, val: string) =>
     setContent((p: HomeContent) => ({ ...p, deliverables: p.deliverables.map((d, i) => i === idx ? val : d) }));
   const addItem = () => setContent((p: HomeContent) => ({ ...p, deliverables: [...p.deliverables, ''] }));
@@ -728,7 +808,7 @@ function DeliverablesSection({ content, setContent }: { content: HomeContent; se
   return (
     <div className="space-y-4">
       <div>
-        <FieldLabel label="Section Title" />
+        <FieldLabel label="Section Title" onAI={() => ai('sectionHeading', 'Deliverables Title', content.deliverablesTitle, v => set('deliverablesTitle', v))} />
         <Input value={content.deliverablesTitle} onChange={e => set('deliverablesTitle', e.target.value)} placeholder="What you get" className="bg-white/5 border-white/10 text-white" />
       </div>
       <div className="space-y-2">
@@ -736,7 +816,12 @@ function DeliverablesSection({ content, setContent }: { content: HomeContent; se
         {content.deliverables.map((item, idx) => (
           <div key={idx} className="flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-green-400 flex-shrink-0" />
-            <Input value={item} onChange={e => updateItem(idx, e.target.value)} placeholder="Final rendered videos (all formats)" className="bg-white/5 border-white/10 text-white text-sm flex-1" />
+            <div className="flex-1 relative">
+              <Input value={item} onChange={e => updateItem(idx, e.target.value)} placeholder="Final rendered videos (all formats)" className="bg-white/5 border-white/10 text-white text-sm w-full pr-7" />
+              <button type="button" onClick={() => ai('deliverableItem', `Deliverable ${idx + 1}`, item, v => updateItem(idx, v))} title="AI Improve" className="absolute right-2 top-1/2 -translate-y-1/2 text-purple-400/40 hover:text-purple-300 transition-colors">
+                <Sparkles className="w-3 h-3" />
+              </button>
+            </div>
             {content.deliverables.length > 1 && (
               <button onClick={() => removeItem(idx)} className="text-red-400/60 hover:text-red-400 transition-colors">
                 <Trash2 className="w-3.5 h-3.5" />
@@ -748,6 +833,9 @@ function DeliverablesSection({ content, setContent }: { content: HomeContent; se
       <Button type="button" variant="outline" onClick={addItem} className="w-full border-dashed border-white/20 text-white/40 hover:text-white hover:border-purple-500/40">
         <Plus className="w-3.5 h-3.5 mr-1.5" />Add deliverable
       </Button>
+      {activeImprove && (
+        <AIImproveModal fieldLabel={activeImprove.fieldLabel} fieldKey={activeImprove.fieldKey} currentValue={activeImprove.currentValue} context={HOME_CONTEXT} onApply={activeImprove.onApply} onClose={() => setActiveImprove(null)} />
+      )}
     </div>
   );
 }
@@ -755,6 +843,9 @@ function DeliverablesSection({ content, setContent }: { content: HomeContent; se
 // ── CTA ───────────────────────────────────────────────────────────────────────
 function CtaSection({ content, setContent }: { content: HomeContent; setContent: any }) {
   const set = (key: keyof HomeContent, val: string) => setContent((p: HomeContent) => ({ ...p, [key]: val }));
+  const [activeImprove, setActiveImprove] = useState<ImproveState>(null);
+  const ai = (fieldKey: string, fieldLabel: string, currentValue: string, onApply: (v: string) => void) =>
+    setActiveImprove({ fieldKey, fieldLabel, currentValue, onApply });
   const updateBadge = (idx: number, val: string) =>
     setContent((p: HomeContent) => ({ ...p, ctaBadges: p.ctaBadges.map((b, i) => i === idx ? val : b) }));
   const addBadge = () => setContent((p: HomeContent) => ({ ...p, ctaBadges: [...p.ctaBadges, ''] }));
@@ -765,16 +856,16 @@ function CtaSection({ content, setContent }: { content: HomeContent; setContent:
     <div className="space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <FieldLabel label="Heading (first line)" />
+          <FieldLabel label="Heading (first line)" onAI={() => ai('ctaHeading', 'CTA Heading', content.ctaHeading, v => set('ctaHeading', v))} />
           <Input value={content.ctaHeading} onChange={e => set('ctaHeading', e.target.value)} placeholder="Ready to create something" className="bg-white/5 border-white/10 text-white" />
         </div>
         <div>
-          <FieldLabel label="Gradient word / phrase" hint="(second line, purple→blue)" />
+          <FieldLabel label="Gradient word / phrase" hint="(second line, purple→blue)" onAI={() => ai('ctaGradient', 'CTA Gradient Phrase', content.ctaHeadingGradient, v => set('ctaHeadingGradient', v))} />
           <Input value={content.ctaHeadingGradient} onChange={e => set('ctaHeadingGradient', e.target.value)} placeholder="extraordinary?" className="bg-white/5 border-white/10 text-white" />
         </div>
       </div>
       <div>
-        <FieldLabel label="Subtitle" />
+        <FieldLabel label="Subtitle" onAI={() => ai('ctaSubtitle', 'CTA Subtitle', content.ctaSubtitle, v => set('ctaSubtitle', v))} />
         <Textarea value={content.ctaSubtitle} onChange={e => set('ctaSubtitle', e.target.value)} rows={2} className="bg-white/5 border-white/10 text-white resize-none" />
       </div>
       <div>
@@ -812,6 +903,9 @@ function CtaSection({ content, setContent }: { content: HomeContent; setContent:
           {content.ctaBadges.map((b, i) => <span key={i} className="text-white/40 text-xs">{b}</span>)}
         </div>
       </div>
+      {activeImprove && (
+        <AIImproveModal fieldLabel={activeImprove.fieldLabel} fieldKey={activeImprove.fieldKey} currentValue={activeImprove.currentValue} context={HOME_CONTEXT} onApply={activeImprove.onApply} onClose={() => setActiveImprove(null)} />
+      )}
     </div>
   );
 }

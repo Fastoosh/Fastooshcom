@@ -6,11 +6,12 @@ import { projectId, publicAnonKey } from '/utils/supabase/info';
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-e07959ec`;
 
 export interface AIImproveContext {
-  entityType: 'tool' | 'project';
-  name?: string;        // tool name
+  entityType: 'tool' | 'project' | 'home' | 'team';
+  name?: string;        // tool name or team member name
   title?: string;       // project title
   category?: string;
   versionType?: string;
+  role?: string;        // team member role (for team context)
 }
 
 export interface AIImproveModalProps {

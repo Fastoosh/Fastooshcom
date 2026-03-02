@@ -101,7 +101,12 @@ export function AvailabilityBadge({
         whileHover={{ scale: 1.02 }}
       >
         <span className={`w-2 h-2 rounded-full bg-gradient-to-r ${config.color} animate-pulse`} />
-        <span className="text-sm text-white/90">{displayMessage}</span>
+        <span className="text-sm text-white/90">
+          {displayMessage}
+          {status === 'booked' && localizedFirstAvailable && (
+            <span className="text-white/45"> · {t('availability.until')} <span className="text-white/70">{localizedFirstAvailable}</span></span>
+          )}
+        </span>
         <Calendar className="w-3.5 h-3.5 text-white/60" />
       </motion.div>
 

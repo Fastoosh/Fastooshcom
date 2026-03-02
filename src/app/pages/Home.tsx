@@ -276,7 +276,7 @@ export function Home() {
 
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
       <section className="relative min-h-[90vh] flex items-center justify-center px-6 py-20">
-        <div className="max-w-5xl mx-auto text-center space-y-8">
+        <div className="w-full max-w-5xl mx-auto text-center space-y-8">
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
             <h1 className="text-4xl sm:text-5xl md:text-7xl tracking-tight mb-6 leading-tight">
               {c.heroLine1}
