@@ -983,7 +983,11 @@ export function ToolDetail() {
       try {
         await fetch(`${API_BASE}/free-download`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${publicAnonKey}` },
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${publicAnonKey}`,
+            ...(session?.access_token ? { 'X-User-Token': session.access_token } : {}),
+          },
           body: JSON.stringify({
             email:         user.email,
             toolVersionId: version.id,

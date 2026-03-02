@@ -365,7 +365,15 @@
     "activationStep1": "Téléchargez et installez le fichier du plugin dans After Effects (Fichier → Scripts → Installer le fichier de script).",
     "activationStep2": "Ouvrez le panneau du plugin (Fenêtre → Extensions → Nom du plugin).",
     "activationStep3": "Collez votre clé de licence dans le champ d'activation et cliquez sur « Activer ».",
-    "activationStep4": "Redémarrez After Effects si demandé. Vous êtes prêt !"
+    "activationStep4": "Redémarrez After Effects si demandé. Vous êtes prêt !",
+    "myDownloads": "Mes téléchargements",
+    "freeDownloadsLabel": "Téléchargements gratuits",
+    "noDownloads": "Aucun téléchargement gratuit pour l'instant",
+    "noDownloadsDesc": "Les outils gratuits que vous téléchargez en étant connecté apparaîtront ici.",
+    "downloadedOn": "Téléchargé le",
+    "reDownload": "Re-télécharger",
+    "loadingDownloads": "Chargement des téléchargements...",
+    "couldNotLoadDownloads": "Impossible de charger les téléchargements"
   },
   "auth": {
     "signIn": "Se connecter",

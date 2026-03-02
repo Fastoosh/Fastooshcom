@@ -15,11 +15,14 @@ import { NotFound } from "./pages/NotFound";
 import { Account } from "./pages/Account";
 import { AuthCallback } from "./pages/AuthCallback";
 import { ResetPassword } from "./pages/ResetPassword";
+import { DownloadRedirect } from "./pages/DownloadRedirect";
 
 export const router = createBrowserRouter([
   // Auth routes — dedicated pages, no navbar
-  { path: "/auth/callback",       Component: AuthCallback  },
-  { path: "/auth/reset-password", Component: ResetPassword },
+  { path: "/auth/callback",       Component: AuthCallback      },
+  { path: "/auth/reset-password", Component: ResetPassword     },
+  // Download verification redirect — no navbar
+  { path: "/dl/:token",           Component: DownloadRedirect  },
   // Admin pages (no layout)
   { path: "/admin/login", Component: AdminLogin },
   { path: "/admin",       Component: Admin      },
@@ -32,15 +35,15 @@ export const router = createBrowserRouter([
     path: "/",
     Component: Layout,
     children: [
-      { index: true,               Component: Home        },
-      { path: "projects",          Component: Projects    },
+      { index: true,               Component: Home          },
+      { path: "projects",          Component: Projects      },
       { path: "projects/:slug",    Component: ProjectDetail },
-      { path: "tools",             Component: Tools       },
-      { path: "tools/:slug",       Component: ToolDetail  },
-      { path: "about",             Component: About       },
-      { path: "work-with-us",      Component: WorkWithUs  },
-      { path: "account",           Component: Account     },
-      { path: "*",                 Component: NotFound    },
+      { path: "tools",             Component: Tools         },
+      { path: "tools/:slug",       Component: ToolDetail    },
+      { path: "about",             Component: About         },
+      { path: "work-with-us",      Component: WorkWithUs    },
+      { path: "account",           Component: Account       },
+      { path: "*",                 Component: NotFound      },
     ],
   },
 ]);

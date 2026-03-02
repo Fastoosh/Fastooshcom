@@ -70,7 +70,7 @@ const fallbackProjects = [
 export function Projects() {
   const { t, i18n } = useTranslation();
   const [activeCategory, setActiveCategory] = useState("all");
-  const [projects, setProjects] = useState(fallbackProjects);
+  const [projects, setProjects] = useState<typeof fallbackProjects>([]);
   const [loading, setLoading] = useState(true);
   const [categoryTranslations, setCategoryTranslations] = useState<Record<string, string>>({});
 
@@ -145,6 +145,7 @@ export function Projects() {
         </motion.div>
 
         {/* Filters */}
+        {!loading && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -169,6 +170,7 @@ export function Projects() {
             );
           })}
         </motion.div>
+        )}
 
         {/* Projects Grid */}
         {loading ? (

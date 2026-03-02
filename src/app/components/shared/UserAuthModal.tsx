@@ -1,8 +1,12 @@
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Loader2, Eye, EyeOff, Mail, Lock, User, AlertCircle, ArrowLeft, CheckCircle } from 'lucide-react';
-import { useState } from 'react';
+import { X, Loader2, Eye, EyeOff, Mail, Lock, User, AlertCircle, ArrowLeft, CheckCircle, ShieldCheck, RefreshCw } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { GlassCard } from './GlassCard';
+import { projectId, publicAnonKey } from '/utils/supabase/info';
+
+const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-e07959ec`;
+const OTP_LENGTH = 6;
 
 /* -------------------------------------------------------------------------- */
 /* OAuth provider icons (inline SVG — no extra deps)                          */
@@ -134,7 +138,7 @@ export interface UserAuthModalProps {
 /* Main modal                                                                  */
 /* -------------------------------------------------------------------------- */
 
-type Panel = 'signin' | 'signup' | 'forgot';
+type Panel = 'signin' | 'signup' | 'forgot' | 'verify';
 
 export function UserAuthModal({
   onClose,
@@ -171,11 +175,22 @@ export function UserAuthModal({
   const [fpLoading, setFpLoading] = useState(false);
   const [fpSent,    setFpSent]    = useState(false);
 
+  /* ── OTP verification state (after signup) ── */
+  const [pendingEmail,    setPendingEmail]    = useState('');
+  const [pendingPassword, setPendingPassword] = useState('');
+  const [verifyOtp,       setVerifyOtp]       = useState('');
+  const [verifyError,     setVerifyError]     = useState('');
+  const [verifyLoading,   setVerifyLoading]   = useState(false);
+  const [verifySuccess,   setVerifySuccess]   = useState(false);
+  const [resendCooldown,  setResendCooldown]  = useState(0);
+  const resendTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const otpInputRef    = useRef<HTMLInputElement>(null);
+
   /* ── OAuth state ── */
   const [oauthLoading, setOauthLoading] = useState<'google' | 'discord' | null>(null);
   const [oauthError,   setOauthError]   = useState('');
 
-  const anyLoading = siLoading || suLoading || fpLoading || !!oauthLoading;
+  const anyLoading = siLoading || suLoading || fpLoading || verifyLoading || !!oauthLoading;
 
   const handleOAuth = async (provider: 'google' | 'discord') => {
     setOauthError('');
@@ -207,6 +222,27 @@ export function UserAuthModal({
     }
   };
 
+  // Start resend cooldown timer
+  const startResendCooldown = () => {
+    setResendCooldown(60);
+    if (resendTimerRef.current) clearInterval(resendTimerRef.current);
+    resendTimerRef.current = setInterval(() => {
+      setResendCooldown(n => {
+        if (n <= 1) { clearInterval(resendTimerRef.current!); return 0; }
+        return n - 1;
+      });
+    }, 1000);
+  };
+
+  useEffect(() => () => { if (resendTimerRef.current) clearInterval(resendTimerRef.current); }, []);
+
+  // Focus OTP input when verify panel mounts
+  useEffect(() => {
+    if (panel === 'verify') {
+      setTimeout(() => otpInputRef.current?.focus(), 120);
+    }
+  }, [panel]);
+
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     const errs: Record<string, string> = {};
@@ -219,13 +255,94 @@ export function UserAuthModal({
     if (Object.keys(errs).length) return;
     setSuLoading(true);
     try {
-      await onSignUpEmail(suEmail.trim(), suPass, suName.trim() || undefined);
-      setSuSuccess(true);
-      setTimeout(onClose, 1400);
+      const res  = await fetch(`${API_BASE}/auth/register`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${publicAnonKey}` },
+        body:    JSON.stringify({ email: suEmail.trim(), password: suPass, fullName: suName.trim() || '' }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || t('auth.failedCreateAccount'));
+
+      // Move to OTP verify step
+      setPendingEmail(suEmail.trim());
+      setPendingPassword(suPass);
+      setVerifyOtp('');
+      setVerifyError('');
+      startResendCooldown();
+      setPanel('verify');
     } catch (err: any) {
       setSuErrors({ form: err.message || t('auth.failedCreateAccount') });
     } finally {
       setSuLoading(false);
+    }
+  };
+
+  const handleOtpChange = (val: string) => {
+    const digits = val.replace(/\D/g, '').slice(0, OTP_LENGTH);
+    setVerifyOtp(digits);
+    setVerifyError('');
+  };
+
+  const handleOtpPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    const digits = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, OTP_LENGTH);
+    setVerifyOtp(digits);
+    setVerifyError('');
+  };
+
+  const handleVerifySignup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (verifyOtp.length !== OTP_LENGTH) {
+      setVerifyError(`Please enter the ${OTP_LENGTH}-digit code from your email.`);
+      return;
+    }
+    setVerifyLoading(true);
+    try {
+      const res  = await fetch(`${API_BASE}/auth/register/verify`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${publicAnonKey}` },
+        body:    JSON.stringify({ email: pendingEmail, otp: verifyOtp }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        if (data.expired || data.tooMany) {
+          // Account deleted server-side — send user back to signup
+          setVerifyError(data.error);
+          setTimeout(() => setPanel('signup'), 2500);
+        } else {
+          setVerifyError(data.error || 'Incorrect code. Please try again.');
+        }
+        return;
+      }
+      // ✅ Email confirmed — now sign in automatically
+      setVerifySuccess(true);
+      await onSignInEmail(pendingEmail, pendingPassword);
+      setTimeout(onClose, 1000);
+    } catch (err: any) {
+      setVerifyError(err.message || 'Something went wrong. Please try again.');
+    } finally {
+      setVerifyLoading(false);
+    }
+  };
+
+  const handleResendOtp = async () => {
+    if (resendCooldown > 0) return;
+    try {
+      const res  = await fetch(`${API_BASE}/auth/register`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${publicAnonKey}` },
+        body:    JSON.stringify({ email: pendingEmail, password: pendingPassword }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setVerifyOtp('');
+        setVerifyError('');
+        startResendCooldown();
+      } else {
+        setVerifyError(data.error || 'Failed to resend code.');
+      }
+    } catch {
+      setVerifyError('Failed to resend code. Please try again.');
     }
   };
 
@@ -282,21 +399,35 @@ export function UserAuthModal({
             {/* Logo + context */}
             <div className="px-7 pt-8 pb-5 text-center">
               <div className="relative w-12 h-12 mx-auto mb-4">
-                <div className="absolute inset-0 rounded-full bg-purple-500/30 blur-xl" />
-                <div className="relative w-12 h-12 rounded-full border border-purple-500/40
-                  bg-purple-500/15 flex items-center justify-center">
-                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none">
-                    <path d="M12 2L2 7l10 5 10-5-10-5z" stroke="var(--color-violet-300, #c084fc)" strokeWidth="1.5" strokeLinejoin="round"/>
-                    <path d="M2 17l10 5 10-5M2 12l10 5 10-5" stroke="var(--color-violet-500, #a855f7)" strokeWidth="1.5" strokeLinejoin="round"/>
-                  </svg>
+                <div className={`absolute inset-0 rounded-full blur-xl transition-colors
+                  ${panel === 'verify' ? 'bg-emerald-500/25' : 'bg-purple-500/30'}`} />
+                <div className={`relative w-12 h-12 rounded-full border flex items-center justify-center transition-colors
+                  ${panel === 'verify'
+                    ? 'border-emerald-500/40 bg-emerald-500/15'
+                    : 'border-purple-500/40 bg-purple-500/15'}`}>
+                  {panel === 'verify' ? (
+                    <ShieldCheck className="w-5 h-5 text-emerald-400" />
+                  ) : (
+                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none">
+                      <path d="M12 2L2 7l10 5 10-5-10-5z" stroke="var(--color-violet-300, #c084fc)" strokeWidth="1.5" strokeLinejoin="round"/>
+                      <path d="M2 17l10 5 10-5M2 12l10 5 10-5" stroke="var(--color-violet-500, #a855f7)" strokeWidth="1.5" strokeLinejoin="round"/>
+                    </svg>
+                  )}
                 </div>
               </div>
               <h2 className="text-xl font-bold text-white">
                 {panel === 'signin'  ? t('auth.welcomeBack')       :
                  panel === 'signup'  ? t('auth.createYourAccount') :
+                 panel === 'verify'  ? 'Check your inbox'          :
                                       t('auth.resetYourPassword')}
               </h2>
-              {message && panel !== 'forgot' && (
+              {panel === 'verify' && (
+                <p className="text-white/40 text-xs mt-1.5 leading-relaxed">
+                  We sent a 6-digit code to{' '}
+                  <span className="text-purple-300 font-medium">{pendingEmail}</span>
+                </p>
+              )}
+              {message && panel !== 'forgot' && panel !== 'verify' && (
                 <p className="text-white/45 text-xs mt-1.5 leading-relaxed">{message}</p>
               )}
               {panel === 'forgot' && !fpSent && (
@@ -307,7 +438,7 @@ export function UserAuthModal({
             </div>
 
             {/* Tab switcher — only for signin / signup */}
-            {panel !== 'forgot' && (
+            {panel !== 'forgot' && panel !== 'verify' && (
               <div className="mx-7 mb-5 flex rounded-xl bg-white/5 border border-white/8 p-1">
                 {(['signin', 'signup'] as const).map(tab => (
                   <button key={tab} onClick={() => setPanel(tab)}
@@ -496,6 +627,84 @@ export function UserAuthModal({
                         </>
                       )}
                     </form>
+                  </motion.div>
+                )}
+
+                {/* ═══ OTP VERIFY (after signup) ═══ */}
+                {panel === 'verify' && (
+                  <motion.div key="vf"
+                    initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -12 }} transition={{ duration: 0.15 }}>
+
+                    {verifySuccess ? (
+                      <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
+                        className="py-8 text-center">
+                        <div className="w-12 h-12 rounded-full bg-emerald-500/20 border border-emerald-500/30
+                          flex items-center justify-center mx-auto mb-3">
+                          <CheckCircle className="w-6 h-6 text-emerald-400" />
+                        </div>
+                        <p className="text-white font-semibold">Account verified!</p>
+                        <p className="text-white/45 text-xs mt-1">Signing you in…</p>
+                      </motion.div>
+                    ) : (
+                      <form onSubmit={handleVerifySignup} className="space-y-4">
+
+                        {/* OTP input */}
+                        <div>
+                          <div className={`relative flex items-center rounded-xl border transition-colors
+                            ${verifyError
+                              ? 'border-red-500/60 bg-red-500/5'
+                              : 'border-white/10 bg-white/5 focus-within:border-purple-500/50 focus-within:bg-purple-500/5'
+                            }`}>
+                            <ShieldCheck className="absolute left-3.5 w-4 h-4 text-white/30 pointer-events-none" />
+                            <input
+                              ref={otpInputRef}
+                              type="text"
+                              inputMode="numeric"
+                              autoComplete="one-time-code"
+                              placeholder="123 456"
+                              value={verifyOtp}
+                              onChange={e => handleOtpChange(e.target.value)}
+                              onPaste={handleOtpPaste}
+                              maxLength={OTP_LENGTH}
+                              className="w-full bg-transparent pl-10 pr-4 py-3 text-sm text-white
+                                placeholder:text-white/20 focus:outline-none tracking-[0.35em] font-mono text-center"
+                            />
+                          </div>
+                          {verifyError && (
+                            <p className="flex items-center gap-1 mt-1.5 text-xs text-red-400">
+                              <AlertCircle className="w-3 h-3 flex-shrink-0" />{verifyError}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Submit */}
+                        <button type="submit" disabled={verifyLoading || verifyOtp.length !== OTP_LENGTH}
+                          className="w-full py-3 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600
+                            hover:from-purple-500 hover:to-blue-500 text-white font-semibold text-sm
+                            transition-all shadow-lg shadow-purple-500/20 disabled:opacity-60
+                            flex items-center justify-center gap-2">
+                          {verifyLoading
+                            ? <><Loader2 className="w-4 h-4 animate-spin" />Verifying…</>
+                            : 'Verify & Create Account'}
+                        </button>
+
+                        {/* Resend + back */}
+                        <div className="flex items-center justify-between pt-1">
+                          <button type="button" onClick={() => setPanel('signup')}
+                            className="flex items-center gap-1.5 text-xs text-white/35 hover:text-white/65 transition-colors">
+                            <ArrowLeft className="w-3.5 h-3.5" />
+                            Back
+                          </button>
+                          <button type="button" onClick={handleResendOtp} disabled={resendCooldown > 0}
+                            className="flex items-center gap-1.5 text-xs text-purple-400/80
+                              hover:text-purple-300 disabled:text-white/25 disabled:cursor-not-allowed transition-colors">
+                            <RefreshCw className="w-3 h-3" />
+                            {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend code'}
+                          </button>
+                        </div>
+                      </form>
+                    )}
                   </motion.div>
                 )}
 

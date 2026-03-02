@@ -8,7 +8,7 @@ import {
   Wrench, ChevronUp, ChevronDown, ChevronsUpDown, Users,
   UserPlus, Tag, Layers, Monitor, Globe, Smartphone, Tablet,
   MousePointer2, Clock, TrendingUp, CheckCircle2, Activity,
-  Chrome, Navigation, ShoppingCart,
+  Chrome, Navigation, ShoppingCart, ShieldCheck, Hourglass,
 } from 'lucide-react';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 
@@ -17,15 +17,17 @@ const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-e079
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 interface Lead {
-  email:         string;
-  source:        'free_download' | 'signup';
-  tier:          'Free' | 'Pro' | 'Studio' | 'Registered';
-  toolName:      string;
-  toolSlug:      string;
-  toolCategory:  string;
-  toolVersionId: string;
-  createdAt:     string;
-  displayName?:  string;
+  email:          string;
+  source:         'free_download' | 'signup';
+  tier:           'Free' | 'Pro' | 'Studio' | 'Registered';
+  toolName:       string;
+  toolSlug:       string;
+  toolCategory:   string;
+  toolVersionId:  string;
+  createdAt:      string;
+  displayName?:   string;
+  emailVerified?: boolean;
+  verifiedAt?:    string | null;
 }
 
 interface LeadBehavior {
@@ -60,16 +62,18 @@ function getAuthHeaders() {
 }
 
 function exportCSV(leads: Lead[]) {
-  const header = ['Email', 'Display Name', 'Source', 'Tier', 'Tool', 'Tool Slug', 'Category', 'Date'];
+  const header = ['Email', 'Display Name', 'Source', 'Verified Download', 'Tier', 'Tool', 'Tool Slug', 'Category', 'Date', 'Verified At'];
   const rows = leads.map(l => [
     l.email,
     l.displayName || '',
     l.source === 'free_download' ? 'Free Download' : 'Sign-up',
+    l.source === 'free_download' ? (l.emailVerified ? 'Yes' : 'No') : '',
     l.tier,
     l.toolName,
     l.toolSlug,
     l.toolCategory,
     l.createdAt ? new Date(l.createdAt).toISOString() : '',
+    l.verifiedAt ? new Date(l.verifiedAt).toISOString() : '',
   ]);
   const csv = [header, ...rows]
     .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
@@ -371,17 +375,18 @@ export function LeadsTab() {
   const [, forceUpdate] = useState(0); // trigger re-render when cache updates
 
   // Filters
-  const [search,       setSearch]       = useState('');
-  const [sourceFilter, setSourceFilter] = useState<string>('');
-  const [tierFilter,   setTierFilter]   = useState<string>('');
-  const [toolFilter,   setToolFilter]   = useState('');
-  const [catFilter,    setCatFilter]    = useState('');
+  const [search,         setSearch]         = useState('');
+  const [sourceFilter,   setSourceFilter]   = useState<string>('');
+  const [tierFilter,     setTierFilter]     = useState<string>('');
+  const [toolFilter,     setToolFilter]     = useState('');
+  const [catFilter,      setCatFilter]      = useState('');
+  const [verifiedFilter, setVerifiedFilter] = useState<'all' | 'verified' | 'pending'>('all');
 
   // Sort
   const [sortKey, setSortKey] = useState<SortKey>('createdAt');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
 
-  // ── Fetch ──────────────────────────────────────────────────────────────────
+  // ── Fetch ───────────────────��──────────────────────────────────────────────
 
   const loadLeads = useCallback(async () => {
     setLoading(true);
@@ -437,8 +442,15 @@ export function LeadsTab() {
     if (tierFilter   && l.tier   !== tierFilter)         return false;
     if (toolFilter   && l.toolName !== toolFilter)        return false;
     if (catFilter    && l.toolCategory !== catFilter)     return false;
+    // Verified filter only applies to free_download leads
+    if (verifiedFilter === 'verified') {
+      if (l.source !== 'free_download' || !l.emailVerified) return false;
+    }
+    if (verifiedFilter === 'pending') {
+      if (l.source !== 'free_download' || l.emailVerified) return false;
+    }
     return true;
-  }), [leads, search, sourceFilter, tierFilter, toolFilter, catFilter]);
+  }), [leads, search, sourceFilter, tierFilter, toolFilter, catFilter, verifiedFilter]);
 
   const sorted = useMemo(() => [...filtered].sort((a, b) => {
     const va: any = sortKey === 'createdAt'
@@ -459,9 +471,11 @@ export function LeadsTab() {
 
   // ── Stats ─────────────────────────────────────────────────────────────────
 
-  const totalUnique = new Set(leads.map(l => l.email.toLowerCase())).size;
-  const freeCount   = leads.filter(l => l.source === 'free_download').length;
-  const signupCount = leads.filter(l => l.source === 'signup').length;
+  const totalUnique     = new Set(leads.map(l => l.email.toLowerCase())).size;
+  const freeCount       = leads.filter(l => l.source === 'free_download').length;
+  const signupCount     = leads.filter(l => l.source === 'signup').length;
+  const verifiedCount   = leads.filter(l => l.source === 'free_download' && l.emailVerified).length;
+  const conversionRate  = freeCount > 0 ? Math.round((verifiedCount / freeCount) * 100) : 0;
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -496,22 +510,99 @@ export function LeadsTab() {
         </div>
       </div>
 
-      {/* ── Stats ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-        {[
-          { label: 'Total entries',   value: leads.length,  icon: <Mail     className="w-4 h-4 text-white/40"   /> },
-          { label: 'Unique emails',   value: totalUnique,   icon: <Users    className="w-4 h-4 text-purple-400" /> },
-          { label: 'Free downloads',  value: freeCount,     icon: <Download className="w-4 h-4 text-emerald-400"/> },
-          { label: 'Signed-up users', value: signupCount,   icon: <UserPlus className="w-4 h-4 text-sky-400"    /> },
-        ].map(s => (
-          <div key={s.label} className="bg-white/5 border border-white/8 rounded-xl px-4 py-3 flex items-center gap-3">
-            {s.icon}
-            <div>
-              <div className="text-xl font-bold text-white leading-none">{s.value}</div>
-              <div className="text-white/35 text-xs mt-0.5">{s.label}</div>
+      {/* ── Stats (clickable filters) ── */}
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
+        {([
+          {
+            label:  'Total entries',
+            value:  leads.length,
+            icon:   <Mail        className="w-4 h-4 text-white/40"   />,
+            filter: () => { setSourceFilter(''); setVerifiedFilter('all'); },
+            active: sourceFilter === '' && verifiedFilter === 'all',
+          },
+          {
+            label:  'Unique emails',
+            value:  totalUnique,
+            icon:   <Users       className="w-4 h-4 text-purple-400" />,
+            filter: null,
+            active: false,
+          },
+          {
+            label:  'Free downloads',
+            value:  freeCount,
+            icon:   <Download    className="w-4 h-4 text-emerald-400" />,
+            filter: () => { setSourceFilter('free_download'); setVerifiedFilter('all'); },
+            active: sourceFilter === 'free_download' && verifiedFilter === 'all',
+          },
+          {
+            label:  'Verified downloads',
+            value:  verifiedCount,
+            icon:   <ShieldCheck className="w-4 h-4 text-green-400"  />,
+            filter: () => { setSourceFilter(''); setVerifiedFilter('verified'); },
+            active: verifiedFilter === 'verified',
+            rate:   freeCount > 0 ? conversionRate : null,
+          },
+          {
+            label:  'Signed-up users',
+            value:  signupCount,
+            icon:   <UserPlus    className="w-4 h-4 text-sky-400"    />,
+            filter: () => { setSourceFilter('signup'); setVerifiedFilter('all'); },
+            active: sourceFilter === 'signup',
+          },
+        ] as const).map(s =>
+          s.filter ? (
+            <button
+              key={s.label}
+              onClick={s.filter}
+              className={`bg-white/5 border rounded-xl px-4 py-3 flex items-center gap-3 w-full text-left
+                transition-all cursor-pointer group
+                ${s.active
+                  ? 'border-purple-500/40 bg-purple-500/10 shadow-[0_0_16px_rgba(147,51,234,0.15)]'
+                  : 'border-white/8 hover:border-white/15 hover:bg-white/8'
+                }`}
+            >
+              {s.icon}
+              <div>
+                <div className="text-xl font-bold text-white leading-none">{s.value}</div>
+                <div className={`text-xs mt-0.5 transition-colors ${s.active ? 'text-purple-300' : 'text-white/35 group-hover:text-white/55'}`}>
+                  {s.label}
+                </div>
+                {s.rate !== undefined && (
+                  <div className="text-[10px] mt-0.5 text-white/35">
+                    {s.rate}% conversion
+                  </div>
+                )}
+              </div>
+              {s.active && (
+                <div className="ml-auto w-1.5 h-1.5 rounded-full bg-purple-400 flex-shrink-0" />
+              )}
+            </button>
+          ) : (
+            <div key={s.label} className="bg-white/5 border border-white/8 rounded-xl px-4 py-3 flex items-center gap-3">
+              {s.icon}
+              <div className="flex-1 min-w-0">
+                <div className="text-xl font-bold text-white leading-none">{s.value}</div>
+                <div className={`text-xs mt-0.5 transition-colors ${s.active ? 'text-purple-300' : 'text-white/35 group-hover:text-white/55'}`}>
+                  {s.label}
+                </div>
+                {'rate' in s && s.rate !== null && s.rate !== undefined && (
+                  <div className="mt-1.5">
+                    <span className="text-[10px] text-white/30">{s.rate}% verified</span>
+                    <div className="h-1 w-full rounded-full bg-white/8 overflow-hidden mt-0.5">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-green-500 to-emerald-400 transition-all duration-500"
+                        style={{ width: `${s.rate}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+              {s.active && (
+                <div className="ml-auto w-1.5 h-1.5 rounded-full bg-purple-400 flex-shrink-0" />
+              )}
             </div>
-          </div>
-        ))}
+          )
+        )}
       </div>
 
       {/* ── Search + dropdown filters ── */}
@@ -553,22 +644,8 @@ export function LeadsTab() {
         )}
       </div>
 
-      {/* ── Filter pills: Source ── */}
-      <div className="flex flex-wrap items-center gap-2 mb-3">
-        <span className="text-white/25 text-xs uppercase tracking-wide flex items-center gap-1 mr-1">
-          <Layers className="w-3 h-3" /> Source
-        </span>
-        <Pill active={sourceFilter === ''}              onClick={() => setSourceFilter('')}>All</Pill>
-        <Pill active={sourceFilter === 'free_download'} onClick={() => setSourceFilter('free_download')}>
-          Free Downloads
-        </Pill>
-        <Pill active={sourceFilter === 'signup'}        onClick={() => setSourceFilter('signup')}>
-          Sign-ups
-        </Pill>
-      </div>
-
       {/* ── Filter pills: Tier ── */}
-      <div className="flex flex-wrap items-center gap-2 mb-6">
+      <div className="flex flex-wrap items-center gap-2 mb-3">
         <span className="text-white/25 text-xs uppercase tracking-wide flex items-center gap-1 mr-1">
           <Tag className="w-3 h-3" /> Tier
         </span>
@@ -578,6 +655,20 @@ export function LeadsTab() {
             <Pill key={t} active={tierFilter === t} onClick={() => setTierFilter(t)}>{t}</Pill>
           )
         ))}
+      </div>
+
+      {/* ── Filter pills: Verification status ── */}
+      <div className="flex flex-wrap items-center gap-2 mb-6">
+        <span className="text-white/25 text-xs uppercase tracking-wide flex items-center gap-1 mr-1">
+          <ShieldCheck className="w-3 h-3" /> Verification
+        </span>
+        <Pill active={verifiedFilter === 'all'}      onClick={() => setVerifiedFilter('all')}>All</Pill>
+        <Pill active={verifiedFilter === 'verified'} onClick={() => setVerifiedFilter('verified')}>
+          ✓ Verified
+        </Pill>
+        <Pill active={verifiedFilter === 'pending'}  onClick={() => setVerifiedFilter('pending')}>
+          ⏳ Pending
+        </Pill>
       </div>
 
       {/* ── Table ── */}
@@ -645,6 +736,22 @@ export function LeadsTab() {
                           <div className="text-white font-medium truncate max-w-48">{lead.email}</div>
                           {lead.displayName && (
                             <div className="text-white/35 text-xs truncate">{lead.displayName}</div>
+                          )}
+                          {/* Verified / Pending badge for free downloads */}
+                          {lead.source === 'free_download' && (
+                            lead.emailVerified ? (
+                              <span className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded-full
+                                bg-green-500/15 border border-green-500/25 text-green-400 text-[10px] font-semibold">
+                                <ShieldCheck className="w-2.5 h-2.5 flex-shrink-0" />
+                                Verified
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded-full
+                                bg-amber-500/10 border border-amber-500/20 text-amber-400/80 text-[10px] font-medium">
+                                <Hourglass className="w-2.5 h-2.5 flex-shrink-0" />
+                                OTP sent · pending
+                              </span>
+                            )
                           )}
                         </div>
                       </div>

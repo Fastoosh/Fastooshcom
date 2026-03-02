@@ -36,6 +36,15 @@ interface Purchase {
   amount: number; currency: string; purchasedAt: string; expiresAt: string | null;
   lemonSqueezyOrderId: string; toolVersions: ToolVersionInfo | null;
 }
+interface FreeDownload {
+  toolVersionId: string;
+  toolId: string;
+  toolName: string;
+  toolSlug: string;
+  toolImageUrl: string;
+  downloadUrl: string;
+  downloadedAt: string;
+}
 
 /* -------------------------------------------------------------------------- */
 /* Status config                                                               */
@@ -320,6 +329,82 @@ function PurchaseCard({
 }
 
 /* -------------------------------------------------------------------------- */
+/* DownloadCard                                                                */
+/* -------------------------------------------------------------------------- */
+function DownloadCard({ item, index }: { item: FreeDownload; index: number }) {
+  const { t } = useTranslation();
+  const date = item.downloadedAt
+    ? new Date(item.downloadedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : '';
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.06 }}>
+      <GlassCard className="overflow-hidden">
+        <div className="flex items-start gap-4 p-5 rtl:flex-row-reverse">
+          {/* Tool image */}
+          <div className="w-16 h-16 rounded-xl overflow-hidden flex-shrink-0 bg-white/5 border border-white/10 flex items-center justify-center relative">
+            {item.toolImageUrl ? (
+              <img src={item.toolImageUrl} alt={item.toolName} className="w-full h-full object-cover" />
+            ) : (
+              <Download className="w-6 h-6 text-white/20" />
+            )}
+          </div>
+          {/* Info */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-start justify-between gap-2 flex-wrap rtl:flex-row-reverse">
+              <div>
+                <h3 className="text-white font-bold text-base leading-tight mb-1.5">{item.toolName}</h3>
+                <div className="flex items-center gap-2 flex-wrap rtl:flex-row-reverse">
+                  {/* Free badge */}
+                  <span className="inline-flex items-center gap-1 rtl:flex-row-reverse px-2 py-0.5 rounded-full text-xs font-bold border text-emerald-300 bg-emerald-500/15 border-emerald-500/30">
+                    <Gift className="w-3 h-3" /> Free
+                  </span>
+                  {date && (
+                    <span className="flex items-center gap-1 rtl:flex-row-reverse text-white/30 text-xs">
+                      <Calendar className="w-3 h-3" />{t('account.downloadedOn')} {date}
+                    </span>
+                  )}
+                </div>
+              </div>
+              {item.toolSlug && (
+                <Link
+                  to={`/tools/${item.toolSlug}`}
+                  className="inline-flex items-center gap-1 rtl:flex-row-reverse text-xs font-semibold text-purple-400 hover:text-purple-300 transition-colors flex-shrink-0"
+                >
+                  {t('account.viewTool')} <ArrowUpRight className="w-3 h-3" />
+                </Link>
+              )}
+            </div>
+          </div>
+        </div>
+        {/* Actions */}
+        <div className="h-px bg-white/6 mx-5" />
+        <div className="px-5 py-4 flex flex-wrap gap-2 rtl:flex-row-reverse">
+          {item.downloadUrl && (
+            <a
+              href={item.downloadUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 rtl:flex-row-reverse px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/25 transition-all"
+            >
+              <Download className="w-3.5 h-3.5" />{t('account.reDownload')}
+            </a>
+          )}
+          {item.toolSlug && (
+            <Link
+              to={`/tools/${item.toolSlug}`}
+              className="inline-flex items-center gap-2 rtl:flex-row-reverse px-4 py-2 rounded-lg text-sm font-semibold bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 border border-purple-500/25 transition-all"
+            >
+              <Sparkles className="w-3.5 h-3.5" />{t('account.openToolPage')}
+            </Link>
+          )}
+        </div>
+      </GlassCard>
+    </motion.div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
 /* SecuritySection — change password + change email (shown when logged in)    */
 /* -------------------------------------------------------------------------- */
 function SecuritySection({
@@ -400,10 +485,10 @@ function SecuritySection({
             onClick={() => { setPwOpen(o => !o); setEmOpen(false); setPwErrors({}); setPwOk(false); }}
             className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/3 transition-colors"
           >
-            <div className="flex items-center gap-3">
-              <KeyRound className="w-4 h-4 text-white/40" />
+            <div className="flex items-center">
+              <KeyRound className="w-4 h-4 text-white/40 mr-3" />
               <div className="rtl:text-right">
-                <p className="text-white/80 text-sm font-semibold">{t('account.changePassword')}</p>
+                <p className="text-white/80 text-sm font-semibold text-left">{t('account.changePassword')}</p>
                 <p className="text-white/30 text-xs mt-0.5">{t('account.updatePasswordDesc')}</p>
               </div>
             </div>
@@ -462,10 +547,10 @@ function SecuritySection({
             onClick={() => { setEmOpen(o => !o); setPwOpen(false); setEmError(''); setEmOk(false); }}
             className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/3 transition-colors"
           >
-            <div className="flex items-center gap-3">
-              <Mail className="w-4 h-4 text-white/40" />
+            <div className="flex items-center">
+              <Mail className="w-4 h-4 text-white/40 mr-3" />
               <div className="rtl:text-right">
-                <p className="text-white/80 text-sm font-semibold">{t('account.changeEmail')}</p>
+                <p className="text-white/80 text-sm font-semibold text-left">{t('account.changeEmail')}</p>
                 <p className="text-white/30 text-xs mt-0.5">{t('account.currentEmail', { email: userEmail })}</p>
               </div>
             </div>
@@ -557,6 +642,10 @@ export function Account() {
   const [purchasesError,   setPurchasesError]   = useState('');
   const [supportOpen,      setSupportOpen]      = useState(false);
 
+  const [downloads,        setDownloads]        = useState<FreeDownload[]>([]);
+  const [downloadsLoading, setDownloadsLoading] = useState(false);
+  const [downloadsError,   setDownloadsError]   = useState('');
+
   // Review state
   const [userReviews, setUserReviews] = useState<Record<string, ReviewData | null>>({});
   const [reviewTarget, setReviewTarget] = useState<{
@@ -598,6 +687,7 @@ export function Account() {
         syncAndFetch(session.access_token);
       } else {
         fetchPurchases(session.access_token);
+        fetchDownloads(session.access_token);
       }
     }
   }, [session]);
@@ -627,7 +717,30 @@ export function Account() {
     } catch (err) {
       console.error('Sync error (non-fatal):', err);
     }
-    await Promise.all([fetchPurchases(token), fetchUserReviews(token)]);
+    await Promise.all([fetchPurchases(token), fetchUserReviews(token), fetchDownloads(token)]);
+  };
+
+  const fetchDownloads = async (token: string) => {
+    setDownloadsLoading(true); setDownloadsError('');
+    try {
+      const res  = await fetch(`${API_BASE}/user/downloads`, {
+        headers: {
+          Authorization: `Bearer ${publicAnonKey}`,
+          'X-User-Token': token,
+        },
+      });
+      const data = await res.json();
+      if (data.success) {
+        setDownloads(data.data || []);
+      } else {
+        setDownloadsError(data.error || 'Failed to load downloads');
+      }
+    } catch (err) {
+      console.error('Error fetching downloads:', err);
+      setDownloadsError('Could not load your downloads. Please try again.');
+    } finally {
+      setDownloadsLoading(false);
+    }
   };
 
   const fetchUserReviews = async (token: string) => {
@@ -917,6 +1030,7 @@ export function Account() {
   const lifetimeCount     = purchases.filter(p => p.status === 'active' && !p.expiresAt).length;
   const subscriptionCount = purchases.filter(p => p.status === 'active' && !!p.expiresAt).length;
   const totalSpent        = purchases.reduce((sum, p) => sum + (p.amount || 0), 0);
+  const downloadsCount    = downloads.length;
 
   return (
     <>
@@ -990,12 +1104,13 @@ export function Account() {
               </div>
 
               {/* Stats row */}
-              <div className="mt-5 pt-5 border-t border-white/8 grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="mt-5 pt-5 border-t border-white/8 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                 {[
-                  { label: t('account.activeLicenses'),    value: activeCount,                  icon: <Key className="w-3.5 h-3.5" />,         color: 'text-white',       glow: '' },
-                  { label: t('account.lifetimeLabel'),     value: lifetimeCount,                icon: <CheckCircle className="w-3.5 h-3.5" />, color: 'text-emerald-400', glow: 'drop-shadow-[0_0_6px_rgba(52,211,153,0.5)]' },
-                  { label: t('account.subscriptionsLabel'),value: subscriptionCount,             icon: <RefreshCw className="w-3.5 h-3.5" />,   color: 'text-purple-400',  glow: 'drop-shadow-[0_0_6px_rgba(168,85,247,0.5)]' },
-                  { label: t('account.totalSpentLabel'),   value: `$${totalSpent.toFixed(0)}`,  icon: <ShoppingBag className="w-3.5 h-3.5" />, color: 'text-sky-400',     glow: 'drop-shadow-[0_0_6px_rgba(56,189,248,0.5)]' },
+                  { label: t('account.activeLicenses'),      value: activeCount,                 icon: <Key className="w-3.5 h-3.5" />,         color: 'text-white',       glow: '' },
+                  { label: t('account.lifetimeLabel'),        value: lifetimeCount,               icon: <CheckCircle className="w-3.5 h-3.5" />, color: 'text-emerald-400', glow: 'drop-shadow-[0_0_6px_rgba(52,211,153,0.5)]' },
+                  { label: t('account.subscriptionsLabel'),   value: subscriptionCount,           icon: <RefreshCw className="w-3.5 h-3.5" />,   color: 'text-purple-400',  glow: 'drop-shadow-[0_0_6px_rgba(168,85,247,0.5)]' },
+                  { label: t('account.totalSpentLabel'),      value: `$${totalSpent.toFixed(0)}`, icon: <ShoppingBag className="w-3.5 h-3.5" />, color: 'text-sky-400',     glow: 'drop-shadow-[0_0_6px_rgba(56,189,248,0.5)]' },
+                  { label: t('account.freeDownloadsLabel'),   value: downloadsCount,              icon: <Gift className="w-3.5 h-3.5" />,        color: 'text-teal-400',    glow: 'drop-shadow-[0_0_6px_rgba(45,212,191,0.5)]' },
                 ].map(stat => (
                   <div key={stat.label} className="text-center p-3 rounded-xl bg-white/3 border border-white/6">
                     <div className={`flex items-center justify-center gap-1.5 ${stat.color} ${stat.glow} mb-1`}>
@@ -1120,6 +1235,69 @@ export function Account() {
                 </button>
               </GlassCard>
             </motion.div>
+          )}
+        </motion.div>
+
+        {/* ── My Downloads ── */}
+        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 }} className="mt-10">
+          <div className="flex items-center gap-3 mb-5">
+            <div className="w-8 h-8 rounded-lg bg-teal-500/15 border border-teal-500/25 flex items-center justify-center">
+              <Gift className="w-4 h-4 text-teal-400" />
+            </div>
+            <h2 className="text-xl font-bold text-white">{t('account.myDownloads')}</h2>
+            {downloads.length > 0 && (
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-teal-500/20 text-teal-300 border border-teal-500/30">{downloads.length}</span>
+            )}
+          </div>
+
+          {downloadsLoading && (
+            <div className="flex items-center gap-3 py-16 justify-center">
+              <div className="w-5 h-5 border-2 border-teal-400/40 border-t-teal-400 rounded-full animate-spin" />
+              <span className="text-white/40 text-sm">{t('account.loadingDownloads')}</span>
+            </div>
+          )}
+
+          {downloadsError && !downloadsLoading && (
+            <GlassCard className="p-6 border border-red-500/20 bg-red-500/5">
+              <div className="flex items-start gap-3 rtl:flex-row-reverse">
+                <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-red-400 text-sm font-semibold mb-1">{t('account.couldNotLoadDownloads')}</p>
+                  <p className="text-red-400/60 text-xs">{downloadsError}</p>
+                  <button onClick={() => session && fetchDownloads(session.access_token)} className="mt-3 text-sm text-teal-400 hover:text-teal-300 underline">
+                    {t('account.tryAgain')}
+                  </button>
+                </div>
+              </div>
+            </GlassCard>
+          )}
+
+          {!downloadsLoading && !downloadsError && downloads.length === 0 && (
+            <GlassCard className="overflow-hidden">
+              <div className="p-14 text-center">
+                <div className="relative w-16 h-16 mx-auto mb-5">
+                  <div className="absolute inset-0 rounded-full bg-teal-500/15 blur-2xl" />
+                  <div className="relative w-16 h-16 rounded-full border border-teal-500/20 bg-teal-500/8 flex items-center justify-center">
+                    <Gift className="w-7 h-7 text-white/15" />
+                  </div>
+                </div>
+                <h3 className="text-white/70 font-bold text-lg mb-2">{t('account.noDownloads')}</h3>
+                <p className="text-white/30 text-sm max-w-xs mx-auto leading-relaxed">{t('account.noDownloadsDesc')}</p>
+                <div className="flex justify-center mt-6">
+                  <NeonButton href="/tools" variant="primary">
+                    <Sparkles className="w-4 h-4 mr-2 rtl:mr-0 rtl:ml-2" />{t('account.browseTools')}
+                  </NeonButton>
+                </div>
+              </div>
+            </GlassCard>
+          )}
+
+          {!downloadsLoading && downloads.length > 0 && (
+            <div className="space-y-4">
+              {downloads.map((dl, i) => (
+                <DownloadCard key={`${dl.toolVersionId}-${i}`} item={dl} index={i} />
+              ))}
+            </div>
           )}
         </motion.div>
 

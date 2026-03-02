@@ -365,7 +365,15 @@
     "activationStep1": "قم بتنزيل ملف الإضافة وتثبيته في After Effects (ملف ← نصوص برمجية ← تثبيت ملف النص البرمجي).",
     "activationStep2": "افتح لوحة الإضافة (نافذة ← ملحقات ← اسم الإضافة).",
     "activationStep3": "الصق مفتاح الترخيص في حقل التفعيل وانقر على «تفعيل».",
-    "activationStep4": "أعد تشغيل After Effects إذا طُلب ذلك. أنت جاهز الآن!"
+    "activationStep4": "أعد تشغيل After Effects إذا طُلب ذلك. أنت جاهز الآن!",
+    "myDownloads": "تنزيلاتي",
+    "freeDownloadsLabel": "التنزيلات المجانية",
+    "noDownloads": "لا توجد تنزيلات مجانية بعد",
+    "noDownloadsDesc": "الأدوات المجانية التي تنزّلها أثناء تسجيل دخولك ستظهر هنا.",
+    "downloadedOn": "تم التنزيل",
+    "reDownload": "إعادة التنزيل",
+    "loadingDownloads": "جارٍ تحميل التنزيلات...",
+    "couldNotLoadDownloads": "تعذر تحميل التنزيلات"
   },
   "auth": {
     "signIn": "تسجيل الدخول",

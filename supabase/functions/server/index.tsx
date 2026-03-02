@@ -7,6 +7,61 @@ import { logger } from "npm:hono/logger";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { Resend } from "npm:resend";
 
+// ── Disposable email domain blocklist ────────────────────────────────────────
+// Common throwaway / temp-mail providers — blocked at signup time.
+const DISPOSABLE_DOMAINS = new Set([
+  'mailinator.com','mailinator2.com','guerrillamail.com','guerrillamail.info',
+  'guerrillamail.biz','guerrillamail.de','guerrillamail.net','guerrillamail.org',
+  'guerrillamailblock.com','sharklasers.com','grr.la','spam4.me',
+  'trashmail.com','trashmail.at','trashmail.io','trashmail.me','trashmail.net',
+  'trashmail.org','trashmail.de','trashmail.xyz','trashmail.se','trashdevil.com',
+  'trashdevil.de','dispostable.com','yopmail.com','yopmail.fr','yopmail.net',
+  'cool.fr.nf','jetable.fr.nf','nospam.ze.tc','nomail.xl.cx','mega.zik.dj',
+  'speed.1s.fr','courriel.fr.nf','moncourrier.fr.nf','monemail.fr.nf','monmail.fr.nf',
+  'mailnull.com','spamgourmet.com','spamgourmet.net','spamgourmet.org',
+  'spamfree24.org','spamfree24.de','spamfree24.info','spamfree24.biz',
+  'spamfree24.net','spamfree24.com','spamfree.eu','spamex.com','spaml.de','spaml.com',
+  'spamtrap.ro','spamcowboy.com','spamcowboy.net','spamcowboy.org',
+  'tempmail.com','tempmail.de','tempmail.eu','tempmail.it','tempmail.us',
+  'tempmail.win','tempmail2.com','temp-mail.org','temp-mail.de','temp-mail.ru',
+  'tempemail.com','tempemail.net','tempemail.us','tempinbox.com','tempinbox.co.uk',
+  'fakeinbox.com','fakeinbox.net','fakeinbox.org','fakemailgenerator.com',
+  'throwam.com','throwaway.email','throwamail.com','getairmail.com',
+  'filzmail.com','maileater.com','mailexpire.com','mailguard.me','mailnew.com',
+  'mailtemporaire.com','mailtemporaire.fr','mailbidon.com','mailbucket.org',
+  'discard.email','mintemail.com','selfdestructingmail.com','sofort-mail.de',
+  'wegwerfmail.de','wegwerfmail.net','wegwerfmail.org','wegwerfadresse.de',
+  'zehnminuten.de','zehnminutenmail.de','dodgeit.com','dodgit.com',
+  'mailismagic.com','mail-temporaire.fr','inboxalias.com','instantemailaddress.com',
+  'owlpic.com','tempalias.com','incognitomail.com','incognitomail.net',
+  'incognitomail.org','rcpt.at','rejectmail.com','spam.la','spam.su',
+  'spambox.us','spambox.info','mailde.icu','mailjunk.cf','mailjunk.ga',
+  'mailjunk.gq','mailjunk.ml','mailjunk.tk','mailfree.ga',
+]);
+
+// ── Domain email validation (MX record + disposable check) ───────────────────
+async function checkEmailDomain(email: string): Promise<{ ok: boolean; reason?: string }> {
+  const domain = email.split('@')[1]?.toLowerCase();
+  if (!domain) return { ok: false, reason: 'Invalid email address.' };
+
+  // Layer 2a — disposable blocklist (instant, no network)
+  if (DISPOSABLE_DOMAINS.has(domain)) {
+    return { ok: false, reason: 'Disposable email addresses are not allowed. Please use a real inbox.' };
+  }
+
+  // Layer 2b — MX record check (Deno built-in DNS, no extra package)
+  try {
+    const records = await Deno.resolveDns(domain, 'MX');
+    if (!records || records.length === 0) {
+      return { ok: false, reason: 'This email domain has no mail server. Please use a valid email address.' };
+    }
+  } catch {
+    return { ok: false, reason: 'Could not verify the email domain. Please use a valid email address.' };
+  }
+
+  return { ok: true };
+}
+
 // Service-role client — for DB operations and admin tasks (bypasses RLS)
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -563,6 +618,193 @@ app.post('/make-server-e07959ec/login', async (c) => {
   } catch (error) {
     console.log('Login error:', error);
     return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
+// ── Public user registration with OTP email verification ─────────────────────
+// Layer 2: MX check + disposable blocklist
+// Layer 3: OTP via Resend — account is NOT confirmed until /auth/register/verify
+
+app.post('/make-server-e07959ec/auth/register', async (c) => {
+  try {
+    const { email, password, fullName } = await c.req.json();
+
+    if (!email || !password) {
+      return c.json({ success: false, error: 'Email and password are required.' }, 400);
+    }
+
+    const cleanEmail = email.toLowerCase().trim();
+
+    // Basic format
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      return c.json({ success: false, error: 'Invalid email address.' }, 400);
+    }
+    if (password.length < 8) {
+      return c.json({ success: false, error: 'Password must be at least 8 characters.' }, 400);
+    }
+
+    // Layer 2: domain check (disposable blocklist + MX records)
+    const domainCheck = await checkEmailDomain(cleanEmail);
+    if (!domainCheck.ok) {
+      console.log(`[register] Domain blocked for ${cleanEmail}: ${domainCheck.reason}`);
+      return c.json({ success: false, error: domainCheck.reason }, 400);
+    }
+
+    // Create unconfirmed user (email_confirm: false → can't sign in yet)
+    const { data, error: createError } = await supabase.auth.admin.createUser({
+      email: cleanEmail,
+      password,
+      user_metadata: { full_name: fullName || '' },
+      email_confirm: false,
+    });
+
+    if (createError) {
+      console.log(`[register] createUser error: ${createError.message}`);
+      // Surface duplicate-email as a friendly message
+      if (createError.message.toLowerCase().includes('already registered') ||
+          createError.message.toLowerCase().includes('already been registered')) {
+        return c.json({ success: false, error: 'An account with this email already exists.' }, 409);
+      }
+      return c.json({ success: false, error: createError.message }, 400);
+    }
+
+    const userId    = data.user.id;
+    const safeEmail = btoa(cleanEmail).replace(/=/g, '');
+    const otpKey    = `signup_otp:${safeEmail}`;
+    const otp       = String(Math.floor(100000 + Math.random() * 900000));
+    const expiresAt = Date.now() + 15 * 60 * 1000; // 15 min
+
+    await kv.set(otpKey, { code: otp, userId, email: cleanEmail, expiresAt, attempts: 0 });
+
+    console.log(`[register] ⏳ OTP generated for ${cleanEmail} (userId: ${userId})`);
+
+    // Layer 3: send OTP via Resend
+    const resendKey = Deno.env.get('RESEND_API_KEY');
+    if (resendKey) {
+      const resend      = new Resend(resendKey);
+      const displayCode = `${otp.slice(0, 3)} ${otp.slice(3)}`;
+      const year        = new Date().getFullYear();
+
+      await resend.emails.send({
+        from:    'Fastoosh <noreply@contact.fastoosh.com>',
+        to:      cleanEmail,
+        subject: `Your Fastoosh verification code: ${displayCode}`,
+        text:    `Your Fastoosh verification code is: ${otp}\n\nEnter this code to complete your account creation. It expires in 15 minutes.\n\nIf you didn't create a Fastoosh account, you can safely ignore this email — no action is needed.\n\n— Fastoosh\nhttps://fastoosh.com`,
+        html: `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Verify your Fastoosh account</title>
+</head>
+<body style="margin:0;padding:0;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#111111;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;">
+    <tr>
+      <td align="center" style="padding:40px 16px;">
+        <table role="presentation" width="100%" style="max-width:520px;" cellpadding="0" cellspacing="0">
+          <tr>
+            <td style="padding-bottom:32px;">
+              <span style="font-size:20px;font-weight:800;letter-spacing:-0.5px;color:#111111;">Fastoosh</span>
+            </td>
+          </tr>
+          <tr>
+            <td style="border-top:2px solid #111111;padding-top:28px;">
+              <p style="margin:0 0 6px;font-size:13px;color:#888888;text-transform:uppercase;letter-spacing:0.08em;">Account verification</p>
+              <h1 style="margin:0 0 20px;font-size:22px;font-weight:700;color:#111111;line-height:1.3;">Verify your email address</h1>
+              <p style="margin:0 0 24px;font-size:15px;color:#444444;line-height:1.6;">
+                Enter this code in the Fastoosh sign-up form to activate your account:
+              </p>
+              <div style="margin:0 0 28px;padding:24px;background:#f5f5f5;border-radius:10px;text-align:center;">
+                <span style="font-size:42px;font-weight:800;letter-spacing:10px;color:#111111;font-variant-numeric:tabular-nums;">${displayCode}</span>
+              </div>
+              <p style="margin:0;font-size:12px;color:#999999;line-height:1.7;border-top:1px solid #eeeeee;padding-top:20px;">
+                This code expires in 15 minutes. If you didn't create a Fastoosh account, you can safely ignore this email — nothing will happen.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding-top:32px;">
+              <p style="margin:0;font-size:11px;color:#bbbbbb;">© ${year} Fastoosh · <a href="https://fastoosh.com" style="color:#bbbbbb;text-decoration:none;">fastoosh.com</a></p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`,
+      });
+      console.log(`[register] ✉️  OTP emailed to ${cleanEmail}`);
+    } else {
+      console.warn('[register] RESEND_API_KEY not set — OTP email not sent');
+    }
+
+    return c.json({ success: true, message: 'Verification code sent.' });
+  } catch (err) {
+    console.log(`[register] Error: ${err}`);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// POST /auth/register/verify — confirm 6-digit OTP, activate account
+app.post('/make-server-e07959ec/auth/register/verify', async (c) => {
+  try {
+    const { email, otp } = await c.req.json();
+
+    if (!email || !otp) {
+      return c.json({ success: false, error: 'Email and code are required.' }, 400);
+    }
+
+    const cleanEmail = email.toLowerCase().trim();
+    const safeEmail  = btoa(cleanEmail).replace(/=/g, '');
+    const otpKey     = `signup_otp:${safeEmail}`;
+    const entry      = await kv.get(otpKey);
+
+    if (!entry) {
+      return c.json({ success: false, error: 'Code not found. Please sign up again.' }, 404);
+    }
+
+    if (Date.now() > entry.expiresAt) {
+      await kv.del(otpKey);
+      // Clean up the unconfirmed user so the email can be reused
+      await supabase.auth.admin.deleteUser(entry.userId).catch(() => {});
+      return c.json({ success: false, error: 'Code expired. Please sign up again.', expired: true }, 410);
+    }
+
+    const attempts = (entry.attempts || 0) + 1;
+    if (attempts > 5) {
+      await kv.del(otpKey);
+      await supabase.auth.admin.deleteUser(entry.userId).catch(() => {});
+      return c.json({ success: false, error: 'Too many incorrect attempts. Please sign up again.', tooMany: true }, 429);
+    }
+
+    if (entry.code !== String(otp).replace(/\s/g, '')) {
+      await kv.set(otpKey, { ...entry, attempts });
+      const remaining = 5 - attempts;
+      return c.json({
+        success: false,
+        error: remaining > 0
+          ? `Incorrect code. ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`
+          : 'Too many incorrect attempts. Please sign up again.',
+      }, 400);
+    }
+
+    // ✅ Correct — flip email_confirm → true so the user can now sign in
+    const { error: confirmErr } = await supabase.auth.admin.updateUserById(entry.userId, {
+      email_confirm: true,
+    });
+
+    if (confirmErr) {
+      console.log(`[register/verify] Error confirming user: ${confirmErr.message}`);
+      return c.json({ success: false, error: 'Failed to activate account. Please try again.' }, 500);
+    }
+
+    await kv.del(otpKey);
+    console.log(`[register/verify] ✅ Account activated: ${cleanEmail}`);
+    return c.json({ success: true });
+  } catch (err) {
+    console.log('[register/verify] Error:', err);
+    return c.json({ success: false, error: 'Server error. Please try again.' }, 500);
   }
 });
 
@@ -3585,7 +3827,10 @@ app.post("/make-server-e07959ec/tool-support", async (c) => {
 
 // ========== FREE TOOL DOWNLOAD LEAD CAPTURE ==========
 
-// POST /free-download — records guest email (or signed-in user) before download
+// POST /free-download — saves lead as unverified, generates a 6-digit OTP,
+// stores it in KV (10-min expiry), and emails it. The user enters the code
+// directly in FreeDownloadModal; POST /free-download/verify marks the lead
+// verified and returns { downloadUrl } so JS starts the download immediately.
 app.post('/make-server-e07959ec/free-download', async (c) => {
   try {
     const { email, toolVersionId, toolName, toolSlug } = await c.req.json();
@@ -3594,12 +3839,11 @@ app.post('/make-server-e07959ec/free-download', async (c) => {
       return c.json({ success: false, error: 'email and toolVersionId are required' }, 400);
     }
 
-    // Basic email validation
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return c.json({ success: false, error: 'Invalid email address' }, 400);
     }
 
-    // Verify the tool version exists and is Free
+    // Verify tool version exists and is Free
     const { data: version, error: vErr } = await supabase
       .from('tool_versions')
       .select('id, version_type, download_url')
@@ -3615,32 +3859,226 @@ app.post('/make-server-e07959ec/free-download', async (c) => {
       return c.json({ success: false, error: 'This endpoint is only for free tool downloads' }, 400);
     }
 
-    // Store lead in KV — keyed per version+email so we don't duplicate
+    if (!version.download_url) {
+      console.log(`[free-download] No download_url set for version: ${toolVersionId}`);
+      return c.json({ success: false, error: 'No download URL configured for this tool version' }, 400);
+    }
+
+    // ── Signed-in fast path: skip OTP, record as verified immediately ─────────
+    const userToken = c.req.header('X-User-Token') || '';
+    if (userToken) {
+      const { data: { user: authUser }, error: authErr } = await supabase.auth.getUser(userToken);
+      if (!authErr && authUser) {
+        const userId    = authUser.id;
+        const safeEmail = btoa(email.toLowerCase().trim()).replace(/=/g, '');
+        const now       = new Date().toISOString();
+
+        // Fetch tool image for the downloads list
+        const { data: toolRow } = await supabase
+          .from('tools')
+          .select('id, image_url')
+          .eq('slug', toolSlug)
+          .maybeSingle();
+
+        const leadData = {
+          email:         email.toLowerCase().trim(),
+          toolVersionId,
+          toolName:      toolName || '',
+          toolSlug:      toolSlug || '',
+          requestedAt:   now,
+          downloadedAt:  now,
+          emailVerified: true,
+          verifiedAt:    now,
+          userId,
+        };
+
+        const kvKey  = `lead:free:${toolVersionId}:${safeEmail}`;
+        const logKey = `lead:free:log:${Date.now()}:${safeEmail}`;
+        await kv.set(kvKey,  leadData);
+        await kv.set(logKey, leadData);
+
+        // User-scoped download index (for Account page)
+        const dlKey = `user:dl:${userId}:${toolVersionId}`;
+        await kv.set(dlKey, {
+          userId,
+          toolVersionId,
+          toolId:       toolRow?.id        || '',
+          toolName:     toolName           || '',
+          toolSlug:     toolSlug           || '',
+          toolImageUrl: toolRow?.image_url || '',
+          downloadUrl:  version.download_url,
+          downloadedAt: now,
+        });
+
+        console.log(`[free-download] ✅ Signed-in fast path: ${email} → ${toolName}`);
+        return c.json({ success: true, downloadUrl: version.download_url, skipOtp: true });
+      }
+    }
+
+    // Save lead as UNVERIFIED — flipped to true only after OTP verification
     const safeEmail = btoa(email.toLowerCase().trim()).replace(/=/g, '');
     const kvKey     = `lead:free:${toolVersionId}:${safeEmail}`;
     const logKey    = `lead:free:log:${Date.now()}:${safeEmail}`;
+    const now       = new Date().toISOString();
 
     const leadData = {
       email:         email.toLowerCase().trim(),
       toolVersionId,
-      toolName:      toolName  || '',
-      toolSlug:      toolSlug  || '',
-      downloadedAt:  new Date().toISOString(),
+      toolName:      toolName || '',
+      toolSlug:      toolSlug || '',
+      requestedAt:   now,
+      downloadedAt:  now,
+      emailVerified: false,
     };
 
-    // Upsert deduplicated entry + append to log
     await kv.set(kvKey,  leadData);
     await kv.set(logKey, leadData);
 
-    console.log(`[free-download] ✅ Lead recorded: ${email} → ${toolName}`);
+    // 6-digit OTP — 10-minute window, max 5 verification attempts
+    const otp       = String(Math.floor(100000 + Math.random() * 900000));
+    const otpKey    = `otp:${toolVersionId}:${safeEmail}`;
+    const expiresAt = Date.now() + 10 * 60 * 1000;
 
-    return c.json({
-      success:     true,
-      downloadUrl: version.download_url,
+    await kv.set(otpKey, {
+      code:         otp,
+      expiresAt,
+      attempts:     0,
+      email:        email.toLowerCase().trim(),
+      toolVersionId,
+      toolName:     toolName || '',
+      downloadUrl:  version.download_url,
+      kvKey,
+      logKey,
     });
+
+    console.log(`[free-download] ⏳ OTP generated for ${email} → ${toolName}`);
+
+    const resendKey = Deno.env.get('RESEND_API_KEY');
+    if (resendKey) {
+      const resend      = new Resend(resendKey);
+      const year        = new Date().getFullYear();
+      const name        = toolName || 'your Fastoosh tool';
+      const displayCode = `${otp.slice(0, 3)} ${otp.slice(3)}`; // "XXX XXX"
+
+      await resend.emails.send({
+        from:    'Fastoosh <noreply@contact.fastoosh.com>',
+        to:      email.toLowerCase().trim(),
+        subject: `Your download code: ${displayCode}`,
+        text:    `Your download code for ${name} is: ${otp}\n\nEnter this code in the Fastoosh website to start your download.\nThe code expires in 10 minutes.\n\nIf you didn't request this, you can safely ignore this email.\n\n— Fastoosh\nhttps://fastoosh.com`,
+        html: `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Your download code</title>
+</head>
+<body style="margin:0;padding:0;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#111111;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;">
+    <tr>
+      <td align="center" style="padding:40px 16px;">
+        <table role="presentation" width="100%" style="max-width:520px;" cellpadding="0" cellspacing="0">
+          <tr>
+            <td style="padding-bottom:32px;">
+              <span style="font-size:20px;font-weight:800;letter-spacing:-0.5px;color:#111111;">Fastoosh</span>
+            </td>
+          </tr>
+          <tr>
+            <td style="border-top:2px solid #111111;padding-top:28px;">
+              <p style="margin:0 0 6px;font-size:13px;color:#888888;text-transform:uppercase;letter-spacing:0.08em;">Download code</p>
+              <h1 style="margin:0 0 20px;font-size:22px;font-weight:700;color:#111111;line-height:1.3;">${name}</h1>
+              <p style="margin:0 0 24px;font-size:15px;color:#444444;line-height:1.6;">
+                Enter this code in the Fastoosh website to start your download:
+              </p>
+              <div style="margin:0 0 28px;padding:24px;background:#f5f5f5;border-radius:10px;text-align:center;">
+                <span style="font-size:42px;font-weight:800;letter-spacing:10px;color:#111111;font-variant-numeric:tabular-nums;">${displayCode}</span>
+              </div>
+              <p style="margin:0;font-size:12px;color:#999999;line-height:1.7;border-top:1px solid #eeeeee;padding-top:20px;">
+                This code expires in 10 minutes. If you didn't request this, ignore this email — no account was created.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding-top:32px;">
+              <p style="margin:0;font-size:11px;color:#bbbbbb;">© ${year} Fastoosh · <a href="https://fastoosh.com" style="color:#bbbbbb;text-decoration:none;">fastoosh.com</a></p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`,
+      });
+      console.log(`[free-download] ✉️  OTP emailed to ${email}`);
+    } else {
+      console.warn('[free-download] RESEND_API_KEY not set — OTP email not sent');
+    }
+
+    return c.json({ success: true });
   } catch (error) {
     console.log(`[free-download] Error: ${error}`);
     return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
+// POST /free-download/verify — user types the 6-digit OTP from their inbox
+// directly into FreeDownloadModal. Verifies the code, marks lead verified,
+// returns { downloadUrl } so the React modal can start the download instantly.
+app.post('/make-server-e07959ec/free-download/verify', async (c) => {
+  try {
+    const { email, code, toolVersionId } = await c.req.json();
+
+    if (!email || !code || !toolVersionId) {
+      return c.json({ success: false, error: 'email, code, and toolVersionId are required' }, 400);
+    }
+
+    const safeEmail = btoa(email.toLowerCase().trim()).replace(/=/g, '');
+    const otpKey    = `otp:${toolVersionId}:${safeEmail}`;
+    const entry     = await kv.get(otpKey);
+
+    if (!entry) {
+      return c.json({ success: false, error: 'Code not found. Please request a new one.' }, 404);
+    }
+
+    if (Date.now() > entry.expiresAt) {
+      await kv.del(otpKey);
+      return c.json({ success: false, error: 'Code expired. Please request a new one.', expired: true }, 410);
+    }
+
+    const attempts = (entry.attempts || 0) + 1;
+    if (attempts > 5) {
+      await kv.del(otpKey);
+      return c.json({ success: false, error: 'Too many incorrect attempts. Please request a new code.', tooMany: true }, 429);
+    }
+
+    if (entry.code !== String(code).replace(/\s/g, '')) {
+      await kv.set(otpKey, { ...entry, attempts });
+      const remaining = 5 - attempts;
+      return c.json({
+        success: false,
+        error: remaining > 0
+          ? `Incorrect code. ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`
+          : 'Too many incorrect attempts. Please request a new code.',
+      }, 400);
+    }
+
+    // ✅ Correct — mark lead verified, delete OTP (single-use)
+    const verifiedAt = new Date().toISOString();
+    const updates    = { emailVerified: true, verifiedAt };
+
+    const existing = await kv.get(entry.kvKey);
+    if (existing) await kv.set(entry.kvKey, { ...existing, ...updates });
+
+    const logExisting = await kv.get(entry.logKey);
+    if (logExisting) await kv.set(entry.logKey, { ...logExisting, ...updates });
+
+    await kv.del(otpKey);
+
+    console.log(`[dl-verify] ✅ Verified: ${email} → ${entry.toolName}`);
+    return c.json({ success: true, downloadUrl: entry.downloadUrl, toolName: entry.toolName || '' });
+  } catch (err) {
+    console.log('[dl-verify] Error:', err);
+    return c.json({ success: false, error: 'Server error. Please try again.' }, 500);
   }
 });
 
@@ -3656,6 +4094,21 @@ app.get('/make-server-e07959ec/free-download/leads', requireAuth, async (c) => {
     return c.json({ success: true, data: leads, count: leads.length });
   } catch (error) {
     console.log(`[free-download/leads] Error: ${error}`);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
+// GET /user/downloads — authenticated user: list all free tools they have downloaded
+app.get('/make-server-e07959ec/user/downloads', requireUserAuth, async (c) => {
+  try {
+    const user = c.get('user') as { id: string; email: string };
+    const entries: any[] = await kv.getByPrefix(`user:dl:${user.id}:`);
+    // Sort newest first
+    entries.sort((a, b) => new Date(b.downloadedAt || 0).getTime() - new Date(a.downloadedAt || 0).getTime());
+    console.log(`[user/downloads] ${user.email} → ${entries.length} download(s)`);
+    return c.json({ success: true, data: entries });
+  } catch (error) {
+    console.log(`[user/downloads] Error: ${error}`);
     return c.json({ success: false, error: String(error) }, 500);
   }
 });
@@ -3696,6 +4149,8 @@ app.get('/make-server-e07959ec/leads', requireAuth, async (c) => {
       toolCategory:  versionCategoryMap[l.toolVersionId] || '',
       toolVersionId: l.toolVersionId || '',
       createdAt:     l.downloadedAt  || '',
+      emailVerified: l.emailVerified === true,
+      verifiedAt:    l.verifiedAt    || null,
     }));
 
     // ── 2. Supabase Auth registered users ───────────────────────────────────
