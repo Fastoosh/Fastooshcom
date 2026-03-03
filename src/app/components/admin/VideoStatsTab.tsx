@@ -341,8 +341,8 @@ export function VideoStatsTab() {
               {sorted.map((stat, i) => {
                 const maxViews = Math.max(...projectStats.map(s => s.views), 1);
                 const maxWatch = Math.max(...projectStats.map(s => s.totalWatchSeconds), 1);
-                const viewsBar   = Math.round((stat.views / maxViews) * 100);
-                const watchBar   = Math.round((stat.totalWatchSeconds / maxWatch) * 100);
+                const viewsBar    = Math.round((stat.views / maxViews) * 100);
+                const watchBar    = Math.round((stat.totalWatchSeconds / maxWatch) * 100);
                 const accentColor = PALETTE[i % PALETTE.length];
                 return (
                   <motion.div

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import React from 'react';
 import { useNavigate } from 'react-router';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
@@ -21,7 +21,9 @@ import { bustApiCache } from '../utils/api';
 import { StyleTab } from '../components/admin/StyleTab';
 import { TranslationTab } from '../components/admin/TranslationTab';
 import { ReferrersTab } from '../components/admin/ReferrersTab';
+import { ResetTab } from '../components/admin/ResetTab';
 import { VimeoPicker } from '../components/admin/VimeoPicker';
+import { GuideTab } from '../components/admin/GuideTab';
 
 import { ScrollingGradientBackground } from '../components/shared/ScrollingGradientBackground';
 
@@ -116,6 +118,7 @@ interface Settings {
   projectCategories?: string[];
   toolCategories?: string[];
   toolStatuses?: { label: string; color: string }[];
+  clientLogos?: { name: string; imageUrl?: string }[];
   socialLinks?: {
     linkedin?: string;
     instagram?: string;
@@ -159,6 +162,40 @@ export function Admin() {
   const [newProjectCat, setNewProjectCat] = useState('');
   const [newToolCat, setNewToolCat] = useState('');
   const [newToolStatusLabel, setNewToolStatusLabel] = useState('');
+
+  // Client logos management (Settings tab)
+  const [newLogoName,    setNewLogoName]    = useState('');
+  const [newLogoUrl,     setNewLogoUrl]     = useState('');
+  const [logoSaving,     setLogoSaving]     = useState(false);
+  const [logoUploading,  setLogoUploading]  = useState(false);
+  const logoFileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleLogoFileUpload = async (file: File) => {
+    setLogoUploading(true);
+    try {
+      const token = localStorage.getItem('admin_token');
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch(`${API_BASE}/upload-image`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${publicAnonKey}`,
+          'X-Admin-Token': token || '',
+        },
+        body: formData,
+      });
+      const data = await res.json();
+      if (data.success) {
+        setNewLogoUrl(data.data.url);
+      } else {
+        console.error('Logo upload failed:', data.error);
+      }
+    } catch (e) {
+      console.error('Logo upload error:', e);
+    } finally {
+      setLogoUploading(false);
+    }
+  };
   const [newToolStatusColor, setNewToolStatusColor] = useState('purple');
   const [catSaving, setCatSaving] = useState(false);
 
@@ -729,6 +766,8 @@ export function Admin() {
             <TabsTrigger value="seo">SEO</TabsTrigger>
             <TabsTrigger value="traffic">🌐 Traffic</TabsTrigger>
             <TabsTrigger value="translations">🌍 Translations</TabsTrigger>
+            <TabsTrigger value="reset" className="text-red-400 data-[state=active]:text-red-300">⚠️ Reset</TabsTrigger>
+            <TabsTrigger value="guide">📖 Guide</TabsTrigger>
           </TabsList>
 
           {/* DASHBOARD TAB */}
@@ -739,6 +778,16 @@ export function Admin() {
           {/* TRAFFIC TAB */}
           <TabsContent value="traffic">
             <ReferrersTab />
+          </TabsContent>
+
+          {/* RESET TAB */}
+          <TabsContent value="reset">
+            <ResetTab />
+          </TabsContent>
+
+          {/* GUIDE TAB */}
+          <TabsContent value="guide">
+            <GuideTab />
           </TabsContent>
 
           {/* PROJECTS TAB */}
@@ -1235,6 +1284,160 @@ export function Admin() {
                   <p className="text-gray-600 text-xs mt-0.5">Used on the "Work with us" page for the discovery call booking widget.</p>
                 </div>
                 
+              </div>
+            </GlassCard>
+
+            {/* CLIENT LOGOS */}
+            <GlassCard className="p-6 mt-6">
+              <h2 className="text-xl font-bold text-white mb-1">Client Logos</h2>
+              <p className="text-gray-400 text-sm mb-5">
+                These scroll across the "Trusted by" banner on the About page. Add a name (required) and optionally paste an image URL for the logo. Hover over a logo in the ticker to pause the animation.
+              </p>
+
+              {/* Current logos */}
+              <div className="space-y-2 mb-4">
+                {(settings.clientLogos || []).length === 0 && (
+                  <p className="text-gray-500 text-sm italic">No logos yet — add one below. The About page will show the built-in placeholder names until you save at least one entry.</p>
+                )}
+                {(settings.clientLogos || []).map((logo, index) => (
+                  <div key={index} className="flex items-center gap-3 p-3 bg-white/5 border border-white/10 rounded-xl">
+                    {logo.imageUrl ? (
+                      <img
+                        src={logo.imageUrl}
+                        alt={logo.name}
+                        className="h-8 w-16 object-contain rounded bg-white/5 border border-white/10 p-1 flex-shrink-0"
+                      />
+                    ) : (
+                      <div className="h-8 w-16 flex items-center justify-center rounded bg-white/5 border border-white/10 flex-shrink-0">
+                        <span className="text-white/30 text-xs">No img</span>
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white text-sm font-semibold truncate">{logo.name}</p>
+                      {logo.imageUrl && (
+                        <p className="text-white/30 text-xs truncate">{logo.imageUrl}</p>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      disabled={logoSaving}
+                      onClick={async () => {
+                        const updated = (settings.clientLogos || []).filter((_, i) => i !== index);
+                        setLogoSaving(true);
+                        try { await saveSettings({ ...settings, clientLogos: updated }); } catch {}
+                        setLogoSaving(false);
+                      }}
+                      className="w-7 h-7 flex items-center justify-center rounded-lg text-white/40 hover:text-red-400 hover:bg-white/10 transition-colors disabled:opacity-40 flex-shrink-0"
+                      title={`Remove "${logo.name}"`}
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              {/* Add new logo */}
+              <div className="border border-white/10 rounded-xl p-4 bg-white/[0.02] space-y-3">
+                <p className="text-white/50 text-xs font-semibold uppercase tracking-wider">Add a logo</p>
+
+                {/* Hidden file input */}
+                <input
+                  ref={logoFileInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/jpg,image/webp,image/svg+xml,image/gif"
+                  className="hidden"
+                  onChange={e => {
+                    const file = e.target.files?.[0];
+                    if (file) handleLogoFileUpload(file);
+                    e.target.value = ''; // reset so same file can be re-selected
+                  }}
+                />
+
+                {/* Row 1: name + image input area */}
+                <div className="flex gap-2 flex-wrap">
+                  <Input
+                    placeholder="Company name (e.g. Apple)"
+                    value={newLogoName}
+                    onChange={e => setNewLogoName(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); document.getElementById('logo-url-input')?.focus(); } }}
+                    className="bg-black/50 border-white/20 text-white flex-1 min-w-[160px]"
+                    disabled={logoSaving || logoUploading}
+                  />
+
+                  {/* URL input + clear button */}
+                  <div className="relative flex-1 min-w-[180px]">
+                    <Input
+                      id="logo-url-input"
+                      placeholder="Paste image URL…"
+                      value={newLogoUrl}
+                      onChange={e => setNewLogoUrl(e.target.value)}
+                      className="bg-black/50 border-white/20 text-white pr-8 w-full"
+                      disabled={logoSaving || logoUploading}
+                    />
+                    {newLogoUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setNewLogoUrl('')}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/70 transition-colors"
+                        title="Clear URL"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Upload button */}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={logoSaving || logoUploading}
+                    onClick={() => logoFileInputRef.current?.click()}
+                    className="cursor-pointer whitespace-nowrap border-white/20 text-white/70 hover:bg-white/10 hover:text-white disabled:opacity-40"
+                    title="Upload a logo image from your computer"
+                  >
+                    {logoUploading ? (
+                      <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />Uploading…</>
+                    ) : (
+                      <><Upload className="w-4 h-4 mr-2" />Upload</>
+                    )}
+                  </Button>
+
+                  {/* Add logo button */}
+                  <Button
+                    type="button"
+                    disabled={logoSaving || logoUploading || !newLogoName.trim()}
+                    onClick={async () => {
+                      if (!newLogoName.trim()) return;
+                      const updated = [...(settings.clientLogos || []), { name: newLogoName.trim(), imageUrl: newLogoUrl.trim() || undefined }];
+                      setLogoSaving(true);
+                      try { await saveSettings({ ...settings, clientLogos: updated }); setNewLogoName(''); setNewLogoUrl(''); } catch {}
+                      setLogoSaving(false);
+                    }}
+                    className="cursor-pointer whitespace-nowrap bg-purple-600 hover:bg-purple-700 text-white disabled:opacity-50"
+                  >
+                    {logoSaving ? (
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <><Plus className="w-4 h-4 mr-1" />Add Logo</>
+                    )}
+                  </Button>
+                </div>
+
+                {/* Live image preview */}
+                {newLogoUrl.trim() && (
+                  <div className="flex items-center gap-3 pt-1">
+                    <span className="text-white/30 text-xs">Preview:</span>
+                    <div className="h-10 px-3 flex items-center rounded-lg bg-white/5 border border-white/10">
+                      <img
+                        src={newLogoUrl.trim()}
+                        alt="preview"
+                        className="h-7 w-auto max-w-[120px] object-contain"
+                        onError={e => { (e.target as HTMLImageElement).parentElement!.style.display = 'none'; }}
+                      />
+                    </div>
+                    <span className="text-white/20 text-xs truncate max-w-[200px]">{newLogoUrl.trim()}</span>
+                  </div>
+                )}
               </div>
             </GlassCard>
           </TabsContent>

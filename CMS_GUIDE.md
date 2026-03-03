@@ -1,7 +1,7 @@
 # Fastoosh CMS Setup Guide
 
 ## Overview
-Your Fastoosh website now has a fully functional CMS (Content Management System) powered by Supabase. You can manage projects, tools, and team members dynamically without touching the code.
+Your Fastoosh website now has a fully functional CMS (Content Management System) powered by Supabase. You can manage projects, tools, team members, and site-wide settings dynamically without touching the code.
 
 ## Quick Start
 
@@ -18,6 +18,7 @@ Visit `/admin` to manage your content:
 - Add/edit/delete projects
 - Add/edit/delete tools
 - Add/edit/delete team members
+- Configure site-wide settings (client logos, etc.)
 
 **URL:** `https://your-site.com/admin`
 
@@ -25,7 +26,7 @@ Visit `/admin` to manage your content:
 Your content automatically appears on these pages:
 - `/projects` - Browse all projects
 - `/tools` - Browse all tools
-- `/about` - See team members (if integrated)
+- `/about` - See team members and "Trusted By" client logos
 
 ## Key Features
 
@@ -45,8 +46,29 @@ Your content automatically appears on these pages:
   - Profile images
   - Social links
 
+- **Settings Tab**: Site-wide configuration
+  - **Client Logos Manager** — powers the "Trusted By" marquee on the About page
+    - Add a logo by entering a **Name** and either:
+      - Pasting a public **Image URL** directly, or
+      - Clicking **Upload** to pick a local file — the file is sent to the `/upload-image` endpoint and the returned public URL is auto-filled
+    - A **live preview** of the logo image is shown before saving
+    - Each logo can be **deleted** individually
+    - Save all changes with the **Save Settings** button
+
+### "Trusted By" Marquee (About Page)
+The client logos you configure in the Settings tab power a smooth infinite ticker on the About page:
+
+- **Hidden until configured** — the section (including the heading) is completely hidden while the page is loading and remains hidden if no logos have been saved yet. There are no static placeholder names.
+- **Equal spacing** — uses `justify-content: space-around` so the gap between every pair of logos — including the seamless loop point — is mathematically identical.
+- **Consistent sizing** — every logo is rendered inside a fixed **120 × 64 px** bounding box with `object-fit: contain`, so square logos and wide/rectangular logos both appear at the same perceived scale without distortion.
+- **Auto-repeat** — if fewer than 6 logos are configured, they are automatically repeated within each animation frame so the ticker never looks sparse.
+- **Pauses on hover** — the animation freezes when the user hovers over the strip, making it easy to read logos.
+- **Edge fade** — a CSS `mask-image` gradient fades the logos in/out at the left and right edges regardless of the background color behind the card.
+
 ### Fallback Content
 If the API fails or returns no data, the website shows fallback content so your site never breaks. Once you add content via the admin panel, it will override the fallback data.
+
+> **Note:** The "Trusted By" section has **no** fallback logos by design. It only renders when real logos are saved in Settings.
 
 ## Database Structure
 
@@ -54,7 +76,18 @@ All content is stored in Supabase using the KV (Key-Value) store:
 - `project:{id}` - Project entries
 - `tool:{id}` - Tool entries
 - `team:{id}` - Team member entries
-- `settings:global` - Site-wide settings
+- `settings:global` - Site-wide settings (includes `clientLogos` array)
+
+### `clientLogos` schema (inside `settings:global`)
+```json
+{
+  "clientLogos": [
+    { "name": "Acme Corp", "imageUrl": "https://..." },
+    { "name": "Studio X",  "imageUrl": "https://..." }
+  ]
+}
+```
+Each entry requires a `name` string and an optional `imageUrl`. If `imageUrl` is omitted the logo name is rendered as styled text in the ticker.
 
 ## API Endpoints
 
@@ -78,8 +111,14 @@ The backend provides these endpoints:
 - `DELETE /team/:id` - Delete team member
 
 ### Settings
-- `GET /settings` - Get site settings
-- `POST /settings` - Update site settings
+- `GET /settings` - Get site settings (includes `clientLogos`)
+- `POST /settings` - Update site settings (replaces entire `clientLogos` array)
+
+### Image Upload
+- `POST /upload-image` - Upload a file to Supabase Storage; returns `{ url: "https://..." }`
+  - Used by the Client Logos manager's Upload button
+  - Accepts `multipart/form-data` with a `file` field
+  - Returns a permanent public URL safe to store in `clientLogos[].imageUrl`
 
 ## Deployment to Vercel/Netlify
 
@@ -147,6 +186,15 @@ The admin panel uses your existing glassmorphism design system. You can customiz
 - Ensure URLs are publicly accessible
 - Check image URL format in admin panel
 
+**Issue: "Trusted By" section not showing on About page**
+- The section only renders when at least one logo is saved in **Admin → Settings → Client Logos**
+- There are no static placeholder logos — you must add real ones
+- After saving, do a hard refresh (`Ctrl+Shift+R`) to clear any cached settings
+
+**Issue: Logo looks too small or distorted in the marquee**
+- Every logo slot is 120 × 64 px with `object-fit: contain` — the image will never be cropped
+- If the logo appears small, the source image likely has large transparent padding around it; crop the image before uploading
+
 ## Next Steps
 
 1. Visit `/init` to seed sample data
@@ -154,9 +202,10 @@ The admin panel uses your existing glassmorphism design system. You can customiz
 3. Update projects with your real work
 4. Update tools with your actual products
 5. Add your team members
-6. Deploy to Vercel/Netlify
-7. Add your custom domain
-8. Launch! 🚀
+6. **Add client logos** in Admin → Settings → Client Logos
+7. Deploy to Vercel/Netlify
+8. Add your custom domain
+9. Launch! 🚀
 
 ---
 

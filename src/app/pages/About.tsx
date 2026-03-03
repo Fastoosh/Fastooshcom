@@ -23,15 +23,13 @@ interface TeamMember {
 
 const VALUE_ICONS = [Target, Zap, Heart, Shield];
 
-const clientLogos = [
-  "Google", "Apple", "Nike", "Adobe", "Spotify", "Netflix",
-  "Tesla", "Stripe", "Figma", "Notion", "Slack", "Airbnb",
-];
+type ClientLogo = { name: string; imageUrl?: string };
 
 export function About() {
   const { t, i18n } = useTranslation();
-  const [team,    setTeam]    = useState<TeamMember[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [team,         setTeam]         = useState<TeamMember[]>([]);
+  const [loading,      setLoading]      = useState(true);
+  const [clientLogos,  setClientLogos]  = useState<ClientLogo[]>([]);
 
   // Covers initial mount AND language changes — fetches team + translations in
   // one Promise.all so members always render translated on the first paint.
@@ -40,9 +38,10 @@ export function About() {
 
   const fetchTeam = async (lang = i18n.language) => {
     try {
-      const [res, trans] = await Promise.all([
+      const [res, trans, settingsRes] = await Promise.all([
         api.getTeam(),
         lang !== 'en' ? fetchTranslations(lang, 'team') : Promise.resolve({}),
+        api.getSettings(),
       ]);
       if (res.success) {
         const members: TeamMember[] = res.data || [];
@@ -52,6 +51,9 @@ export function About() {
               : m)
           : members;
         setTeam(merged);
+      }
+      if (settingsRes.success && Array.isArray(settingsRes.data?.clientLogos) && settingsRes.data.clientLogos.length > 0) {
+        setClientLogos(settingsRes.data.clientLogos as ClientLogo[]);
       }
     } catch (error) {
       console.error('Error fetching team:', error);
@@ -217,7 +219,8 @@ export function About() {
           </motion.div>
         )}
 
-        {/* Clients */}
+        {/* Clients — only rendered after load and only if logos exist */}
+        {!loading && clientLogos.length > 0 && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -225,16 +228,83 @@ export function About() {
           className="mb-24"
         >
           <h2 className="text-3xl text-center mb-12">{t('about.clientsHeading')}</h2>
-          <GlassCard className="p-12">
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-8">
-              {clientLogos.map((logo, index) => (
-                <div key={index} className="flex items-center justify-center text-white/40 hover:text-white/70 transition-colors">
-                  <span className="text-sm">{logo}</span>
-                </div>
-              ))}
+          <GlassCard className="overflow-hidden p-0">
+            <style>{`
+              @keyframes fastoosh-marquee {
+                0%   { transform: translateX(0); }
+                100% { transform: translateX(-50%); }
+              }
+              .fastoosh-marquee-track {
+                animation: fastoosh-marquee 28s linear infinite;
+              }
+              .fastoosh-marquee-track:hover {
+                animation-play-state: paused;
+              }
+            `}</style>
+            {/* CSS mask gives a clean fade regardless of background colour */}
+            <div
+              className="py-10 overflow-hidden"
+              dir="ltr"
+              style={{
+                WebkitMaskImage: 'linear-gradient(to right, transparent 0%, black 10%, black 90%, transparent 100%)',
+                maskImage:       'linear-gradient(to right, transparent 0%, black 10%, black 90%, transparent 100%)',
+              }}
+            >
+              {(() => {
+                // Ensure at least MIN_SLOTS logos per group so small sets don't leave giant gaps
+                const MIN_SLOTS = 6;
+                const repeat = clientLogos.length < MIN_SLOTS
+                  ? Math.ceil(MIN_SLOTS / clientLogos.length)
+                  : 1;
+                const displayLogos: ClientLogo[] = repeat > 1
+                  ? Array.from({ length: repeat }, () => clientLogos).flat()
+                  : clientLogos;
+
+                return (
+                  <div
+                    className="fastoosh-marquee-track"
+                    style={{ display: 'flex', width: '200%' }}
+                  >
+                    {[0, 1].map(groupIdx => (
+                      <div
+                        key={groupIdx}
+                        style={{
+                          display: 'flex',
+                          width: '50%',
+                          justifyContent: 'space-around',
+                          alignItems: 'center',
+                          height: '4.5rem',
+                        }}
+                      >
+                        {displayLogos.map((logo, i) => (
+                          <div
+                            key={`${groupIdx}-${i}`}
+                            className="group flex-shrink-0 flex items-center justify-center"
+                            style={{ width: '120px', height: '64px' }}
+                          >
+                            {logo.imageUrl ? (
+                              <img
+                                src={logo.imageUrl}
+                                alt={logo.name}
+                                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                                className="opacity-40 group-hover:opacity-80 transition-all duration-300 grayscale group-hover:grayscale-0"
+                              />
+                            ) : (
+                              <span className="text-sm font-semibold text-white/30 group-hover:text-white/70 transition-colors duration-300 whitespace-nowrap tracking-wide">
+                                {logo.name}
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
             </div>
           </GlassCard>
         </motion.div>
+        )}
 
         {/* CTA */}
         <motion.div

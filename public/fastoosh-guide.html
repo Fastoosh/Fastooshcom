@@ -1,0 +1,1972 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fastoosh — Setup & Admin Guide</title>
+  <style>
+    /* ── Reset & base ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:        #07070f;
+      --surface:   #0e0e1c;
+      --surface2:  #13131f;
+      --border:    rgba(255,255,255,0.08);
+      --border2:   rgba(255,255,255,0.12);
+      --purple:    #7c3aed;
+      --purple-l:  #a78bfa;
+      --blue:      #3b82f6;
+      --blue-l:    #93c5fd;
+      --cyan:      #06b6d4;
+      --green:     #10b981;
+      --amber:     #f59e0b;
+      --red:       #ef4444;
+      --pink:      #ec4899;
+      --text:      #f1f5f9;
+      --muted:     #94a3b8;
+      --muted2:    rgba(255,255,255,0.35);
+      --radius:    12px;
+      --radius-sm: 8px;
+      --glow-p:    rgba(124,58,237,0.15);
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-size: 15px;
+      line-height: 1.65;
+    }
+
+    /* ── Layout ── */
+    .shell { display: flex; min-height: 100vh; }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      width: 270px;
+      min-width: 270px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      padding: 24px 0 40px;
+      display: flex;
+      flex-direction: column;
+    }
+    .sidebar-logo {
+      padding: 0 22px 20px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 16px;
+    }
+    .sidebar-logo .brand {
+      font-size: 18px;
+      font-weight: 800;
+      background: linear-gradient(135deg, #a78bfa, #60a5fa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      letter-spacing: -0.4px;
+    }
+    .sidebar-logo .sub {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    .nav-section { padding: 0 12px; margin-bottom: 6px; }
+    .nav-label {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--muted);
+      padding: 4px 10px 8px;
+    }
+    .nav-link {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 10px;
+      border-radius: 8px;
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 13.5px;
+      font-weight: 500;
+      transition: background 0.15s, color 0.15s;
+    }
+    .nav-link:hover { background: rgba(255,255,255,0.06); color: var(--text); }
+    .nav-link.active { background: rgba(124,58,237,0.18); color: var(--purple-l); }
+    .nav-link .ico { width: 16px; height: 16px; opacity: 0.7; flex-shrink: 0; }
+
+    /* ── Main content ── */
+    .main {
+      flex: 1;
+      max-width: 900px;
+      padding: 52px 56px;
+      margin: 0 auto;
+    }
+
+    /* ── Section hero ── */
+    .section-hero {
+      margin-bottom: 48px;
+      padding-bottom: 32px;
+      border-bottom: 1px solid var(--border);
+    }
+    .section-hero .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      border-radius: 99px;
+      border: 1px solid rgba(124,58,237,0.35);
+      background: rgba(124,58,237,0.12);
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--purple-l);
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+    .section-hero h1 {
+      font-size: 36px;
+      font-weight: 800;
+      letter-spacing: -0.8px;
+      line-height: 1.2;
+      background: linear-gradient(135deg, #f1f5f9 30%, #a78bfa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 12px;
+    }
+    .section-hero p {
+      color: var(--muted);
+      max-width: 620px;
+      font-size: 15px;
+    }
+
+    /* ── Headings ── */
+    h2 {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.4px;
+      color: var(--text);
+      margin: 44px 0 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    h2::before {
+      content: '';
+      display: block;
+      width: 4px;
+      height: 20px;
+      border-radius: 2px;
+      background: linear-gradient(180deg, var(--purple), var(--blue));
+      flex-shrink: 0;
+    }
+    h3 {
+      font-size: 16px;
+      font-weight: 650;
+      color: var(--text);
+      margin: 24px 0 10px;
+    }
+    h4 {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--muted2);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      margin: 18px 0 8px;
+    }
+
+    /* ── Paragraphs & lists ── */
+    p { color: var(--muted); margin-bottom: 12px; }
+    ul, ol { color: var(--muted); padding-left: 20px; margin-bottom: 14px; }
+    li { margin-bottom: 6px; }
+    strong { color: var(--text); font-weight: 600; }
+    a { color: var(--purple-l); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    code {
+      background: rgba(255,255,255,0.07);
+      border: 1px solid var(--border2);
+      border-radius: 4px;
+      padding: 1px 6px;
+      font-family: 'Cascadia Code', 'Fira Code', monospace;
+      font-size: 13px;
+      color: #c4b5fd;
+    }
+    pre {
+      background: #0a0a14;
+      border: 1px solid var(--border2);
+      border-radius: var(--radius-sm);
+      padding: 16px 18px;
+      overflow-x: auto;
+      margin-bottom: 16px;
+    }
+    pre code {
+      background: none;
+      border: none;
+      padding: 0;
+      font-size: 13px;
+      color: #c4b5fd;
+    }
+
+    /* ── Card ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 22px 24px;
+      margin-bottom: 16px;
+    }
+    .card.glow {
+      box-shadow: 0 0 40px var(--glow-p);
+    }
+
+    /* ── Step wizard preview ── */
+    .wizard-steps {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-bottom: 28px;
+    }
+    .step-dot {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+    .step-dot-inner {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 700;
+      border: 2px solid transparent;
+    }
+    .step-dot-inner.done { background: var(--purple); border-color: var(--purple); color: #fff; }
+    .step-dot-inner.active { background: rgba(124,58,237,0.2); border-color: var(--purple); color: var(--purple-l); }
+    .step-dot-inner.idle { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1); color: rgba(255,255,255,0.3); }
+    .step-label { font-size: 10px; font-weight: 600; color: var(--muted); white-space: nowrap; }
+    .step-line { flex: 1; height: 1px; background: rgba(255,255,255,0.1); min-width: 20px; margin-top: -18px; }
+    .step-line.done { background: var(--purple); }
+
+    /* ── UI mockups ── */
+    .ui-box {
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      margin: 14px 0 20px;
+      position: relative;
+      overflow: hidden;
+    }
+    .ui-box::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse 60% 40% at 50% 0%, rgba(124,58,237,0.06) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .ui-box-label {
+      position: absolute;
+      top: 10px;
+      right: 14px;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: rgba(255,255,255,0.2);
+    }
+
+    .input-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .fake-input {
+      flex: 1;
+      min-width: 160px;
+      background: rgba(0,0,0,0.5);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 13px;
+      color: rgba(255,255,255,0.5);
+    }
+    .fake-btn {
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: default;
+      white-space: nowrap;
+    }
+    .fake-btn.primary { background: linear-gradient(135deg, #7c3aed, #4f46e5); color: #fff; border: none; }
+    .fake-btn.outline { background: transparent; border: 1px solid rgba(255,255,255,0.15); color: rgba(255,255,255,0.6); }
+    .fake-btn.danger  { background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.25); color: #fca5a5; }
+    .fake-btn.sm { padding: 5px 10px; font-size: 12px; }
+
+    .fake-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 10px;
+      border-radius: 99px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .fake-tag.purple { background: rgba(124,58,237,0.2); border: 1px solid rgba(124,58,237,0.35); color: var(--purple-l); }
+    .fake-tag.green  { background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.3); color: #6ee7b7; }
+    .fake-tag.amber  { background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.3); color: #fcd34d; }
+    .fake-tag.cyan   { background: rgba(6,182,212,0.15);  border: 1px solid rgba(6,182,212,0.3);  color: #67e8f9; }
+    .fake-tag.red    { background: rgba(239,68,68,0.15);  border: 1px solid rgba(239,68,68,0.3);  color: #fca5a5; }
+
+    .fake-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 14px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 8px;
+      margin-bottom: 8px;
+    }
+    .fake-row-title { font-size: 14px; color: var(--text); font-weight: 600; }
+    .fake-row-sub   { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .fake-row-actions { display: flex; gap: 6px; align-items: center; }
+
+    .fake-stat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .fake-stat {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 10px;
+      padding: 14px 16px;
+    }
+    .fake-stat-value { font-size: 22px; font-weight: 800; color: var(--text); }
+    .fake-stat-label { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+    .env-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      border-radius: 10px;
+      margin-bottom: 7px;
+      font-size: 13px;
+    }
+    .env-ok     { background: rgba(16,185,129,0.06); border: 1px solid rgba(16,185,129,0.2); }
+    .env-miss   { background: rgba(239,68,68,0.06);  border: 1px solid rgba(239,68,68,0.2);  }
+    .env-opt    { background: rgba(245,158,11,0.06); border: 1px solid rgba(245,158,11,0.2); }
+    .env-dot    { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .dot-green  { background: var(--green); }
+    .dot-red    { background: var(--red); }
+    .dot-amber  { background: var(--amber); }
+    .env-name   { flex: 1; font-weight: 600; color: var(--text); }
+    .env-hint   { font-size: 11px; color: var(--muted); }
+
+    /* ── Tabs preview ── */
+    .fake-tabs {
+      display: flex;
+      gap: 4px;
+      flex-wrap: wrap;
+      padding: 4px;
+      background: rgba(255,255,255,0.04);
+      border-radius: 10px;
+      margin-bottom: 18px;
+    }
+    .fake-tab {
+      padding: 6px 14px;
+      border-radius: 7px;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--muted);
+      cursor: default;
+    }
+    .fake-tab.active {
+      background: rgba(124,58,237,0.25);
+      color: var(--purple-l);
+    }
+
+    /* ── Alert / callout boxes ── */
+    .callout {
+      border-radius: var(--radius-sm);
+      padding: 14px 16px;
+      margin: 16px 0;
+      font-size: 13.5px;
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+    .callout .ico { font-size: 18px; flex-shrink: 0; line-height: 1.4; }
+    .callout p { margin: 0; }
+    .callout.warn  { background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.25); color: #fcd34d; }
+    .callout.info  { background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.25); color: #93c5fd; }
+    .callout.tip   { background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.25); color: #6ee7b7; }
+    .callout.danger{ background: rgba(239,68,68,0.08);  border: 1px solid rgba(239,68,68,0.25);  color: #fca5a5; }
+
+    /* ── Badge pill ── */
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 9px;
+      border-radius: 99px;
+      font-size: 11px;
+      font-weight: 700;
+      vertical-align: middle;
+    }
+    .pill.purple { background: rgba(124,58,237,0.2); color: var(--purple-l); }
+    .pill.green  { background: rgba(16,185,129,0.15); color: #6ee7b7; }
+    .pill.blue   { background: rgba(59,130,246,0.15); color: #93c5fd; }
+    .pill.amber  { background: rgba(245,158,11,0.15); color: #fcd34d; }
+    .pill.red    { background: rgba(239,68,68,0.15);  color: #fca5a5; }
+
+    /* ── Table ── */
+    table { width: 100%; border-collapse: collapse; margin: 14px 0 20px; font-size: 13.5px; }
+    th { text-align: left; padding: 9px 12px; background: rgba(255,255,255,0.04); border-bottom: 1px solid var(--border2); color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+    td { padding: 10px 12px; border-bottom: 1px solid var(--border); color: var(--muted); vertical-align: top; }
+    tr:last-child td { border-bottom: none; }
+
+    /* ── Divider ── */
+    hr { border: none; border-top: 1px solid var(--border); margin: 40px 0; }
+
+    /* ── Flow steps ── */
+    .flow-steps { counter-reset: step; }
+    .flow-step {
+      counter-increment: step;
+      position: relative;
+      padding-left: 44px;
+      margin-bottom: 22px;
+    }
+    .flow-step::before {
+      content: counter(step);
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--purple), var(--blue));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 800;
+      color: #fff;
+    }
+    .flow-step h3 { margin-top: 2px; margin-bottom: 6px; }
+
+    /* ── Responsive ── */
+    @media (max-width: 860px) {
+      .sidebar { display: none; }
+      .main { padding: 32px 20px; }
+    }
+
+    /* ── TOC highlight on scroll ── */
+    .nav-link.active { background: rgba(124,58,237,0.18); color: var(--purple-l); }
+  </style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- ════════════════════════════ SIDEBAR ════════════════════════════ -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="brand">Fastoosh</div>
+      <div class="sub">Setup &amp; Admin Guide</div>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-label">Setup Wizard</div>
+      <a href="#setup-overview" class="nav-link">Overview</a>
+      <a href="#step-welcome"   class="nav-link">① Welcome</a>
+      <a href="#step-env"       class="nav-link">② API Keys</a>
+      <a href="#step-oauth"     class="nav-link">③ OAuth Providers</a>
+      <a href="#step-admin"     class="nav-link">④ Admin Account</a>
+      <a href="#step-brand"     class="nav-link">⑤ Brand Basics</a>
+      <a href="#step-seed"      class="nav-link">⑥ Sample Data</a>
+      <a href="#step-done"      class="nav-link">⑦ Done</a>
+    </div>
+
+    <div class="nav-section" style="margin-top:12px;">
+      <div class="nav-label">Admin Panel Tabs</div>
+      <a href="#tab-dashboard"     class="nav-link">Dashboard</a>
+      <a href="#tab-home"          class="nav-link">Home</a>
+      <a href="#tab-projects"      class="nav-link">Projects</a>
+      <a href="#tab-tools"         class="nav-link">Tools</a>
+      <a href="#tab-team"          class="nav-link">Team</a>
+      <a href="#tab-settings"      class="nav-link">Settings</a>
+      <a href="#tab-style"         class="nav-link">Style</a>
+      <a href="#tab-leads"         class="nav-link">Leads</a>
+      <a href="#tab-reviews"       class="nav-link">Reviews</a>
+      <a href="#tab-seo"           class="nav-link">SEO</a>
+      <a href="#tab-traffic"       class="nav-link">🌐 Traffic</a>
+      <a href="#tab-translations"  class="nav-link">🌍 Translations</a>
+      <a href="#tab-reset"         class="nav-link" style="color:#f87171;">⚠️ Reset</a>
+    </div>
+
+    <div class="nav-section" style="margin-top:12px;">
+      <div class="nav-label">Reference</div>
+      <a href="#env-ref"           class="nav-link">Environment Variables</a>
+      <a href="#auth-ref"          class="nav-link">Authentication Flow</a>
+      <a href="#ai-ref"            class="nav-link">AI Features</a>
+      <a href="#i18n-ref"          class="nav-link">Localization (i18n)</a>
+      <a href="#payments-ref"      class="nav-link">Payments</a>
+    </div>
+  </aside>
+
+  <!-- ════════════════════════════ MAIN ════════════════════════════ -->
+  <main class="main">
+
+    <!-- ══════════════════ HERO ══════════════════ -->
+    <div class="section-hero">
+      <div class="eyebrow">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        Complete Reference
+      </div>
+      <h1>Fastoosh Studio Platform<br>Setup &amp; Admin Guide</h1>
+      <p>Everything you need to deploy a fresh instance, configure all third-party integrations, and manage every corner of the admin panel — from projects and tools to AI translations and payment analytics.</p>
+    </div>
+
+    <!-- ══════════════════ SETUP OVERVIEW ══════════════════ -->
+    <section id="setup-overview">
+      <h2>Setup Wizard</h2>
+
+      <p>Navigate to <code>/setup</code> on a fresh deployment. The wizard runs <strong>once</strong> — it automatically locks itself and redirects to <code>/admin/login</code> as soon as an admin account exists. Run it immediately after cloning the project to a new Supabase project.</p>
+
+      <div class="callout warn">
+        <span class="ico">⚠️</span>
+        <p><strong>One-time only.</strong> Do not run the Setup wizard on a live project that already has data. Doing so will attempt to overwrite the admin account and potentially seed duplicate sample content.</p>
+      </div>
+
+      <!-- Progress bar preview -->
+      <div class="ui-box">
+        <div class="ui-box-label">UI preview</div>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:14px;">Step progress bar shown across all setup steps:</p>
+        <div class="wizard-steps">
+          <div class="step-dot">
+            <div class="step-dot-inner done">✓</div>
+            <div class="step-label">Welcome</div>
+          </div>
+          <div class="step-line done"></div>
+          <div class="step-dot">
+            <div class="step-dot-inner active">2</div>
+            <div class="step-label">API Keys</div>
+          </div>
+          <div class="step-line"></div>
+          <div class="step-dot">
+            <div class="step-dot-inner idle">3</div>
+            <div class="step-label">OAuth</div>
+          </div>
+          <div class="step-line"></div>
+          <div class="step-dot">
+            <div class="step-dot-inner idle">4</div>
+            <div class="step-label">Admin</div>
+          </div>
+          <div class="step-line"></div>
+          <div class="step-dot">
+            <div class="step-dot-inner idle">5</div>
+            <div class="step-label">Brand</div>
+          </div>
+          <div class="step-line"></div>
+          <div class="step-dot">
+            <div class="step-dot-inner idle">6</div>
+            <div class="step-label">Sample Data</div>
+          </div>
+          <div class="step-line"></div>
+          <div class="step-dot">
+            <div class="step-dot-inner idle">7</div>
+            <div class="step-label">Done</div>
+          </div>
+        </div>
+        <p style="font-size:12px;color:var(--muted);">Completed steps show a purple checkmark ✓. The active step glows. Future steps are dimmed.</p>
+      </div>
+
+      <p>Estimated time: <strong>~5 minutes</strong> once all third-party accounts are ready.</p>
+    </section>
+
+    <!-- ── STEP 1: Welcome ── -->
+    <section id="step-welcome">
+      <h2>① Welcome</h2>
+      <p>The first screen is informational. It lists everything the wizard covers and includes a prominent amber warning reminding you it's a one-time-only operation.</p>
+
+      <div class="ui-box">
+        <div class="ui-box-label">Step 1</div>
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
+          <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#7c3aed,#4f46e5);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">🎉</div>
+          <div>
+            <div style="font-size:16px;font-weight:700;color:var(--text);">Welcome to the Setup Wizard</div>
+            <div style="font-size:12px;color:var(--muted);">~5 minutes to complete</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">
+          <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.2);border-radius:10px;font-size:13px;color:var(--muted);">🔑 Check all API keys</div>
+          <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:rgba(6,182,212,0.08);border:1px solid rgba(6,182,212,0.2);border-radius:10px;font-size:13px;color:var(--muted);">👥 Configure OAuth providers</div>
+          <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:rgba(124,58,237,0.08);border:1px solid rgba(124,58,237,0.2);border-radius:10px;font-size:13px;color:var(--muted);">🛡 Create the admin account</div>
+          <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:rgba(236,72,153,0.08);border:1px solid rgba(236,72,153,0.2);border-radius:10px;font-size:13px;color:var(--muted);">🎨 Set up brand basics</div>
+          <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:10px;font-size:13px;color:var(--muted);">🗄 Seed sample content</div>
+        </div>
+        <div class="callout warn" style="margin:0;">
+          <span class="ico">⚠️</span>
+          <p><strong>One-time only:</strong> This page automatically locks itself once an admin account exists. Run it on a fresh project only.</p>
+        </div>
+      </div>
+
+      <p>Click <strong>Get Started</strong> to proceed to the API key checklist.</p>
+    </section>
+
+    <!-- ── STEP 2: API Keys ── -->
+    <section id="step-env">
+      <h2>② API Keys</h2>
+      <p>The wizard pings the server endpoint <code>/setup/check-env</code> and reports which Supabase Edge Function secrets are present. Required secrets block you from proceeding; optional ones show an amber warning.</p>
+
+      <div class="ui-box">
+        <div class="ui-box-label">Step 2 — API Key Checklist</div>
+        <div class="env-row env-ok">
+          <div class="env-dot dot-green"></div>
+          <div class="env-name">Supabase URL</div>
+          <div class="env-hint">Auto-injected by Supabase</div>
+        </div>
+        <div class="env-row env-ok">
+          <div class="env-dot dot-green"></div>
+          <div class="env-name">Supabase Anon Key</div>
+          <div class="env-hint">Auto-injected by Supabase</div>
+        </div>
+        <div class="env-row env-ok">
+          <div class="env-dot dot-green"></div>
+          <div class="env-name">Supabase Service Role Key</div>
+          <div class="env-hint">Auto-injected by Supabase</div>
+        </div>
+        <div class="env-row env-ok">
+          <div class="env-dot dot-green"></div>
+          <div class="env-name">Resend API Key</div>
+          <div class="env-hint">Transactional emails &amp; password reset</div>
+        </div>
+        <div class="env-row env-ok">
+          <div class="env-dot dot-green"></div>
+          <div class="env-name">Gemini AI API Key</div>
+          <div class="env-hint">AI content generation &amp; auto-translation</div>
+        </div>
+        <div class="env-row env-opt">
+          <div class="env-dot dot-amber"></div>
+          <div class="env-name">Vimeo Access Token <span style="font-size:11px;color:var(--muted);font-weight:400;margin-left:6px;">optional</span></div>
+          <div class="env-hint">Vimeo video picker in admin media gallery</div>
+        </div>
+        <div class="env-row env-miss">
+          <div class="env-dot dot-red"></div>
+          <div class="env-name">Lemon Squeezy API Key <span style="font-size:11px;color:var(--muted);font-weight:400;margin-left:6px;">optional</span></div>
+          <div class="env-hint">Required only if selling tools via Lemon Squeezy</div>
+        </div>
+        <div class="env-row env-miss">
+          <div class="env-dot dot-red"></div>
+          <div class="env-name">Lemon Squeezy Webhook Secret <span style="font-size:11px;color:var(--muted);font-weight:400;margin-left:6px;">optional</span></div>
+          <div class="env-hint">Required only if using Lemon Squeezy webhooks</div>
+        </div>
+        <div style="margin-top:14px;display:flex;gap:8px;">
+          <div class="fake-btn outline sm">← Back</div>
+          <div class="fake-btn primary sm" style="flex:1;text-align:center;">Continue →</div>
+        </div>
+      </div>
+
+      <h3>How to add secrets</h3>
+      <div class="flow-steps">
+        <div class="flow-step">
+          <h3>Open your Supabase project dashboard</h3>
+          <p>Go to <a href="https://supabase.com/dashboard" target="_blank">supabase.com/dashboard</a> and select your project.</p>
+        </div>
+        <div class="flow-step">
+          <h3>Navigate to Edge Functions → Secrets</h3>
+          <p>In the left sidebar: <strong>Edge Functions</strong> → <strong>Manage secrets</strong>. This is separate from the Database Vault.</p>
+        </div>
+        <div class="flow-step">
+          <h3>Add each secret by name</h3>
+          <p>Click <strong>Add new secret</strong>. Use the exact key names listed in the table below. The three Supabase secrets (<code>SUPABASE_URL</code>, <code>SUPABASE_ANON_KEY</code>, <code>SUPABASE_SERVICE_ROLE_KEY</code>) are auto-injected and will already be ✓.</p>
+        </div>
+        <div class="flow-step">
+          <h3>Click Refresh in the wizard</h3>
+          <p>Return to the wizard and press the <strong>Refresh</strong> button — the checklist will re-ping the server and update statuses live.</p>
+        </div>
+      </div>
+
+      <table>
+        <thead>
+          <tr><th>Secret Name</th><th>Required</th><th>Where to get it</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>RESEND_API_KEY</code></td><td><span class="pill red">Required</span></td><td><a href="https://resend.com/api-keys" target="_blank">resend.com/api-keys</a></td></tr>
+          <tr><td><code>GEMINI_API_KEY</code></td><td><span class="pill red">Required</span></td><td><a href="https://aistudio.google.com/app/apikey" target="_blank">aistudio.google.com</a></td></tr>
+          <tr><td><code>VIMEO_ACCESS_TOKEN</code></td><td><span class="pill amber">Optional</span></td><td><a href="https://developer.vimeo.com/apps" target="_blank">developer.vimeo.com/apps</a></td></tr>
+          <tr><td><code>LEMON_SQUEEZY_API_KEY</code></td><td><span class="pill amber">Optional</span></td><td><a href="https://app.lemonsqueezy.com/settings/api" target="_blank">app.lemonsqueezy.com</a></td></tr>
+          <tr><td><code>LEMON_SQUEEZY_WEBHOOK_SECRET</code></td><td><span class="pill amber">Optional</span></td><td><a href="https://app.lemonsqueezy.com/settings/webhooks" target="_blank">app.lemonsqueezy.com</a></td></tr>
+        </tbody>
+      </table>
+
+      <div class="callout tip">
+        <span class="ico">💡</span>
+        <p>The <strong>Continue</strong> button is disabled until all <em>required</em> secrets are green. Optional secrets can be added later through the Supabase dashboard without re-running the wizard.</p>
+      </div>
+    </section>
+
+    <!-- ── STEP 3: OAuth ── -->
+    <section id="step-oauth">
+      <h2>③ OAuth Providers</h2>
+      <p>Configure Google and/or Discord social sign-in. Both are optional — you can skip this step entirely and enable them later from <strong>Supabase → Authentication → Providers</strong>.</p>
+
+      <h3>Callback URLs</h3>
+      <p>Both providers require two URLs. The wizard shows them as copyable boxes:</p>
+
+      <div class="ui-box">
+        <div class="ui-box-label">Callback URLs</div>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:8px;">Supabase callback URL — paste into <strong>both</strong> provider portals as Redirect / Authorised URI:</p>
+        <div style="background:#0a0a14;border:1px solid var(--border2);border-radius:8px;padding:9px 14px;font-family:monospace;font-size:12px;color:#c4b5fd;margin-bottom:12px;">
+          https://&lt;your-project-id&gt;.supabase.co/auth/v1/callback
+        </div>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:8px;">App callback URL — add to Supabase → Auth → URL Configuration → Redirect URLs:</p>
+        <div style="background:#0a0a14;border:1px solid var(--border2);border-radius:8px;padding:9px 14px;font-family:monospace;font-size:12px;color:#c4b5fd;">
+          https://&lt;your-app-domain&gt;/auth/callback
+        </div>
+      </div>
+
+      <h3>Google OAuth — step by step</h3>
+      <div class="flow-steps">
+        <div class="flow-step">
+          <h3>Open Google Cloud Console</h3>
+          <p>Go to <a href="https://console.cloud.google.com/apis/credentials" target="_blank">console.cloud.google.com → APIs &amp; Services → Credentials</a>.</p>
+        </div>
+        <div class="flow-step">
+          <h3>Create an OAuth 2.0 Client ID</h3>
+          <p>Click <strong>Create Credentials → OAuth 2.0 Client ID</strong>. Choose <strong>Web application</strong>.</p>
+        </div>
+        <div class="flow-step">
+          <h3>Add the Supabase callback URL</h3>
+          <p>Under <strong>Authorised redirect URIs</strong>, paste the Supabase callback URL from the wizard.</p>
+        </div>
+        <div class="flow-step">
+          <h3>Copy Client ID and Secret</h3>
+          <p>After saving, Google shows a Client ID and Client Secret. Copy both.</p>
+        </div>
+        <div class="flow-step">
+          <h3>Enable in Supabase</h3>
+          <p>Go to <strong>Supabase → Auth → Providers → Google</strong>. Toggle Enable, paste the Client ID and Client Secret, then save.</p>
+        </div>
+      </div>
+
+      <h3>Discord OAuth — step by step</h3>
+      <div class="flow-steps">
+        <div class="flow-step">
+          <h3>Create a Discord Application</h3>
+          <p>Go to <a href="https://discord.com/developers/applications" target="_blank">discord.com/developers/applications</a> and click <strong>New Application</strong>.</p>
+        </div>
+        <div class="flow-step">
+          <h3>Add OAuth2 Redirect URI</h3>
+          <p>In your app: <strong>OAuth2 → Redirects</strong>. Add the Supabase callback URL. Set scopes: <code>identify</code> and <code>email</code>.</p>
+        </div>
+        <div class="flow-step">
+          <h3>Copy Client ID and Secret</h3>
+          <p>From the <strong>OAuth2 → General</strong> page, copy the Client ID and Client Secret (click Reset Secret if needed).</p>
+        </div>
+        <div class="flow-step">
+          <h3>Enable in Supabase</h3>
+          <p>Go to <strong>Supabase → Auth → Providers → Discord</strong>. Toggle Enable, paste the credentials, then save.</p>
+        </div>
+      </div>
+
+      <div class="callout info">
+        <span class="ico">ℹ️</span>
+        <p>The wizard uses the <strong>PKCE flow</strong> — no client secret is stored in the frontend. The flow works entirely through Supabase's auth service which handles token exchange server-side.</p>
+      </div>
+    </section>
+
+    <!-- ── STEP 4: Admin Account ── -->
+    <section id="step-admin">
+      <h2>④ Admin Account</h2>
+      <p>Create the single administrator account. This email/password pair grants access to the admin panel at <code>/admin</code>. You cannot create a second admin account through the UI — it must be done directly in Supabase Auth.</p>
+
+      <div class="ui-box">
+        <div class="ui-box-label">Step 4 — Admin Account</div>
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px;">
+          <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#7c3aed,#4f46e5);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">🛡</div>
+          <div>
+            <div style="font-size:15px;font-weight:700;color:var(--text);">Create Admin Account</div>
+            <div style="font-size:12px;color:var(--muted);">These credentials unlock the admin panel.</div>
+          </div>
+        </div>
+        <div class="input-row"><div class="fake-input">admin@yourstudio.com</div></div>
+        <div class="input-row"><div class="fake-input">••••••••••••</div></div>
+        <div class="input-row"><div class="fake-input">•••••••••••• (confirm)</div></div>
+        <div class="input-row">
+          <div class="fake-btn outline" style="flex:1;text-align:center;">← Back</div>
+          <div class="fake-btn primary" style="flex:2;text-align:center;">Create Account &amp; Continue →</div>
+        </div>
+      </div>
+
+      <h3>Security rules</h3>
+      <ul>
+        <li>Password must be at least <strong>8 characters</strong>.</li>
+        <li>Both password fields must match exactly.</li>
+        <li>The account is created via <code>supabase.auth.admin.createUser</code> with <code>email_confirm: true</code>, so no email verification is required.</li>
+        <li>The admin session uses a <strong>UUID token stored in <code>localStorage</code></strong> under <code>admin_token</code>, validated on every request via the <code>X-Admin-Token</code> header.</li>
+      </ul>
+
+      <div class="callout danger">
+        <span class="ico">🔒</span>
+        <p>The <code>SUPABASE_SERVICE_ROLE_KEY</code> is <strong>never</strong> sent to the browser. Admin creation runs entirely through the Hono server which uses the service role key internally.</p>
+      </div>
+    </section>
+
+    <!-- ── STEP 5: Brand Basics ── -->
+    <section id="step-brand">
+      <h2>⑤ Brand Basics</h2>
+      <p>Set the studio's core identity. These values populate the public site immediately and can be edited later from the admin panel Settings tab.</p>
+
+      <div class="ui-box">
+        <div class="ui-box-label">Step 5 — Brand Basics</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
+          <div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">Studio Name</div>
+            <div class="fake-input">Fastoosh Studio</div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">Contact Email</div>
+            <div class="fake-input">hello@fastoosh.com</div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">Site URL</div>
+            <div class="fake-input">https://fastoosh.com</div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">Calendly URL</div>
+            <div class="fake-input">https://calendly.com/...</div>
+          </div>
+          <div style="grid-column:1/-1;">
+            <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">Showreel URL (YouTube / Vimeo embed)</div>
+            <div class="fake-input">https://vimeo.com/...</div>
+          </div>
+        </div>
+        <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin:10px 0 6px;">Social Links (optional)</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <div class="fake-input" style="font-size:12px;">Instagram URL</div>
+          <div class="fake-input" style="font-size:12px;">LinkedIn URL</div>
+          <div class="fake-input" style="font-size:12px;">Twitter / X URL</div>
+          <div class="fake-input" style="font-size:12px;">TikTok URL</div>
+          <div class="fake-input" style="font-size:12px;">Behance URL</div>
+          <div class="fake-input" style="font-size:12px;">Dribbble URL</div>
+        </div>
+      </div>
+
+      <p>All fields except <strong>Studio Name</strong> are optional and can be filled in later. Click <strong>Save &amp; Continue</strong> — the data is written to the KV store under the <code>settings</code> key and is immediately reflected on the public site.</p>
+    </section>
+
+    <!-- ── STEP 6: Sample Data ── -->
+    <section id="step-seed">
+      <h2>⑥ Sample Data</h2>
+      <p>The wizard offers to seed the database with realistic placeholder content so the site looks great on first open. You can skip this if you want to start with a blank slate.</p>
+
+      <div class="ui-box">
+        <div class="ui-box-label">Step 6 — Sample Data</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+          <div style="border:1px solid rgba(124,58,237,0.4);background:rgba(124,58,237,0.1);border-radius:10px;padding:14px;cursor:default;">
+            <div style="font-size:14px;font-weight:700;color:var(--purple-l);margin-bottom:4px;">🌱 Seed sample content</div>
+            <div style="font-size:12px;color:var(--muted);">Populates projects, tools &amp; team members with demo data so you can explore the site immediately.</div>
+          </div>
+          <div style="border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.03);border-radius:10px;padding:14px;cursor:default;">
+            <div style="font-size:14px;font-weight:700;color:var(--muted);margin-bottom:4px;">⏭ Skip — start blank</div>
+            <div style="font-size:12px;color:var(--muted);">Begin with an empty database. Add your own content from the admin panel.</div>
+          </div>
+        </div>
+        <!-- Seed log preview -->
+        <div style="background:#0a0a14;border:1px solid var(--border2);border-radius:8px;padding:12px 14px;font-family:monospace;font-size:12px;line-height:1.8;">
+          <div style="color:#6ee7b7;">✓ Connecting to database…</div>
+          <div style="color:#6ee7b7;">✓ 8 projects inserted</div>
+          <div style="color:#6ee7b7;">✓ 6 tools inserted</div>
+          <div style="color:#6ee7b7;">✓ 12 tool versions inserted</div>
+          <div style="color:#6ee7b7;">✓ 4 team members inserted</div>
+          <div style="color:#6ee7b7;">✓ Site settings seeded</div>
+        </div>
+      </div>
+
+      <p>The seed data is defined in <code>/src/app/pages/setupSeedData.ts</code>. You can freely edit that file before running the wizard to pre-populate your real content.</p>
+    </section>
+
+    <!-- ── STEP 7: Done ── -->
+    <section id="step-done">
+      <h2>⑦ Done</h2>
+      <p>Setup is complete. The wizard marks itself as finished in the KV store (<code>setup:complete = true</code>). Any future visit to <code>/setup</code> redirects immediately to <code>/admin/login</code>.</p>
+
+      <div class="callout tip">
+        <span class="ico">🎉</span>
+        <p>You will be redirected to the <strong>Admin Login</strong> page. Sign in with the email and password you set in Step 4. Bookmark <code>/admin</code> — this is your control center for everything.</p>
+      </div>
+    </section>
+
+    <hr>
+
+    <!-- ══════════════════ ADMIN PANEL ══════════════════ -->
+    <section id="admin-panel-overview">
+      <div class="section-hero" style="margin-top:0;">
+        <div class="eyebrow">Admin Reference</div>
+        <h1>Admin Panel Guide</h1>
+        <p>The admin panel lives at <code>/admin</code>. It is protected by a custom session token stored in <code>localStorage</code>. All 12 tabs are documented below.</p>
+      </div>
+
+      <!-- Tabs preview -->
+      <div class="ui-box">
+        <div class="ui-box-label">Tab bar</div>
+        <div class="fake-tabs">
+          <div class="fake-tab active">Dashboard</div>
+          <div class="fake-tab">Home</div>
+          <div class="fake-tab">Projects</div>
+          <div class="fake-tab">Tools</div>
+          <div class="fake-tab">Team</div>
+          <div class="fake-tab">Settings</div>
+          <div class="fake-tab">Style</div>
+          <div class="fake-tab">Leads</div>
+          <div class="fake-tab">Reviews</div>
+          <div class="fake-tab">SEO</div>
+          <div class="fake-tab">🌐 Traffic</div>
+          <div class="fake-tab">🌍 Translations</div>
+        </div>
+        <p style="font-size:12px;color:var(--muted);">Tabs wrap on smaller screens. All data is fetched fresh on every panel load via <code>Promise.allSettled</code> with automatic retries.</p>
+      </div>
+    </section>
+
+    <!-- ── DASHBOARD ── -->
+    <section id="tab-dashboard">
+      <h2>Dashboard Tab</h2>
+      <p>The first screen after login. Provides a real-time overview of studio performance, revenue, and activity without navigating to individual tabs.</p>
+
+      <h3>Stat cards</h3>
+      <div class="ui-box">
+        <div class="ui-box-label">Stats row</div>
+        <div class="fake-stat-grid">
+          <div class="fake-stat">
+            <div class="fake-stat-value" style="color:var(--purple-l);">247</div>
+            <div class="fake-stat-label">Total Leads</div>
+          </div>
+          <div class="fake-stat">
+            <div class="fake-stat-value" style="color:var(--cyan);">1,834</div>
+            <div class="fake-stat-label">Free Downloads</div>
+          </div>
+          <div class="fake-stat">
+            <div class="fake-stat-value" style="color:var(--green);">89</div>
+            <div class="fake-stat-label">Signups</div>
+          </div>
+          <div class="fake-stat">
+            <div class="fake-stat-value" style="color:var(--amber);">$12,480</div>
+            <div class="fake-stat-label">Total Revenue</div>
+          </div>
+          <div class="fake-stat">
+            <div class="fake-stat-value" style="color:var(--blue-l);">32</div>
+            <div class="fake-stat-label">Unread Messages</div>
+          </div>
+          <div class="fake-stat">
+            <div class="fake-stat-value" style="color:var(--pink);">6</div>
+            <div class="fake-stat-label">Total Projects</div>
+          </div>
+        </div>
+      </div>
+
+      <h3>Charts</h3>
+      <ul>
+        <li><strong>Area chart</strong> — Downloads, signups, messages, and revenue over a configurable date range (7 / 30 / 90 days).</li>
+        <li><strong>Bar chart</strong> — Sales volume over time.</li>
+        <li><strong>Pie chart</strong> — Revenue by tool / product split.</li>
+      </ul>
+
+      <h3>Sub-sections</h3>
+      <table>
+        <thead><tr><th>Section</th><th>What it shows</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Top Tools</strong></td><td>Ranked list of tools by download count with a mini progress bar.</td></tr>
+          <tr><td><strong>Recent Messages</strong></td><td>Latest contact form submissions with read/unread state, reply action, and bulk-mark-read.</td></tr>
+          <tr><td><strong>Lemon Squeezy Revenue</strong></td><td>Live revenue panel pulling from the LS API — total, last 30 days, last 7 days, refunds, and individual order list.</td></tr>
+          <tr><td><strong>Behavior Analytics</strong></td><td>Session depth, funnel stage distribution (visit → tool_view → buy_click → purchase), device breakdown.</td></tr>
+          <tr><td><strong>Video Stats</strong></td><td>Vimeo play counts, impressions, and watch-time for embedded project videos.</td></tr>
+        </tbody>
+      </table>
+
+      <div class="callout info">
+        <span class="ico">ℹ️</span>
+        <p>The <strong>Refresh</strong> button at the top-right re-fetches all dashboard data without a full page reload. Notification bell shows unread message count as a badge.</p>
+      </div>
+    </section>
+
+    <!-- ── HOME ── -->
+    <section id="tab-home">
+      <h2>Home Tab</h2>
+      <p>Controls every piece of editable text and media on the public homepage. Changes are saved to the KV store and reflected immediately on the live site.</p>
+
+      <h3>Sections you can edit</h3>
+      <table>
+        <thead><tr><th>Section</th><th>Fields</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><strong>Hero</strong></td>
+            <td>Line 1, Line 2 (headline split), subtitle, CTA button 1 text &amp; URL, CTA button 2 text &amp; URL, showreel Vimeo URL.</td>
+          </tr>
+          <tr>
+            <td><strong>Stats Bar</strong></td>
+            <td>5 hero stats — each has a value, label, and suffix (e.g. "200+", "Projects", "delivered").</td>
+          </tr>
+          <tr>
+            <td><strong>Capabilities</strong></td>
+            <td>Up to 8 capability cards — icon picker (17 Lucide icons), title, description.</td>
+          </tr>
+          <tr>
+            <td><strong>Testimonials</strong></td>
+            <td>Unlimited quote cards — author name, role, company, avatar URL, quote text, star rating (1–5).</td>
+          </tr>
+          <tr>
+            <td><strong>Process Steps</strong></td>
+            <td>Numbered workflow steps shown in the "How we work" section — title and description per step.</td>
+          </tr>
+          <tr>
+            <td><strong>FAQ</strong></td>
+            <td>Accordion items — question + answer. Rendered with expand/collapse on the public page.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>AI Improve button</h3>
+      <p>Every text field (title, description, bio, quote, etc.) has a <span class="pill purple">✨ AI Improve</span> button. Clicking it opens the <strong>AIImproveModal</strong>, which sends the current text and context to Google Gemini and returns an improved version. You can accept, regenerate, or discard.</p>
+
+      <div class="ui-box">
+        <div class="ui-box-label">AI Improve Modal</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+          <div style="width:28px;height:28px;border-radius:7px;background:linear-gradient(135deg,#7c3aed,#4f46e5);display:flex;align-items:center;justify-content:center;font-size:14px;">✨</div>
+          <div style="font-size:14px;font-weight:700;color:var(--text);">AI Content Improvement</div>
+        </div>
+        <div style="background:rgba(0,0,0,0.4);border:1px solid var(--border2);border-radius:8px;padding:12px;font-size:13px;color:var(--muted);margin-bottom:10px;">
+          "Premium motion design for ambitious teams" →
+          <span style="color:var(--purple-l);"> "Cinematic motion design that turns complex ideas into unforgettable visual stories — crafted for brands that demand excellence."</span>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <div class="fake-btn outline sm">Regenerate</div>
+          <div class="fake-btn primary sm">Apply</div>
+        </div>
+      </div>
+
+      <h3>Vimeo Picker</h3>
+      <p>Showreel and project video URL fields have a <strong>Pick from Vimeo</strong> button that opens a media picker. It calls the server proxy at <code>/vimeo/videos</code>, lists your Vimeo library with thumbnails and titles, and lets you click-to-select. Requires <code>VIMEO_ACCESS_TOKEN</code> in secrets.</p>
+    </section>
+
+    <!-- ── PROJECTS ── -->
+    <section id="tab-projects">
+      <h2>Projects Tab</h2>
+      <p>Full CRUD for the public portfolio. Each project has a dedicated detail page at <code>/projects/:slug</code>.</p>
+
+      <h3>Project list</h3>
+      <div class="ui-box">
+        <div class="ui-box-label">Projects list</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <div style="font-size:16px;font-weight:700;color:var(--text);">Projects</div>
+          <div class="fake-btn primary sm">+ Add Project</div>
+        </div>
+        <div class="fake-row">
+          <div>
+            <div class="fake-row-title">FinTech Product Launch</div>
+            <div class="fake-row-sub">Motion Design • 2024</div>
+          </div>
+          <div class="fake-row-actions">
+            <div class="fake-btn outline sm">✏️</div>
+            <div class="fake-btn danger sm">🗑</div>
+          </div>
+        </div>
+        <div class="fake-row">
+          <div>
+            <div class="fake-row-title">SaaS Onboarding Flow</div>
+            <div class="fake-row-sub">UI/UX Animation • 2024</div>
+          </div>
+          <div class="fake-row-actions">
+            <div class="fake-btn outline sm">✏️</div>
+            <div class="fake-btn danger sm">🗑</div>
+          </div>
+        </div>
+      </div>
+
+      <h3>Project form fields</h3>
+      <table>
+        <thead><tr><th>Field</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Title</strong></td><td>Auto-generates the URL slug on first save. <span class="pill purple">✨ AI</span></td></tr>
+          <tr><td><strong>Slug</strong></td><td>Editable. Used in the public URL: <code>/projects/my-slug</code>.</td></tr>
+          <tr><td><strong>Description</strong></td><td>Short one-liner shown on the grid card. <span class="pill purple">✨ AI</span></td></tr>
+          <tr><td><strong>Category</strong></td><td>Dropdown populated from the Project Categories list below the form.</td></tr>
+          <tr><td><strong>Year</strong></td><td>Numeric. Displayed on the detail page and filter chips.</td></tr>
+          <tr><td><strong>Cover Image URL</strong></td><td>Shown on the grid card and at the top of the detail page.</td></tr>
+          <tr><td><strong>Video URL</strong></td><td>YouTube / Vimeo URL for the detail page hero. Includes Vimeo Picker. <span class="pill purple">✨ AI</span></td></tr>
+          <tr><td><strong>Client</strong></td><td>Client name displayed on the detail page sidebar. <span class="pill purple">✨ AI</span></td></tr>
+          <tr><td><strong>Goal</strong></td><td>Project brief / objective. <span class="pill purple">✨ AI</span></td></tr>
+          <tr><td><strong>Approach</strong></td><td>Creative approach / methodology. <span class="pill purple">✨ AI</span></td></tr>
+          <tr><td><strong>Deliverables</strong></td><td>Comma-separated list. Rendered as bullet points.</td></tr>
+          <tr><td><strong>Outcome</strong></td><td>Results / impact statement. <span class="pill purple">✨ AI</span></td></tr>
+          <tr><td><strong>Tags</strong></td><td>Comma-separated tags for the detail page tag cloud.</td></tr>
+          <tr><td><strong>Screenshots / Images</strong></td><td>Additional URLs for the smart media gallery (images + Vimeo embeds rendered in a 2-col grid).</td></tr>
+          <tr><td><strong>Featured</strong></td><td>Toggle. Featured projects appear in the homepage highlights section.</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Project Categories</h3>
+      <p>Below the project list is a categories manager. Categories appear in the project form dropdown <em>and</em> as filter chips on the public <code>/projects</code> page.</p>
+      <div class="ui-box">
+        <div class="ui-box-label">Categories manager</div>
+        <div style="display:flex;flex-wrap:wrap;gap:7px;margin-bottom:12px;">
+          <span class="fake-tag purple">Motion Design ×</span>
+          <span class="fake-tag purple">Branding ×</span>
+          <span class="fake-tag purple">3D Animation ×</span>
+          <span class="fake-tag purple">VFX ×</span>
+          <span class="fake-tag purple">UI/UX Animation ×</span>
+        </div>
+        <div class="input-row">
+          <div class="fake-input">e.g. Explainer Video</div>
+          <div class="fake-btn primary sm">+ Add</div>
+        </div>
+      </div>
+
+      <div class="callout tip">
+        <span class="ico">💡</span>
+        <p>Deleting a category does <em>not</em> update existing projects using that category. The category label will still display on those projects' pages — it just disappears from the filter chips (since the public page derives chips live from actual project data).</p>
+      </div>
+    </section>
+
+    <!-- ── TOOLS ── -->
+    <section id="tab-tools">
+      <h2>Tools Tab</h2>
+      <p>Manage all downloadable products on the <code>/tools</code> page. Each tool can have up to three version tiers (Free, Pro, Studio) with separate pricing and download links.</p>
+
+      <h3>Tool form — General fields</h3>
+      <table>
+        <thead><tr><th>Field</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Name</strong></td><td>Tool display name. Auto-generates slug. <span class="pill purple">✨ AI</span></td></tr>
+          <tr><td><strong>Slug</strong></td><td>URL segment: <code>/tools/my-slug</code>.</td></tr>
+          <tr><td><strong>Description</strong></td><td>Short description on the grid card. <span class="pill purple">✨ AI</span></td></tr>
+          <tr><td><strong>Category</strong></td><td>Dropdown from the Tool Categories list (managed below).</td></tr>
+          <tr><td><strong>Status Badge</strong></td><td>Colored pill shown on the card (New / Popular / Pro / Free, or custom).</td></tr>
+          <tr><td><strong>Cover Image</strong></td><td>Displayed on the grid and at the top of the detail page.</td></tr>
+          <tr><td><strong>Featured</strong></td><td>Appears in the homepage Featured Tools carousel.</td></tr>
+          <tr><td><strong>FAQs</strong></td><td>Add/remove accordion FAQ items. Each has question + answer. <span class="pill purple">✨ AI</span> on answers.</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Tool Versions</h3>
+      <p>Each tool has a tabbed version editor (tabs: Free / Pro / Studio). Each version independently configures:</p>
+      <table>
+        <thead><tr><th>Field</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Version Type</strong></td><td>Free, Pro, or Studio — sets the tier label.</td></tr>
+          <tr><td><strong>Pricing Model</strong></td><td>Subscription (monthly + yearly price) or Lifetime (one-time price).</td></tr>
+          <tr><td><strong>Monthly / Yearly / Lifetime Price</strong></td><td>Plain string (e.g. <code>$29</code>). Displayed on the pricing card.</td></tr>
+          <tr><td><strong>Download URL</strong></td><td>For Free tier: direct ZIP URL. For paid: leave empty, the user is redirected to Lemon Squeezy checkout.</td></tr>
+          <tr><td><strong>Lemon Squeezy Variant ID</strong></td><td>The specific LS variant tied to this version/price. Used to build the checkout URL.</td></tr>
+          <tr><td><strong>Lemon Squeezy Product ID</strong></td><td>The LS product. Used for license validation.</td></tr>
+          <tr><td><strong>Features list</strong></td><td>Bullet points shown on the pricing card. <span class="pill purple">✨ AI</span></td></tr>
+          <tr><td><strong>What's Included</strong></td><td>Separate checklist shown on the detail page. <span class="pill purple">✨ AI</span></td></tr>
+          <tr><td><strong>Activation Steps</strong></td><td>Numbered steps for post-purchase setup. <span class="pill purple">✨ AI</span></td></tr>
+          <tr><td><strong>Rich Features</strong></td><td>Accordion items each with title, description, and optional screenshots (up to 3 images per feature). <span class="pill purple">✨ AI</span></td></tr>
+          <tr><td><strong>Demo URL</strong></td><td>Optional video or page URL linked from the pricing card.</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Free Download Flow</h3>
+      <p>When a visitor clicks Download on a Free tier tool, the site shows a <strong>6-digit OTP modal</strong>. The visitor enters their email, receives a code via Resend, enters it (with paste support), and then gets the download link. Their email is captured as a lead with <code>source: 'free_download'</code>.</p>
+
+      <h3>Tool Categories &amp; Statuses</h3>
+      <div class="ui-box">
+        <div class="ui-box-label">Statuses manager</div>
+        <div style="display:flex;flex-wrap:wrap;gap:7px;margin-bottom:12px;">
+          <span class="fake-tag green">New ×</span>
+          <span class="fake-tag purple">Popular ×</span>
+          <span class="fake-tag amber">Pro ×</span>
+          <span class="fake-tag cyan">Free ×</span>
+        </div>
+        <div class="input-row">
+          <div class="fake-input" style="flex:2;">e.g. Hot Deal</div>
+          <!-- Color swatches -->
+          <div style="display:flex;gap:6px;align-items:center;">
+            <div style="width:20px;height:20px;border-radius:50%;background:linear-gradient(135deg,#7c3aed,#8b5cf6);box-shadow:0 0 0 2px white,0 0 0 3px var(--purple);"></div>
+            <div style="width:20px;height:20px;border-radius:50%;background:linear-gradient(135deg,#10b981,#059669);opacity:0.6;"></div>
+            <div style="width:20px;height:20px;border-radius:50%;background:linear-gradient(135deg,#f59e0b,#ea580c);opacity:0.6;"></div>
+            <div style="width:20px;height:20px;border-radius:50%;background:linear-gradient(135deg,#06b6d4,#60a5fa);opacity:0.6;"></div>
+            <div style="width:20px;height:20px;border-radius:50%;background:linear-gradient(135deg,#ec4899,#d946ef);opacity:0.6;"></div>
+            <div style="width:20px;height:20px;border-radius:50%;background:linear-gradient(135deg,#ef4444,#fb7185);opacity:0.6;"></div>
+          </div>
+          <div class="fake-btn primary sm">+ Add</div>
+        </div>
+        <p style="font-size:11px;color:var(--muted);margin-top:8px;">Click a color swatch to select the gradient for the new badge, then type the label and click Add.</p>
+      </div>
+    </section>
+
+    <!-- ── TEAM ── -->
+    <section id="tab-team">
+      <h2>Team Tab</h2>
+      <p>Manage the team members shown on the <code>/about</code> page.</p>
+
+      <h3>Team member fields</h3>
+      <table>
+        <thead><tr><th>Field</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Name</strong></td><td>Full display name.</td></tr>
+          <tr><td><strong>Role</strong></td><td>Job title / position (e.g. "Lead Motion Designer"). <span class="pill purple">✨ AI</span></td></tr>
+          <tr><td><strong>Bio</strong></td><td>Short paragraph. <span class="pill purple">✨ AI</span></td></tr>
+          <tr><td><strong>Avatar URL</strong></td><td>Profile photo URL.</td></tr>
+          <tr><td><strong>Social Links</strong></td><td>Key-value pairs — e.g. <code>linkedin → https://...</code>, <code>twitter → ...</code>, <code>instagram → ...</code>.</td></tr>
+        </tbody>
+      </table>
+
+      <p>Team members are rendered in a responsive grid on the About page with hover-reveal social link icons.</p>
+    </section>
+
+    <!-- ── SETTINGS ── -->
+    <section id="tab-settings">
+      <h2>Settings Tab</h2>
+      <p>Global site configuration. Most values were set in the Setup Wizard but can be updated here at any time.</p>
+
+      <table>
+        <thead><tr><th>Setting</th><th>Effect</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Showreel URL</strong></td><td>Vimeo / YouTube URL embedded in the homepage hero section. Triggers the lightbox video player.</td></tr>
+          <tr><td><strong>Favicon URL</strong></td><td>URL to a .ico or .png file. Injected into <code>&lt;link rel="icon"&gt;</code> via the SeoHead component.</td></tr>
+          <tr><td><strong>Site URL</strong></td><td>Used for canonical tags and OG URLs in SEO metadata.</td></tr>
+          <tr><td><strong>Default OG Image</strong></td><td>Fallback open-graph image when no page-specific image is set.</td></tr>
+          <tr><td><strong>Calendly URL</strong></td><td>Embeds a Calendly booking widget on the <code>/work-with-us</code> page.</td></tr>
+          <tr><td><strong>Contact Email</strong></td><td>Displayed in the footer and sent to via the contact form.</td></tr>
+          <tr><td><strong>Email Reply-To</strong></td><td>The reply-to address on admin notification emails sent through Resend.</td></tr>
+          <tr><td><strong>Social Links</strong></td><td>LinkedIn, Instagram, Twitter/X, Dribbble, Behance, TikTok — rendered as icons in the site footer.</td></tr>
+        </tbody>
+      </table>
+
+      <div class="callout info">
+        <span class="ico">ℹ️</span>
+        <p>After saving Settings, the SeoHead and Layout components automatically invalidate their cache and re-render with the new values — no page refresh needed on the public site.</p>
+      </div>
+    </section>
+
+    <!-- ── STYLE ── -->
+    <section id="tab-style">
+      <h2>Style Tab</h2>
+      <p>Live theme editor. Changes are applied instantly to the public site via CSS custom properties injected into <code>:root</code>. Saved to KV and persisted across sessions.</p>
+
+      <h3>Mode</h3>
+      <p>Toggle between <strong>Dark mode</strong> (default — deep black background) and <strong>Light mode</strong>. Switching modes loads preset safe defaults for that palette.</p>
+
+      <h3>Color palette</h3>
+      <ul>
+        <li><strong>Primary color</strong> — used for neon glows, active buttons, and accent gradients.</li>
+        <li><strong>Secondary color</strong> — used for secondary accents and hover states.</li>
+        <li><strong>Background color</strong> — the root background.</li>
+        <li><strong>Card background</strong> — glassmorphism card base color.</li>
+        <li><strong>Text color</strong> — primary text.</li>
+        <li><strong>Muted text color</strong> — secondary / caption text.</li>
+      </ul>
+      <p>The <strong>Color Palette Generator</strong> (<code>ColorPaletteGenerator.tsx</code>) provides preset harmony palettes (analogous, complementary, triadic) you can pick from. A live <strong>contrast ratio checker</strong> warns if text-on-background contrast falls below WCAG AA.</p>
+
+      <h3>Typography</h3>
+      <ul>
+        <li><strong>Heading font</strong> — 40+ Google Fonts curated for motion design studios (Orbitron, Space Grotesk, Bebas Neue, Syne, Playfair Display, etc.).</li>
+        <li><strong>Body font</strong> — separate selection for paragraph text.</li>
+      </ul>
+      <p>Fonts are dynamically loaded via a <code>&lt;link&gt;</code> tag injection — no build step required.</p>
+
+      <h3>Logo</h3>
+      <p>Upload a custom logo image URL. The logo replaces the text wordmark in the navigation bar. Managed via the <code>LogoContext</code>.</p>
+
+      <h3>Preview</h3>
+      <p>A live mini-preview panel renders sample cards, buttons, and text in real time using the current settings — so you can see exactly how the site will look before saving.</p>
+
+      <div class="callout warn">
+        <span class="ico">⚠️</span>
+        <p>The admin panel itself is <strong>immune</strong> to Style tab changes — it always renders with the fixed purple/dark admin theme. Style changes only apply to the public-facing pages.</p>
+      </div>
+    </section>
+
+    <!-- ── LEADS ── -->
+    <section id="tab-leads">
+      <h2>Leads Tab</h2>
+      <p>A searchable, sortable, filterable table of everyone who has either <strong>downloaded a free tool</strong> or <strong>signed up</strong> for an account.</p>
+
+      <h3>Lead data captured</h3>
+      <table>
+        <thead><tr><th>Column</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Email</strong></td><td>Collected at download time (OTP verification) or on signup.</td></tr>
+          <tr><td><strong>Source</strong></td><td><span class="pill blue">free_download</span> or <span class="pill green">signup</span>.</td></tr>
+          <tr><td><strong>Tier</strong></td><td>Which tool tier was accessed: Free, Pro, Studio, or Registered.</td></tr>
+          <tr><td><strong>Tool</strong></td><td>Name and category of the tool the lead interacted with.</td></tr>
+          <tr><td><strong>Date</strong></td><td>Timestamp of the lead creation.</td></tr>
+          <tr><td><strong>Verified</strong></td><td>Whether the email OTP was successfully verified.</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Filters</h3>
+      <ul>
+        <li>Search by email address.</li>
+        <li>Filter by source (Free Download / Signup / All).</li>
+        <li>Filter by tier (Free / Pro / Studio / Registered / All).</li>
+        <li>Sort by any column ascending / descending.</li>
+      </ul>
+
+      <h3>Behavior panel (per lead)</h3>
+      <p>Click any lead row to expand a behavior panel showing:</p>
+      <ul>
+        <li>Session count, first seen, last seen, total time on site.</li>
+        <li>Pages visited and tools viewed.</li>
+        <li>Funnel stage: <code>visit → tool_view → buy_click → purchase</code>.</li>
+        <li>Device type (Desktop / Mobile / Tablet), browser, OS.</li>
+        <li>Referrer URL and UTM parameters (source, medium, campaign).</li>
+      </ul>
+
+      <h3>Export</h3>
+      <p>The <strong>Download CSV</strong> button exports all visible leads (respecting current filters) as a <code>.csv</code> file for use in email tools like Mailchimp or Brevo.</p>
+    </section>
+
+    <!-- ── REVIEWS ── -->
+    <section id="tab-reviews">
+      <h2>Reviews Tab</h2>
+      <p>Manage testimonials / reviews displayed on tool detail pages. Reviews can be genuine (submitted by users) or manually added by the admin.</p>
+
+      <h3>Review fields</h3>
+      <table>
+        <thead><tr><th>Field</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Tool</strong></td><td>Dropdown linking the review to a specific tool.</td></tr>
+          <tr><td><strong>Reviewer name</strong></td><td>Display name shown on the review card.</td></tr>
+          <tr><td><strong>Rating</strong></td><td>1–5 star picker (interactive on hover).</td></tr>
+          <tr><td><strong>Comment</strong></td><td>The review body text.</td></tr>
+          <tr><td><strong>Fake flag</strong></td><td>Internal-only. Marks a review as admin-seeded. Not shown publicly.</td></tr>
+        </tbody>
+      </table>
+
+      <div class="ui-box">
+        <div class="ui-box-label">Star picker</div>
+        <div style="display:flex;gap:6px;margin-bottom:4px;">
+          <span style="font-size:24px;color:#facc15;">★</span>
+          <span style="font-size:24px;color:#facc15;">★</span>
+          <span style="font-size:24px;color:#facc15;">★</span>
+          <span style="font-size:24px;color:#facc15;">★</span>
+          <span style="font-size:24px;color:rgba(255,255,255,0.2);">★</span>
+        </div>
+        <p style="font-size:12px;color:var(--muted);">Hover any star to preview; click to set. Rating updates live in the form.</p>
+      </div>
+
+      <p>Reviews appear beneath the pricing section on the tool detail page, sorted newest-first, with the average star rating shown in a summary header.</p>
+    </section>
+
+    <!-- ── SEO ── -->
+    <section id="tab-seo">
+      <h2>SEO Tab</h2>
+      <p>Per-page SEO metadata editor. Every page (static pages + each tool + each project) gets its own SEO configuration.</p>
+
+      <h3>Page selector</h3>
+      <p>A dropdown or list of all pages. Selecting a page loads its current metadata. Types:</p>
+      <ul>
+        <li><span class="pill blue">static</span> — Home, Projects, Tools, About, Work with Us.</li>
+        <li><span class="pill purple">tool</span> — One entry per tool (auto-populated from the tools list).</li>
+        <li><span class="pill green">project</span> — One entry per project.</li>
+      </ul>
+
+      <h3>Per-page fields</h3>
+      <table>
+        <thead><tr><th>Field</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Title</strong></td><td>HTML <code>&lt;title&gt;</code> tag. <span class="pill purple">✨ AI</span></td></tr>
+          <tr><td><strong>Description</strong></td><td>Meta description. <span class="pill purple">✨ AI</span></td></tr>
+          <tr><td><strong>Keywords</strong></td><td>Comma-separated keywords. <span class="pill purple">✨ AI</span></td></tr>
+          <tr><td><strong>OG Title</strong></td><td>Open Graph title for social sharing.</td></tr>
+          <tr><td><strong>OG Description</strong></td><td>Social share description.</td></tr>
+          <tr><td><strong>OG Image</strong></td><td>Social preview image URL.</td></tr>
+          <tr><td><strong>Twitter Card type</strong></td><td><code>summary</code> or <code>summary_large_image</code>.</td></tr>
+          <tr><td><strong>Twitter Title / Description</strong></td><td>Twitter-specific overrides.</td></tr>
+          <tr><td><strong>Canonical URL</strong></td><td>Explicit canonical to prevent duplicate content issues.</td></tr>
+          <tr><td><strong>No-Index</strong></td><td>Toggle to add <code>robots: noindex</code> (useful for staging pages).</td></tr>
+          <tr><td><strong>Structured Data</strong></td><td>Raw JSON-LD schema snippet. The AI can generate an appropriate schema based on the page context.</td></tr>
+        </tbody>
+      </table>
+
+      <div class="callout tip">
+        <span class="ico">💡</span>
+        <p>Click <strong>Generate with AI</strong> on any page entry to auto-fill all SEO fields using Gemini — it reads the page's actual content (title, description, tool/project data) to write accurate, keyword-rich metadata.</p>
+      </div>
+    </section>
+
+    <!-- ── TRAFFIC ── -->
+    <section id="tab-traffic">
+      <h2>🌐 Traffic Tab</h2>
+      <p>UTM and referrer analytics showing where site visitors come from. Data is captured automatically by the <code>TrackingProvider</code> component on every page load.</p>
+
+      <h3>What's tracked</h3>
+      <ul>
+        <li><strong>UTM parameters</strong> — <code>utm_source</code>, <code>utm_medium</code>, <code>utm_campaign</code> from the landing URL.</li>
+        <li><strong>Referrer</strong> — the <code>document.referrer</code> domain, normalized to a named source (LinkedIn, YouTube, Google, etc.).</li>
+        <li><strong>First vs. returning sessions</strong> — stored per-visitor in <code>localStorage</code>.</li>
+        <li><strong>Page-level traffic</strong> — which pages each session visited.</li>
+      </ul>
+
+      <h3>Visualizations</h3>
+      <table>
+        <thead><tr><th>Chart</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Traffic source pie chart</strong></td><td>Breakdown of sessions by referrer source with color-coded segments matching each platform's brand color.</td></tr>
+          <tr><td><strong>Bar chart</strong></td><td>Sessions per source over the selected date range.</td></tr>
+          <tr><td><strong>Line chart</strong></td><td>Daily traffic trend.</td></tr>
+          <tr><td><strong>Source cards</strong></td><td>Per-source summary — total sessions, click count, conversion rate to lead.</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Source recognition</h3>
+      <p>The system automatically identifies and brands these sources:</p>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 16px;">
+        <span class="fake-tag cyan">LinkedIn</span>
+        <span class="fake-tag red">YouTube</span>
+        <span class="fake-tag purple">Discord</span>
+        <span class="fake-tag amber">Email / Newsletter</span>
+        <span class="fake-tag green">Google</span>
+        <span class="fake-tag cyan">TikTok</span>
+        <span class="fake-tag purple">Instagram</span>
+        <span class="fake-tag amber">Direct / DM</span>
+        <span class="fake-tag green">Pinterest</span>
+      </div>
+
+      <h3>UTM campaign builder</h3>
+      <p>The Traffic tab includes a <strong>campaign URL builder</strong> that assembles UTM-tagged links you can paste into your posts, bio, or email campaigns. The generated link is copyable with one click.</p>
+
+      <h3>Saved campaigns</h3>
+      <p>You can bookmark campaigns and annotate them with a label. Saved campaigns persist in the KV store and appear in a sidebar list for easy access.</p>
+    </section>
+
+    <!-- ── TRANSLATIONS ── -->
+    <section id="tab-translations">
+      <h2>🌍 Translations Tab</h2>
+      <p>AI-powered localization management for French (<code>fr</code>) and Arabic (<code>ar</code>). The admin panel itself stays English-only; only public-facing content is translated.</p>
+
+      <h3>Content types</h3>
+      <p>Five content categories can be translated independently:</p>
+      <div style="display:flex;flex-wrap:wrap;gap:7px;margin:10px 0 16px;">
+        <span class="fake-tag purple">Home Content</span>
+        <span class="fake-tag blue">Projects</span>
+        <span class="fake-tag amber">Tools</span>
+        <span class="fake-tag green">Team</span>
+        <span class="fake-tag cyan">Categories</span>
+      </div>
+
+      <h3>Translation table</h3>
+      <div class="ui-box">
+        <div class="ui-box-label">Translation editor</div>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">
+          <div style="display:flex;gap:4px;">
+            <div class="fake-btn primary sm">🇫🇷 French</div>
+            <div class="fake-btn outline sm">🇸🇦 Arabic</div>
+          </div>
+          <div style="display:flex;gap:4px;margin-left:auto;">
+            <div class="fake-btn outline sm">Home Content</div>
+            <div class="fake-btn outline sm">Projects</div>
+          </div>
+        </div>
+        <table style="margin:0;">
+          <thead><tr><th>Field</th><th>English (source)</th><th>French translation</th></tr></thead>
+          <tbody>
+            <tr>
+              <td style="color:var(--muted2);font-size:12px;">heroLine1</td>
+              <td style="font-size:13px;">Premium motion design</td>
+              <td><div class="fake-input" style="padding:4px 8px;font-size:12px;">Design motion premium</div></td>
+            </tr>
+            <tr>
+              <td style="color:var(--muted2);font-size:12px;">heroSubtitle</td>
+              <td style="font-size:13px;">High-end custom work that drives results…</td>
+              <td><div class="fake-input" style="padding:4px 8px;font-size:12px;">Un travail sur mesure qui génère des résultats…</div></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>AI Translate button</h3>
+      <p>Each content type + language combination has a <span class="pill purple">✨ Translate All</span> button. It calls Gemini via the server endpoint <code>/translate</code>, which:</p>
+      <ol>
+        <li>Extracts all translatable fields (skipping IDs, URLs, slugs, dates).</li>
+        <li>Sends them in one batch to Gemini with instructions to preserve tone and formatting.</li>
+        <li>Returns the translated strings and populates all fields in the table.</li>
+        <li>You review and can edit individual cells before saving.</li>
+      </ol>
+
+      <h3>Arabic RTL</h3>
+      <p>When Arabic is selected, the entire public site layout switches to <code>dir="rtl"</code>. All flex layouts, padding, and text alignment are mirror-flipped. The admin panel is unaffected.</p>
+
+      <h3>Saving translations</h3>
+      <p>Clicking <strong>Save</strong> writes the translation object to the KV store under the key <code>translations:{lang}:{contentType}</code>. The public pages check this key on every page load via <code>fetchTranslations()</code> and apply the override — no build step required.</p>
+
+      <div class="callout tip">
+        <span class="ico">💡</span>
+        <p>Translations are cached client-side for the session. If you update a translation and want to see it live immediately on the public site, open the page in an incognito window or do a hard refresh.</p>
+      </div>
+    </section>
+
+    <!-- ── RESET ── -->
+    <section id="tab-reset">
+      <h2>⚠️ Reset Tab — Danger Zone</h2>
+      <p>A <strong>selective data-initialization panel</strong> designed to be used before going live. It lets you permanently wipe any combination of test-data categories while keeping every piece of real content — Projects, Tools, Team members, Client Logos, Home content, Style, SEO, and Translations — completely untouched.</p>
+
+      <div class="callout danger">
+        <span class="ico">🚨</span>
+        <p><strong>All deletions are immediate and irreversible.</strong> There is no undo, no trash, no backup created by this panel. Run it on test data only, and never on a live production instance with real users unless you are 100% certain.</p>
+      </div>
+
+      <!-- Category cards overview -->
+      <h3>Resettable categories</h3>
+      <p>Each category is an independent checkbox card. You can select any combination and reset them all in a single confirmed operation. The card shows a live count of how many records exist in that category right now.</p>
+
+      <table>
+        <thead>
+          <tr><th>Category</th><th>What gets deleted</th><th>KV key pattern(s)</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="pill blue">🌐 Traffic &amp; Sessions</span></td>
+            <td>All visitor sessions, page views, UTM tracking records, funnel analytics, and heatmap click data.</td>
+            <td><code>session:*</code></td>
+          </tr>
+          <tr>
+            <td><span class="pill amber">✉️ Contact Messages</span></td>
+            <td>All contact form submissions and tool support inquiry messages.</td>
+            <td><code>msg:*</code></td>
+          </tr>
+          <tr>
+            <td><span class="pill amber">⭐ Reviews &amp; Ratings</span></td>
+            <td>All tool reviews and star ratings submitted by users.</td>
+            <td><code>review:*</code></td>
+          </tr>
+          <tr>
+            <td><span class="pill green">📥 Free Download Leads</span></td>
+            <td>Email addresses collected through the free-download flow plus all OTP verification codes.</td>
+            <td><code>lead:*</code>, <code>otp:*</code></td>
+          </tr>
+          <tr>
+            <td><span class="pill red">👥 User Accounts</span></td>
+            <td>All registered accounts (except the currently authenticated admin), their profiles, purchases, KV download records, and pending signup OTPs.</td>
+            <td>Auth users + <code>user:dl:*</code>, <code>signup_otp:*</code></td>
+          </tr>
+          <tr>
+            <td><span class="pill purple">🎬 Video Analytics</span></td>
+            <td>Per-project video view counts and accumulated watch-time data, plus the showreel analytics entry.</td>
+            <td><code>project_video_stats:*</code>, <code>showreel_video_stats</code></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="callout info">
+        <span class="ico">ℹ️</span>
+        <p><strong>What is never touched:</strong> Projects, Tools, Team members, Client Logos, Home content, Style tokens, SEO metadata, and Translation files. The Reset panel cannot reach any of this data.</p>
+      </div>
+
+      <!-- UI mockup: category cards -->
+      <h3>Selecting categories</h3>
+      <div class="ui-box">
+        <div class="ui-box-label">Category cards</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px;margin-bottom:14px;">
+
+          <div style="border-radius:12px;border:1px solid rgba(99,102,241,0.35);background:linear-gradient(135deg,rgba(99,102,241,0.18),rgba(6,182,212,0.1));padding:14px;box-shadow:0 0 0 2px rgba(255,255,255,0.15);">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+              <div style="width:18px;height:18px;border-radius:4px;background:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="#000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </div>
+              <div style="width:28px;height:28px;border-radius:8px;background:rgba(0,0,0,0.25);display:flex;align-items:center;justify-content:center;font-size:13px;">🌐</div>
+              <span style="font-size:11px;font-family:monospace;color:rgba(255,255,255,0.4);margin-left:auto;">14</span>
+            </div>
+            <div style="font-size:13px;font-weight:600;color:#f1f5f9;margin-bottom:3px;">Traffic &amp; Sessions</div>
+            <div style="font-size:11px;color:rgba(255,255,255,0.4);line-height:1.4;">Visitor sessions, page views, UTM records…</div>
+          </div>
+
+          <div style="border-radius:12px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.03);padding:14px;opacity:0.65;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+              <div style="width:18px;height:18px;border-radius:4px;border:2px solid rgba(255,255,255,0.25);flex-shrink:0;"></div>
+              <div style="width:28px;height:28px;border-radius:8px;background:rgba(0,0,0,0.25);display:flex;align-items:center;justify-content:center;font-size:13px;">✉️</div>
+              <span style="font-size:11px;font-family:monospace;color:rgba(255,255,255,0.25);margin-left:auto;">3</span>
+            </div>
+            <div style="font-size:13px;font-weight:600;color:#f1f5f9;margin-bottom:3px;">Contact Messages</div>
+            <div style="font-size:11px;color:rgba(255,255,255,0.35);line-height:1.4;">Contact form &amp; support inquiries…</div>
+          </div>
+
+          <div style="border-radius:12px;border:1px solid rgba(124,58,237,0.35);background:linear-gradient(135deg,rgba(124,58,237,0.18),rgba(139,92,246,0.1));padding:14px;box-shadow:0 0 0 2px rgba(255,255,255,0.15);">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+              <div style="width:18px;height:18px;border-radius:4px;background:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="#000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </div>
+              <div style="width:28px;height:28px;border-radius:8px;background:rgba(0,0,0,0.25);display:flex;align-items:center;justify-content:center;font-size:13px;">🎬</div>
+              <span style="font-size:11px;font-family:monospace;color:rgba(255,255,255,0.4);margin-left:auto;">7</span>
+            </div>
+            <div style="font-size:13px;font-weight:600;color:#f1f5f9;margin-bottom:3px;">Video Analytics</div>
+            <div style="font-size:11px;color:rgba(255,255,255,0.4);line-height:1.4;">Project views, watch-time, showreel…</div>
+          </div>
+
+        </div>
+        <p style="font-size:12px;color:var(--muted);margin:0;">Checked cards have a bright border + white checkbox. The badge on the right is the live record count. Click a card to toggle it.</p>
+      </div>
+
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin:4px 0 6px;">
+        <p style="margin:0;font-size:13.5px;color:var(--muted);">Use <strong style="color:var(--text);">Select All</strong> / <strong style="color:var(--text);">Deselect All</strong> at the top-right of the card grid to toggle every category at once. The <strong style="color:var(--text);">Refresh counts</strong> button at the bottom re-fetches live numbers without leaving the tab.</p>
+      </div>
+
+      <!-- 3-step modal flow -->
+      <h3>Confirmation modal — 3-step flow</h3>
+      <p>Clicking the red <strong>Reset X categories</strong> button opens a 3-step modal. No data is deleted until you complete all three steps.</p>
+
+      <div class="wizard-steps" style="margin-bottom:24px;">
+        <div class="step-dot">
+          <div class="step-dot-inner done">1</div>
+          <div class="step-label">Final Warning</div>
+        </div>
+        <div class="step-line done"></div>
+        <div class="step-dot">
+          <div class="step-dot-inner active">2</div>
+          <div class="step-label">Password Gate</div>
+        </div>
+        <div class="step-line"></div>
+        <div class="step-dot">
+          <div class="step-dot-inner idle">3</div>
+          <div class="step-label">Results</div>
+        </div>
+      </div>
+
+      <!-- Step 1 mockup -->
+      <h4>Step 1 — Final Warning</h4>
+      <div class="ui-box" style="border-color:rgba(239,68,68,0.35);">
+        <div class="ui-box-label">Modal · Step 1</div>
+        <div style="text-align:center;padding:16px 0 20px;">
+          <div style="width:52px;height:52px;border-radius:50%;background:rgba(239,68,68,0.15);border:2px solid rgba(239,68,68,0.4);display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 12px;">⚠️</div>
+          <div style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:6px;">Are you absolutely sure?</div>
+          <div style="font-size:13px;color:#fca5a5;">This operation is <u>permanent</u> and <u>cannot be undone</u>.</div>
+        </div>
+        <div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);border-radius:10px;padding:12px 14px;margin-bottom:12px;font-size:13px;color:#fca5a5;">
+          ⚠️ &nbsp;You are about to permanently delete <strong style="color:#fef2f2;">24 records</strong> across <strong style="color:#fef2f2;">3 categories</strong>.
+        </div>
+        <div style="border:1px solid rgba(255,255,255,0.07);border-radius:10px;overflow:hidden;margin-bottom:14px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid rgba(255,255,255,0.06);">
+            <span style="font-size:13px;color:var(--muted);">🌐 Traffic &amp; Sessions</span>
+            <span style="font-size:11px;font-family:monospace;color:rgba(255,255,255,0.3);">14 records</span>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid rgba(255,255,255,0.06);">
+            <span style="font-size:13px;color:var(--muted);">🎬 Video Analytics</span>
+            <span style="font-size:11px;font-family:monospace;color:rgba(255,255,255,0.3);">7 records</span>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;">
+            <span style="font-size:13px;color:var(--muted);">📥 Free Download Leads</span>
+            <span style="font-size:11px;font-family:monospace;color:rgba(255,255,255,0.3);">3 records</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <div class="fake-btn outline" style="flex:1;text-align:center;">Cancel — Keep Data</div>
+          <div class="fake-btn danger" style="flex:1;text-align:center;background:rgba(239,68,68,0.75);color:#fff;border:none;">Yes, I'm sure →</div>
+        </div>
+      </div>
+
+      <!-- Step 2 mockup -->
+      <h4>Step 2 — Admin Password Gate</h4>
+      <p>Your credentials are re-verified server-side via Supabase Auth <em>before</em> any deletion runs. An incorrect password aborts immediately — nothing is deleted.</p>
+      <div class="ui-box">
+        <div class="ui-box-label">Modal · Step 2</div>
+        <div style="display:flex;align-items:center;gap:10px;padding-bottom:14px;border-bottom:1px solid rgba(255,255,255,0.06);margin-bottom:16px;">
+          <div style="width:32px;height:32px;border-radius:8px;background:rgba(239,68,68,0.15);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;">🔒</div>
+          <div>
+            <div style="font-size:14px;font-weight:600;color:var(--text);">Admin Authorization Required</div>
+            <div style="font-size:11px;color:var(--muted);">Enter your credentials to authorize this reset</div>
+          </div>
+        </div>
+        <div style="background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.18);border-radius:8px;padding:10px 14px;margin-bottom:14px;">
+          <div style="font-size:11px;font-weight:600;color:#fca5a5;margin-bottom:6px;">About to delete:</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;">
+            <span class="fake-tag red">Traffic &amp; Sessions</span>
+            <span class="fake-tag red">Video Analytics</span>
+            <span class="fake-tag red">Free Download Leads</span>
+          </div>
+        </div>
+        <div style="margin-bottom:10px;">
+          <div style="font-size:11px;font-weight:600;color:rgba(255,255,255,0.4);margin-bottom:6px;">Admin Email</div>
+          <div class="fake-input">admin@fastoosh.com</div>
+        </div>
+        <div style="margin-bottom:14px;">
+          <div style="font-size:11px;font-weight:600;color:rgba(255,255,255,0.4);margin-bottom:6px;">Admin Password</div>
+          <div class="fake-input">••••••••••••</div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <div class="fake-btn outline" style="flex:1;text-align:center;">← Back</div>
+          <div class="fake-btn danger" style="flex:1;text-align:center;background:rgba(239,68,68,0.75);color:#fff;border:none;">🗑 Confirm Reset</div>
+        </div>
+      </div>
+
+      <div class="callout warn">
+        <span class="ico">⚠️</span>
+        <p>The server re-verifies identity by calling <code>supabase.auth.signInWithPassword()</code> with the submitted credentials. If verification fails (wrong email or password), the entire reset is cancelled and an error is shown — no records are modified.</p>
+      </div>
+
+      <!-- Step 3 mockup -->
+      <h4>Step 3 — Results Report</h4>
+      <p>After a successful reset, a summary modal shows the outcome for each category — deleted record count or an error message if something failed.</p>
+      <div class="ui-box" style="border-color:rgba(16,185,129,0.25);">
+        <div class="ui-box-label">Modal · Step 3</div>
+        <div style="display:flex;align-items:center;gap:10px;padding-bottom:14px;border-bottom:1px solid rgba(255,255,255,0.06);margin-bottom:16px;">
+          <span style="font-size:18px;">✅</span>
+          <div style="font-size:15px;font-weight:600;color:var(--text);">Reset Complete</div>
+        </div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:12px;">The following categories were processed:</p>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-radius:10px;background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.2);">
+            <span style="font-size:13px;color:var(--muted);">✅ Traffic &amp; Sessions</span>
+            <span style="font-size:12px;font-family:monospace;color:#6ee7b7;">14 deleted</span>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-radius:10px;background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.2);">
+            <span style="font-size:13px;color:var(--muted);">✅ Video Analytics</span>
+            <span style="font-size:12px;font-family:monospace;color:#6ee7b7;">7 deleted</span>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-radius:10px;background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.2);">
+            <span style="font-size:13px;color:var(--muted);">✅ Free Download Leads</span>
+            <span style="font-size:12px;font-family:monospace;color:#6ee7b7;">3 deleted</span>
+          </div>
+        </div>
+        <div class="fake-btn outline" style="width:100%;text-align:center;">Done</div>
+      </div>
+
+      <!-- Server internals -->
+      <h3>Server-side implementation</h3>
+      <p>The Reset tab uses two dedicated endpoints on the Hono server (<code>/supabase/functions/server/index.tsx</code>):</p>
+      <table>
+        <thead><tr><th>Endpoint</th><th>Method</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>/admin/reset/stats</code></td>
+            <td><span class="pill blue">GET</span></td>
+            <td>Returns live record counts for all 6 categories. Used to populate the card badges and the total-records warning in the confirmation modal.</td>
+          </tr>
+          <tr>
+            <td><code>/admin/reset</code></td>
+            <td><span class="pill red">POST</span></td>
+            <td>Accepts <code>{ email, password, categories }</code>. Re-verifies credentials, then deletes the selected categories in parallel. Returns a per-category report.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p>Both endpoints are protected by the <code>requireAuth</code> middleware (<code>X-Admin-Token</code> header check) in addition to the password re-verification in the POST handler.</p>
+
+      <!-- Video Analytics detail -->
+      <h3>Video Analytics category — detail</h3>
+      <p>Video analytics are stored as individual KV entries, one per project video and one for the showreel:</p>
+      <ul>
+        <li><code>project_video_stats:{projectId}</code> — stores <code>{ views, totalWatchSeconds, avgWatchSeconds, lastViewed }</code> for each project.</li>
+        <li><code>showreel_video_stats</code> — same shape, for the Home page showreel embed.</li>
+      </ul>
+      <p>Resetting this category deletes all <code>project_video_stats:*</code> entries plus the <code>showreel_video_stats</code> key. The Video Analytics sub-tab in Dashboard will immediately show zeroed counts after reset.</p>
+
+      <div class="callout tip">
+        <span class="ico">💡</span>
+        <p>To clear video data for a single project without touching everything else, you can use the standalone <code>DELETE /admin/video-stats</code> endpoint directly — but in normal usage, the Reset tab is the recommended approach since it gives you full visibility and a password confirmation gate.</p>
+      </div>
+
+      <!-- Pre-launch checklist -->
+      <h3>Recommended pre-launch reset sequence</h3>
+      <div class="flow-steps">
+        <div class="flow-step">
+          <h3>Verify your content</h3>
+          <p>Make sure all Projects, Tools, Team members, Home content, and Translations look correct. The Reset panel cannot touch these, but it's good practice to review everything before proceeding.</p>
+        </div>
+        <div class="flow-step">
+          <h3>Open the Reset tab</h3>
+          <p>Go to <strong>Admin → ⚠️ Reset</strong>. Click <strong>Refresh counts</strong> to get the latest numbers.</p>
+        </div>
+        <div class="flow-step">
+          <h3>Select all test-data categories</h3>
+          <p>Click <strong>Select All</strong>, then uncheck any category you want to keep (e.g. if you have real leads you don't want to lose). Typically before launch you'd reset: Traffic, Messages, Reviews, Leads, Users, and Video Analytics.</p>
+        </div>
+        <div class="flow-step">
+          <h3>Click Reset and complete the 2-step confirmation</h3>
+          <p>Review the deletion summary in Step 1, then enter your admin email and password in Step 2 and click <strong>Confirm Reset</strong>.</p>
+        </div>
+        <div class="flow-step">
+          <h3>Verify the results report</h3>
+          <p>Each category should show <em>N deleted</em> with a green checkmark. If any show an error, check the Supabase Edge Function logs for details.</p>
+        </div>
+        <div class="flow-step">
+          <h3>You're live</h3>
+          <p>The site is now clean. All subsequent traffic, leads, messages, reviews, and video plays are real data from real visitors.</p>
+        </div>
+      </div>
+
+    </section>
+
+    <hr>
+
+    <!-- ══════════════════ REFERENCE ══════════════════ -->
+    <section id="env-ref">
+      <h2>Environment Variables Reference</h2>
+      <table>
+        <thead><tr><th>Variable</th><th>Required</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td><code>SUPABASE_URL</code></td><td><span class="pill green">Auto</span></td><td>Supabase project API URL. Auto-injected.</td></tr>
+          <tr><td><code>SUPABASE_ANON_KEY</code></td><td><span class="pill green">Auto</span></td><td>Public anon key for client requests. Auto-injected.</td></tr>
+          <tr><td><code>SUPABASE_SERVICE_ROLE_KEY</code></td><td><span class="pill green">Auto</span></td><td>Admin key used server-side for user management. Auto-injected.</td></tr>
+          <tr><td><code>RESEND_API_KEY</code></td><td><span class="pill red">Required</span></td><td>Sends OTP emails, admin notifications, and password-reset links.</td></tr>
+          <tr><td><code>GEMINI_API_KEY</code></td><td><span class="pill red">Required</span></td><td>Powers the AI Improve and AI Translate features.</td></tr>
+          <tr><td><code>VIMEO_ACCESS_TOKEN</code></td><td><span class="pill amber">Optional</span></td><td>Enables the Vimeo video picker in admin forms.</td></tr>
+          <tr><td><code>LEMON_SQUEEZY_API_KEY</code></td><td><span class="pill amber">Optional</span></td><td>Fetches order/revenue data for the LS Revenue Panel.</td></tr>
+          <tr><td><code>LEMON_SQUEEZY_WEBHOOK_SECRET</code></td><td><span class="pill amber">Optional</span></td><td>Verifies incoming purchase webhooks from Lemon Squeezy.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="auth-ref">
+      <h2>Authentication Flow</h2>
+
+      <h3>Admin authentication</h3>
+      <p>The admin panel uses a <strong>custom token system</strong> — separate from Supabase Auth. The flow:</p>
+      <div class="flow-steps">
+        <div class="flow-step">
+          <h3>Admin submits email + password at <code>/admin/login</code></h3>
+        </div>
+        <div class="flow-step">
+          <h3>Server validates credentials against Supabase Auth</h3>
+          <p>Uses <code>supabase.auth.signInWithPassword()</code>. If valid, generates a UUID session token and stores it in KV under <code>admin_session:{token}</code> with a TTL.</p>
+        </div>
+        <div class="flow-step">
+          <h3>Token returned to browser and saved in <code>localStorage</code></h3>
+          <p>Key: <code>admin_token</code>.</p>
+        </div>
+        <div class="flow-step">
+          <h3>Every admin API request sends the token</h3>
+          <p>Via the custom header <code>X-Admin-Token: &lt;uuid&gt;</code>. The server validates it on each request.</p>
+        </div>
+        <div class="flow-step">
+          <h3>Sign out invalidates the server-side session</h3>
+          <p>POSTs to <code>/logout</code>, which deletes the KV entry. Token is also removed from <code>localStorage</code>.</p>
+        </div>
+      </div>
+
+      <h3>Public user authentication</h3>
+      <p>Visitors can sign up / log in on the Account page (<code>/account</code>). Supported methods:</p>
+      <ul>
+        <li><strong>Email + Password</strong> — with multi-layer security on signup (rate limiting, domain blocklist, disposable email check).</li>
+        <li><strong>Google OAuth</strong> — PKCE flow via <code>supabase.auth.signInWithOAuth({ provider: 'google' })</code>.</li>
+        <li><strong>Discord OAuth</strong> — PKCE flow via <code>supabase.auth.signInWithOAuth({ provider: 'discord' })</code>.</li>
+        <li><strong>Forgot Password</strong> — sends a password-reset link via Resend. The reset URL lands on <code>/reset-password</code>.</li>
+      </ul>
+
+      <div class="callout info">
+        <span class="ico">ℹ️</span>
+        <p>OAuth callback handling is in <code>/src/app/pages/AuthCallback.tsx</code>. After the OAuth redirect, it exchanges the code for a session token and redirects the user to <code>/account</code>.</p>
+      </div>
+    </section>
+
+    <section id="ai-ref">
+      <h2>AI Features</h2>
+
+      <h3>AI Improve (inline)</h3>
+      <p>Available on virtually every text field in the admin panel. The <strong>AIImproveModal</strong> accepts:</p>
+      <ul>
+        <li>The current field value.</li>
+        <li>A <strong>context object</strong> — e.g. for a project description, context includes the project title, category, year, and client.</li>
+        <li>A field type hint — <code>title</code>, <code>description</code>, <code>bio</code>, <code>headline</code>, <code>cta</code>, etc.</li>
+      </ul>
+      <p>It sends all this to the server endpoint <code>/ai/improve</code>, which calls Gemini with a tailored prompt and returns an improved version. The user can <strong>Accept</strong>, <strong>Regenerate</strong>, or <strong>Discard</strong>.</p>
+
+      <h3>AI Translate (bulk)</h3>
+      <p>In the Translations tab, the <strong>Translate All</strong> button sends a batch of up to 50 field key-value pairs to <code>/translate</code>. The server calls Gemini with a structured prompt that instructs it to return a JSON object with the same keys but translated values, preserving formatting, HTML entities, and tone.</p>
+
+      <h3>AI SEO Generation</h3>
+      <p>In the SEO tab, each page entry has a <strong>Generate All with AI</strong> action that auto-populates all 10 SEO fields (title, description, keywords, OG, Twitter, canonical, structured data) in one request.</p>
+    </section>
+
+    <section id="i18n-ref">
+      <h2>Localization (i18n)</h2>
+
+      <h3>Setup</h3>
+      <p>The site uses <code>i18next</code> with <code>react-i18next</code>. Locale files live in <code>/src/locales/</code>:</p>
+      <ul>
+        <li><code>en.json</code> — English (default, compiled into the app bundle).</li>
+        <li><code>fr.json</code> — French.</li>
+        <li><code>ar.json</code> — Arabic.</li>
+      </ul>
+
+      <h3>Runtime translations</h3>
+      <p>Dynamic content (projects, tools, team bios, home copy) is translated at runtime via the KV store — the Translation tab writes to <code>translations:fr:projects</code>, etc. The public pages call <code>fetchTranslations(lang, type)</code> on mount and deep-merge the result over the English data.</p>
+
+      <h3>Language switcher</h3>
+      <p>A language picker in the site navigation lets visitors switch between EN / FR / AR. Switching triggers a re-fetch of translated content and flips the <code>dir</code> attribute to <code>rtl</code> for Arabic.</p>
+
+      <h3>RTL support</h3>
+      <p>All public pages use Tailwind's <code>rtl:</code> variant for mirrored layouts. Navigation icons, padding, flex directions, and text alignment all flip correctly. The admin panel is exempt.</p>
+    </section>
+
+    <section id="payments-ref">
+      <h2>Payments (Lemon Squeezy)</h2>
+
+      <h3>How checkout works</h3>
+      <div class="flow-steps">
+        <div class="flow-step">
+          <h3>Visitor clicks "Buy" on a paid tool tier</h3>
+          <p>The frontend builds a Lemon Squeezy checkout URL using the <code>lemonSqueezyVariantId</code> from the tool version and appends a custom <code>checkout[custom][user_email]</code> parameter if the user is logged in.</p>
+        </div>
+        <div class="flow-step">
+          <h3>Lemon Squeezy handles payment</h3>
+          <p>The user completes payment on the LS-hosted checkout page. No card data ever touches the Fastoosh server.</p>
+        </div>
+        <div class="flow-step">
+          <h3>Webhook fires to the server</h3>
+          <p>LS sends a <code>order_created</code> or <code>subscription_created</code> event to <code>/webhooks/lemonsqueezy</code>. The server verifies the signature using <code>LEMON_SQUEEZY_WEBHOOK_SECRET</code>, then records the order in the KV store and marks the user's license as active.</p>
+        </div>
+        <div class="flow-step">
+          <h3>User gets access + email notification</h3>
+          <p>The user's Account page shows their purchase under <strong>My Downloads</strong>. An admin notification email is sent via Resend.</p>
+        </div>
+      </div>
+
+      <h3>Revenue Panel</h3>
+      <p>The Dashboard → Revenue panel hits the LS REST API (<code>/v1/orders</code>) to fetch real-time revenue data: total, last 30 days, last 7 days, refunds, and individual order cards with status badges.</p>
+
+      <div class="callout warn">
+        <span class="ico">⚠️</span>
+        <p>Lemon Squeezy Variant IDs must be entered manually per tool version in the admin Tools form. You find them in your Lemon Squeezy dashboard under <strong>Products → Variants</strong>.</p>
+      </div>
+    </section>
+
+    <!-- ── Footer ── -->
+    <div style="margin-top:60px;padding-top:28px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+      <div>
+        <div style="font-size:14px;font-weight:700;background:linear-gradient(135deg,#a78bfa,#60a5fa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">Fastoosh Studio Platform</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px;">Setup &amp; Admin Guide — v1.0 &nbsp;·&nbsp; Generated March 2026</div>
+      </div>
+      <div style="font-size:12px;color:var(--muted);">React 18 · TypeScript · Tailwind v4 · Supabase · Hono · Deno</div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+  // Highlight active sidebar link on scroll
+  const links = document.querySelectorAll('.nav-link');
+  const sections = document.querySelectorAll('section[id]');
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        links.forEach(l => l.classList.remove('active'));
+        const active = document.querySelector(`.nav-link[href="#${entry.target.id}"]`);
+        if (active) active.classList.add('active');
+      }
+    });
+  }, { rootMargin: '-20% 0px -70% 0px' });
+  sections.forEach(s => observer.observe(s));
+</script>
+
+</body>
+</html>

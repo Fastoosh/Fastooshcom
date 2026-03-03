@@ -2355,6 +2355,43 @@ app.get("/make-server-e07959ec/admin/video-stats", requireAuth, async (c) => {
   }
 });
 
+// DELETE /admin/video-stats — wipe all video view/watch-time data
+// Body: { email, password }  — requires credential re-verification
+app.delete('/make-server-e07959ec/admin/video-stats', requireAuth, async (c) => {
+  try {
+    const { email, password } = await c.req.json().catch(() => ({}));
+    if (!email || !password) {
+      return c.json({ success: false, error: 'Email and password are required.' }, 400);
+    }
+
+    // Re-verify admin credentials before destructive action
+    const authClient = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_ANON_KEY')!,
+    );
+    const { data: authData, error: authError } = await authClient.auth.signInWithPassword({ email, password });
+    if (authError || !authData.user) {
+      console.log('[video-stats reset] Auth failed:', authError?.message);
+      return c.json({ success: false, error: 'Incorrect password. Reset cancelled.' }, 401);
+    }
+
+    // Delete all project video stats + showreel stat
+    const [projectRes, showreelRes] = await Promise.all([
+      supabase.from('kv_store_e07959ec').delete().like('key', 'project_video_stats:%').select('key'),
+      supabase.from('kv_store_e07959ec').delete().eq('key', 'showreel_video_stats').select('key'),
+    ]);
+    if (projectRes.error)  throw projectRes.error;
+    if (showreelRes.error) throw showreelRes.error;
+
+    const deleted = (projectRes.data?.length ?? 0) + (showreelRes.data?.length ?? 0);
+    console.log(`[video-stats reset] ✅ Deleted ${deleted} video analytics entries`);
+    return c.json({ success: true, deleted });
+  } catch (err) {
+    console.log('[video-stats reset] ❌ Error:', err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
 // ========== TOOLS ENDPOINTS ==========
 
 // Get all tools with versions
@@ -6660,6 +6697,206 @@ app.get('/make-server-e07959ec/admin/vimeo/videos', requireAuth, async (c) => {
   } catch (err) {
     console.error('[vimeo] Unexpected error:', err);
     return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// ========== ADMIN RESET / INITIALIZE ==========
+
+// GET /admin/reset/stats — live item counts for each resettable category
+app.get('/make-server-e07959ec/admin/reset/stats', requireAuth, async (c) => {
+  try {
+    const [
+      trafficRes,
+      messagesRes,
+      reviewsRes,
+      leadsRes,
+      usersData,
+      videoProjectRes,
+      videoShowreelRes,
+    ] = await Promise.all([
+      supabase.from('kv_store_e07959ec').select('key', { count: 'exact', head: true }).like('key', 'session:%'),
+      supabase.from('kv_store_e07959ec').select('key', { count: 'exact', head: true }).like('key', 'msg:%'),
+      supabase.from('kv_store_e07959ec').select('key', { count: 'exact', head: true }).like('key', 'review:%'),
+      supabase.from('kv_store_e07959ec').select('key', { count: 'exact', head: true }).like('key', 'lead:%'),
+      supabase.auth.admin.listUsers({ perPage: 1000 }),
+      supabase.from('kv_store_e07959ec').select('key', { count: 'exact', head: true }).like('key', 'project_video_stats:%'),
+      supabase.from('kv_store_e07959ec').select('key', { count: 'exact', head: true }).eq('key', 'showreel_video_stats'),
+    ]);
+    const userCount  = Math.max(0, (usersData.data?.users?.length ?? 1) - 1);
+    const videoCount = (videoProjectRes.count ?? 0) + (videoShowreelRes.count ?? 0);
+    return c.json({
+      success: true,
+      data: {
+        traffic:  trafficRes.count  ?? 0,
+        messages: messagesRes.count ?? 0,
+        reviews:  reviewsRes.count  ?? 0,
+        leads:    leadsRes.count    ?? 0,
+        users:    userCount,
+        videos:   videoCount,
+      },
+    });
+  } catch (err) {
+    console.log('[admin/reset/stats] Error:', err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// POST /admin/reset — selective data initialization
+// Body: { email, password, categories: { traffic, messages, reviews, leads, users, videos } }
+app.post('/make-server-e07959ec/admin/reset', requireAuth, async (c) => {
+  try {
+    const { email, password, categories } = await c.req.json();
+
+    if (!email || !password) {
+      return c.json({ success: false, error: 'Email and password are required for confirmation.' }, 400);
+    }
+
+    // ── Extra security gate: re-verify credentials before any destructive action ──
+    const authClient = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_ANON_KEY')!,
+    );
+    const { data: authData, error: authError } = await authClient.auth.signInWithPassword({ email, password });
+    if (authError || !authData.user) {
+      console.log('[admin/reset] Password re-verification failed:', authError?.message);
+      return c.json({ success: false, error: 'Incorrect password. Reset cancelled for security.' }, 401);
+    }
+
+    const adminUserId = authData.user.id;
+    const report: Record<string, { deleted: number; error?: string }> = {};
+
+    // ── Traffic & Sessions ────────────────────────────────────────────────────
+    if (categories?.traffic) {
+      try {
+        const { data, error } = await supabase
+          .from('kv_store_e07959ec')
+          .delete()
+          .like('key', 'session:%')
+          .select('key');
+        if (error) throw error;
+        report.traffic = { deleted: data?.length ?? 0 };
+        console.log(`[admin/reset] ✅ Traffic: deleted ${data?.length ?? 0} sessions`);
+      } catch (err) {
+        console.log('[admin/reset] ❌ Traffic error:', err);
+        report.traffic = { deleted: 0, error: String(err) };
+      }
+    }
+
+    // ── Contact Messages ──────────────────────────────────────────────────────
+    if (categories?.messages) {
+      try {
+        const { data, error } = await supabase
+          .from('kv_store_e07959ec')
+          .delete()
+          .like('key', 'msg:%')
+          .select('key');
+        if (error) throw error;
+        report.messages = { deleted: data?.length ?? 0 };
+        console.log(`[admin/reset] ✅ Messages: deleted ${data?.length ?? 0}`);
+      } catch (err) {
+        console.log('[admin/reset] ❌ Messages error:', err);
+        report.messages = { deleted: 0, error: String(err) };
+      }
+    }
+
+    // ── Reviews & Ratings ────────────────────────────────────────────────────
+    if (categories?.reviews) {
+      try {
+        const { data, error } = await supabase
+          .from('kv_store_e07959ec')
+          .delete()
+          .like('key', 'review:%')
+          .select('key');
+        if (error) throw error;
+        report.reviews = { deleted: data?.length ?? 0 };
+        console.log(`[admin/reset] ✅ Reviews: deleted ${data?.length ?? 0}`);
+      } catch (err) {
+        console.log('[admin/reset] ❌ Reviews error:', err);
+        report.reviews = { deleted: 0, error: String(err) };
+      }
+    }
+
+    // ── Free Download Leads + OTPs ────────────────────────────────────────────
+    if (categories?.leads) {
+      try {
+        const [leadsRes, otpRes] = await Promise.all([
+          supabase.from('kv_store_e07959ec').delete().like('key', 'lead:%').select('key'),
+          supabase.from('kv_store_e07959ec').delete().like('key', 'otp:%').select('key'),
+        ]);
+        if (leadsRes.error) throw leadsRes.error;
+        if (otpRes.error)   throw otpRes.error;
+        const total = (leadsRes.data?.length ?? 0) + (otpRes.data?.length ?? 0);
+        report.leads = { deleted: total };
+        console.log(`[admin/reset] ✅ Leads: deleted ${total} entries`);
+      } catch (err) {
+        console.log('[admin/reset] ❌ Leads error:', err);
+        report.leads = { deleted: 0, error: String(err) };
+      }
+    }
+
+    // ── User Accounts ─────────────────────────────────────────────────────────
+    if (categories?.users) {
+      try {
+        const { data: usersData, error: listErr } = await supabase.auth.admin.listUsers({ perPage: 1000 });
+        if (listErr) throw new Error(`Failed to list users: ${listErr.message}`);
+
+        const allUsers    = usersData?.users ?? [];
+        const nonAdmins   = allUsers.filter(u => u.id !== adminUserId);
+        const nonAdminIds = nonAdmins.map(u => u.id);
+
+        // Delete auth accounts
+        let deletedAuth = 0;
+        for (const userId of nonAdminIds) {
+          const { error } = await supabase.auth.admin.deleteUser(userId);
+          if (error) console.warn(`[admin/reset] Warning: could not delete auth user ${userId}:`, error.message);
+          else deletedAuth++;
+        }
+
+        // Delete DB rows for removed users
+        if (nonAdminIds.length > 0) {
+          await Promise.allSettled([
+            supabase.from('user_profiles').delete().in('user_id', nonAdminIds),
+            supabase.from('user_purchases').delete().in('user_id', nonAdminIds),
+          ]);
+        }
+
+        // Clean KV download records + pending signup OTPs
+        await Promise.allSettled([
+          supabase.from('kv_store_e07959ec').delete().like('key', 'user:dl:%'),
+          supabase.from('kv_store_e07959ec').delete().like('key', 'signup_otp:%'),
+        ]);
+
+        report.users = { deleted: deletedAuth };
+        console.log(`[admin/reset] ✅ Users: deleted ${deletedAuth} of ${nonAdmins.length} non-admin accounts`);
+      } catch (err) {
+        console.log('[admin/reset] ❌ Users error:', err);
+        report.users = { deleted: 0, error: String(err) };
+      }
+    }
+
+    // ── Video Analytics ───────────────────────────────────────────────────────
+    if (categories?.videos) {
+      try {
+        const [projectVidsRes, showreelRes] = await Promise.all([
+          supabase.from('kv_store_e07959ec').delete().like('key', 'project_video_stats:%').select('key'),
+          supabase.from('kv_store_e07959ec').delete().eq('key', 'showreel_video_stats').select('key'),
+        ]);
+        if (projectVidsRes.error) throw projectVidsRes.error;
+        if (showreelRes.error)    throw showreelRes.error;
+        const total = (projectVidsRes.data?.length ?? 0) + (showreelRes.data?.length ?? 0);
+        report.videos = { deleted: total };
+        console.log(`[admin/reset] ✅ Videos: deleted ${total} analytics entries`);
+      } catch (err) {
+        console.log('[admin/reset] ❌ Videos error:', err);
+        report.videos = { deleted: 0, error: String(err) };
+      }
+    }
+
+    console.log('[admin/reset] ✅ Reset complete:', JSON.stringify(report));
+    return c.json({ success: true, report });
+  } catch (error) {
+    console.log('[admin/reset] Unexpected error:', error);
+    return c.json({ success: false, error: `Reset failed: ${String(error)}` }, 500);
   }
 });
 
