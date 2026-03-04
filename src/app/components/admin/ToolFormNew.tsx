@@ -4,7 +4,9 @@ import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { AdminSelect } from './AdminSelect';
-import { Plus, Save, X, Upload, Copy, Trash2, Sparkles, ChevronLeft, ChevronRight, GripVertical, ImageIcon, BookOpen, FileCode, CheckCircle2, AlertCircle, Pencil, Maximize2, Minimize2, Eye, Code2 } from 'lucide-react';
+import { IconPicker } from './IconPicker';
+import { Plus, Save, X, Upload, Copy, Trash2, Sparkles, ChevronLeft, ChevronRight, GripVertical, ImageIcon, BookOpen, FileCode, CheckCircle2, AlertCircle, Pencil, Maximize2, Minimize2, Eye, Code2, PackageOpen, MousePointer2 } from 'lucide-react';
+import { LsImportModal, type LsImportPayload } from './LsImportModal';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import { AIImproveModal, type AIImproveContext } from './AIImproveModal';
 import CodeMirror from '@uiw/react-codemirror';
@@ -18,6 +20,7 @@ export interface RichFeature {
   title: string;
   description: string;
   screenshots: string[];
+  featured?: boolean;  // If true, show in showcase section with screenshots
 }
 
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-e07959ec`;
@@ -33,9 +36,50 @@ const createSlug = (text: string): string => {
     .replace(/^-+|-+$/g, ''); // Remove leading/trailing hyphens
 };
 
+// Neon palette for version accent colors
+export const VERSION_COLORS = [
+  '#a855f7', // purple
+  '#06b6d4', // cyan
+  '#f59e0b', // amber
+  '#10b981', // emerald
+  '#ec4899', // pink
+  '#3b82f6', // blue
+  '#f43f5e', // rose
+  '#84cc16', // lime
+];
+
+// Detect if a version is free: all prices empty
+export const isVersionFree = (v: { lifetimePrice?: string; monthlyPrice?: string; yearlyPrice?: string }) =>
+  !v.lifetimePrice?.trim() && !v.monthlyPrice?.trim() && !v.yearlyPrice?.trim();
+
+// Common CTA icons available from lucide-react
+export const CTA_ICON_OPTIONS = [
+  'Download',
+  'ShoppingCart',
+  'Zap',
+  'Star',
+  'Sparkles',
+  'ArrowRight',
+  'ExternalLink',
+  'Play',
+  'Gift',
+  'Package',
+  'Heart',
+  'Rocket',
+];
+
+// Convert icon options to SelectOption format for AdminSelect
+const CTA_ICON_SELECT_OPTIONS = [
+  { value: '', label: '— Default —' },
+  ...CTA_ICON_OPTIONS.map(icon => ({ value: icon, label: icon }))
+];
+
 interface ToolVersion {
   id: string;
-  versionType: 'Free' | 'Pro' | 'Studio';
+  versionType: string;        // free-text name, e.g. "Starter", "Pro", "Agency"
+  versionType_ar?: string;    // Arabic translation of version name
+  versionType_fr?: string;    // French translation of version name
+  color?: string;             // hex accent, e.g. '#a855f7'
   pricingModel: 'subscription' | 'lifetime';
   monthlyPrice?: string;
   yearlyPrice?: string;
@@ -44,10 +88,9 @@ interface ToolVersion {
   downloadUrl: string;
   lemonSqueezyVariantId?: string;
   lemonSqueezyProductId?: string;
-  features?: string[];
   whatsIncluded?: string[];
   activationSteps?: string[];
-  richFeatures?: RichFeature[];
+  richFeatures?: RichFeature[];  // Only richFeatures - used for both pricing cards and detail section
   demoUrl?: string;
 }
 
@@ -66,6 +109,12 @@ interface Tool {
   howItWorks?: Array<{ title: string; description: string }>;
   faqs?: Array<{ question: string; answer: string }>;
   versions?: ToolVersion[];
+  // CTA customization
+  freeCtaText?: string;       // Default: "Download Free"
+  freeCtaIcon?: string;       // Default: "Download" - lucide icon name
+  paidCtaText?: string;       // Default: "Buy Now" (pricing cards) / "View Pricing" (showcase)
+  paidCtaIcon?: string;       // Default: "ShoppingCart"
+  showcasePaidCtaText?: string; // Specific text for showcase section, default: "View Pricing"
 }
 
 export function ToolFormNew({
@@ -96,6 +145,11 @@ export function ToolFormNew({
     howItWorks: tool.howItWorks || [],
     faqs: tool.faqs || [],
     versions: tool.versions || [],
+    freeCtaText: tool.freeCtaText || '',
+    freeCtaIcon: tool.freeCtaIcon || '',
+    paidCtaText: tool.paidCtaText || '',
+    paidCtaIcon: tool.paidCtaIcon || '',
+    showcasePaidCtaText: tool.showcasePaidCtaText || '',
   });
   const [activeVersionTab, setActiveVersionTab] = useState<string>('');
   const [uploading, setUploading] = useState(false);
@@ -108,8 +162,8 @@ export function ToolFormNew({
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [generatingVersionId, setGeneratingVersionId] = useState<string | null>(null);
-  const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
-  const [sourceDuplicateVersionId, setSourceDuplicateVersionId] = useState<string>('');
+  const [lsModalOpen, setLsModalOpen] = useState(false);
+  const [versionTypeModalOpen, setVersionTypeModalOpen] = useState(false);
   // AI options (bulk)
   const [aiInstruction, setAiInstruction] = useState('');
   const [improveExisting, setImproveExisting] = useState(false);
@@ -138,6 +192,7 @@ export function ToolFormNew({
     fieldKey: string, fieldLabel: string, currentValue: string,
     onApply: (v: string) => void,
     versionType?: string,
+    pricingModel?: string,
   ) => {
     setAiModal({
       fieldKey, fieldLabel, currentValue,
@@ -145,7 +200,9 @@ export function ToolFormNew({
         entityType: 'tool',
         name: formData.name,
         category: formData.toolCategory || formData.category,
+        description: formData.description,
         ...(versionType ? { versionType } : {}),
+        ...(pricingModel ? { pricingModel } : {}),
       },
       onApply,
     });
@@ -628,7 +685,6 @@ export function ToolFormNew({
           versions: [{
             id: version.id,
             versionType: version.versionType,
-            features: version.features,
             whatsIncluded: version.whatsIncluded,
             activationSteps: version.activationSteps,
           }],
@@ -669,7 +725,21 @@ export function ToolFormNew({
       const cleanedData = {
         ...formData,
         faqs: (formData.faqs || []).filter(faq => faq.question || faq.answer),
+        versions: (formData.versions || []).map(v => ({
+          ...v,
+          richFeatures: (v.richFeatures || []).map(f => ({
+            ...f,
+            screenshots: (f.screenshots || []).filter(Boolean), // Remove empty screenshot URLs
+          })),
+        })),
       };
+      console.log('Saving tool with versions:', cleanedData.versions);
+      cleanedData.versions?.forEach((v: any, i: number) => {
+        console.log(`Version ${i} richFeatures:`, v.richFeatures);
+        v.richFeatures?.forEach((f: any, j: number) => {
+          console.log(`  Feature ${j}: title="${f.title}", featured=${f.featured}, screenshots=`, f.screenshots);
+        });
+      });
       const result = await onSave(cleanedData);
       setSaving(false);
       setFormMessage({ type: result.success ? 'success' : 'error', text: result.message });
@@ -681,23 +751,25 @@ export function ToolFormNew({
     }
   };
 
-  const addVersion = (versionType: 'Free' | 'Pro' | 'Studio') => {
+  const addVersion = (overrides: Partial<ToolVersion> = {}) => {
+    const existingCount = formData.versions?.length ?? 0;
     const newVersion: ToolVersion = {
       id: `version-${Date.now()}`,
-      versionType,
-      pricingModel: versionType === 'Free' ? 'lifetime' : 'subscription',
+      versionType: `Version ${existingCount + 1}`,
+      color: VERSION_COLORS[existingCount % VERSION_COLORS.length],
+      pricingModel: 'lifetime',
       downloadUrl: '',
       lemonSqueezyVariantId: '',
       lemonSqueezyProductId: '',
-      features: [],
       whatsIncluded: [],
       activationSteps: [],
-      richFeatures: [],
+      richFeatures: [],  // Only richFeatures - used for both pricing cards and detail section
       demoUrl: '',
-      monthlyPrice: versionType === 'Free' ? undefined : '',
-      yearlyPrice: versionType === 'Free' ? undefined : '',
-      lifetimePrice: versionType === 'Free' ? undefined : '',
-      lifetimeBuyUrl: versionType === 'Free' ? undefined : '',
+      monthlyPrice: '',
+      yearlyPrice: '',
+      lifetimePrice: '',
+      lifetimeBuyUrl: '',
+      ...overrides,
     };
 
     const updatedVersions = [...(formData.versions || []), newVersion];
@@ -705,32 +777,65 @@ export function ToolFormNew({
     setActiveVersionTab(newVersion.id);
   };
 
-  const duplicateVersion = (versionId: string, targetVersionType: 'Free' | 'Pro' | 'Studio') => {
+  const addVersionByType = (type: 'subscription' | 'lifetime' | 'free') => {
+    const existingCount = formData.versions?.length ?? 0;
+    
+    if (type === 'free') {
+      addVersion({
+        versionType: 'Free',
+        pricingModel: 'lifetime',
+        monthlyPrice: '',
+        yearlyPrice: '',
+        lifetimePrice: '',
+      });
+    } else if (type === 'subscription') {
+      addVersion({
+        versionType: `Pro ${existingCount + 1}`,
+        pricingModel: 'subscription',
+        monthlyPrice: '9.99',
+        yearlyPrice: '99.99',
+        lifetimePrice: '',
+      });
+    } else {
+      addVersion({
+        versionType: `Version ${existingCount + 1}`,
+        pricingModel: 'lifetime',
+        monthlyPrice: '',
+        yearlyPrice: '',
+        lifetimePrice: '49.99',
+      });
+    }
+    
+    setVersionTypeModalOpen(false);
+  };
+
+  const duplicateVersion = (versionId: string) => {
     const sourceVersion = formData.versions?.find(v => v.id === versionId);
     if (!sourceVersion) return;
-
+    const existingCount = formData.versions?.length ?? 0;
     const newVersion: ToolVersion = {
       ...sourceVersion,
       id: `version-${Date.now()}`,
-      versionType: targetVersionType,
-      // Reset pricing for Free versions
-      pricingModel: targetVersionType === 'Free' ? 'lifetime' : sourceVersion.pricingModel,
-      monthlyPrice: targetVersionType === 'Free' ? undefined : sourceVersion.monthlyPrice,
-      yearlyPrice: targetVersionType === 'Free' ? undefined : sourceVersion.yearlyPrice,
-      lifetimePrice: targetVersionType === 'Free' ? undefined : sourceVersion.lifetimePrice,
-      lifetimeBuyUrl: targetVersionType === 'Free' ? undefined : sourceVersion.lifetimeBuyUrl,
+      versionType: `${sourceVersion.versionType} (copy)`,
+      color: VERSION_COLORS[existingCount % VERSION_COLORS.length],
     };
-
     const updatedVersions = [...(formData.versions || []), newVersion];
     setFormData({ ...formData, versions: updatedVersions });
     setActiveVersionTab(newVersion.id);
-    setDuplicateModalOpen(false);
-    setSourceDuplicateVersionId('');
   };
 
-  const openDuplicateModal = (versionId: string) => {
-    setSourceDuplicateVersionId(versionId);
-    setDuplicateModalOpen(true);
+  const handleLsImport = (payload: LsImportPayload) => {
+    addVersion({
+      versionType:          payload.versionName,
+      pricingModel:         payload.pricingModel,
+      monthlyPrice:         payload.monthlyPrice ?? '',
+      yearlyPrice:          payload.yearlyPrice  ?? '',
+      lifetimePrice:        payload.lifetimePrice ?? '',
+      lifetimeBuyUrl:       payload.buyNowUrl,
+      downloadUrl:          payload.buyNowUrl,
+      lemonSqueezyVariantId: payload.variantId,
+      lemonSqueezyProductId: payload.productId,
+    });
   };
 
   const deleteVersion = (versionId: string) => {
@@ -752,13 +857,21 @@ export function ToolFormNew({
     setFormData({ ...formData, versions: updatedVersions });
   };
 
+  const reorderVersion = (versionId: string, direction: 'left' | 'right') => {
+    // Use the functional-updater form so we always read the latest state and
+    // never overwrite concurrent updates (e.g. a field edit in VersionEditor).
+    setFormData(prev => {
+      const versions = [...(prev.versions || [])];
+      const idx = versions.findIndex(v => v.id === versionId);
+      if (idx === -1) return prev;
+      const target = direction === 'left' ? idx - 1 : idx + 1;
+      if (target < 0 || target >= versions.length) return prev;
+      [versions[idx], versions[target]] = [versions[target], versions[idx]];
+      return { ...prev, versions };
+    });
+  };
+
   const currentVersion = formData.versions?.find(v => v.id === activeVersionTab);
-  const sourceVersion = formData.versions?.find(v => v.id === sourceDuplicateVersionId);
-  
-  // Get available version types (exclude the current version type)
-  const allVersionTypes: ('Free' | 'Pro' | 'Studio')[] = ['Free', 'Pro', 'Studio'];
-  const existingVersionTypes = (formData.versions || []).map(v => v.versionType);
-  const availableVersionTypes = allVersionTypes.filter(type => !existingVersionTypes.includes(type));
 
   return (
     <div className="mb-6 p-6 bg-white/10 rounded-lg border border-white/20">
@@ -1121,6 +1234,86 @@ export function ToolFormNew({
           />
         </div>
 
+        {/* CTA Customization */}
+        <div className="space-y-4 p-4 rounded-xl bg-purple-500/5 border border-purple-500/20">
+          <div className="flex items-center gap-2.5 mb-1">
+            <MousePointer2 className="w-4 h-4 text-purple-400" />
+            <h4 className="text-sm font-semibold text-white">CTA Button Customization</h4>
+            <span className="text-[10px] text-white/40">(applies to all detail page CTAs)</span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Free Version CTA */}
+            <div className="space-y-3 p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/15">
+              <div className="text-xs font-semibold text-emerald-300 uppercase tracking-wider">Free Version</div>
+              
+              <div>
+                <label className="block text-xs font-medium text-gray-300 mb-1.5">Button Text</label>
+                <Input
+                  placeholder="Download Free"
+                  value={formData.freeCtaText || ''}
+                  onChange={(e) => setFormData({ ...formData, freeCtaText: e.target.value })}
+                  className="bg-black/30 border-emerald-500/20 text-white text-sm"
+                />
+                <p className="text-[10px] text-white/30 mt-1">Leave empty to use default</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-300 mb-1.5">Icon</label>
+                <IconPicker
+                  value={formData.freeCtaIcon || ''}
+                  onChange={(v) => setFormData({ ...formData, freeCtaIcon: v })}
+                  iconOptions={CTA_ICON_OPTIONS}
+                  placeholder="Download (default)"
+                  defaultIcon="Download"
+                  className="bg-black/30 border-emerald-500/20"
+                />
+                <p className="text-[10px] text-white/30 mt-1">Click to see icon grid</p>
+              </div>
+            </div>
+
+            {/* Paid Version CTA */}
+            <div className="space-y-3 p-3 rounded-lg bg-purple-500/5 border border-purple-500/15">
+              <div className="text-xs font-semibold text-purple-300 uppercase tracking-wider">Paid Version</div>
+              
+              <div>
+                <label className="block text-xs font-medium text-gray-300 mb-1.5">Pricing Card Button Text</label>
+                <Input
+                  placeholder="Buy Now"
+                  value={formData.paidCtaText || ''}
+                  onChange={(e) => setFormData({ ...formData, paidCtaText: e.target.value })}
+                  className="bg-black/30 border-purple-500/20 text-white text-sm"
+                />
+                <p className="text-[10px] text-white/30 mt-1">For pricing cards</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-300 mb-1.5">Showcase Button Text</label>
+                <Input
+                  placeholder="View Pricing"
+                  value={formData.showcasePaidCtaText || ''}
+                  onChange={(e) => setFormData({ ...formData, showcasePaidCtaText: e.target.value })}
+                  className="bg-black/30 border-purple-500/20 text-white text-sm"
+                />
+                <p className="text-[10px] text-white/30 mt-1">For feature showcase section</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-300 mb-1.5">Icon</label>
+                <IconPicker
+                  value={formData.paidCtaIcon || ''}
+                  onChange={(v) => setFormData({ ...formData, paidCtaIcon: v })}
+                  iconOptions={CTA_ICON_OPTIONS}
+                  placeholder="ShoppingCart (default)"
+                  defaultIcon="ShoppingCart"
+                  className="bg-black/30 border-purple-500/20"
+                />
+                <p className="text-[10px] text-white/30 mt-1">Click to see icon grid</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* How It Works (tool-wide) */}
         <div>
           <div className="flex items-center justify-between mb-2">
@@ -1442,48 +1635,65 @@ export function ToolFormNew({
           <div className="flex gap-2">
             <Button
               type="button"
-              onClick={() => addVersion('Free')}
+              onClick={() => setVersionTypeModalOpen(true)}
               size="sm"
-              className="cursor-pointer bg-green-600 hover:bg-green-700 text-white"
+              className="cursor-pointer bg-violet-600 hover:bg-violet-500 text-white"
             >
               <Plus className="w-4 h-4 mr-1" />
-              Add Free
+              Add Version
             </Button>
             <Button
               type="button"
-              onClick={() => addVersion('Pro')}
+              onClick={() => setLsModalOpen(true)}
               size="sm"
-              className="cursor-pointer bg-purple-600 hover:bg-purple-700 text-white"
+              variant="outline"
+              className="cursor-pointer border-amber-500/30 text-amber-300 hover:bg-amber-500/10 hover:border-amber-500/50"
             >
-              <Plus className="w-4 h-4 mr-1" />
-              Add Pro
-            </Button>
-            <Button
-              type="button"
-              onClick={() => addVersion('Studio')}
-              size="sm"
-              className="cursor-pointer bg-blue-600 hover:bg-blue-700 text-white"
-            >
-              <Plus className="w-4 h-4 mr-1" />
-              Add Studio
+              <PackageOpen className="w-4 h-4 mr-1" />
+              Import from LS
             </Button>
           </div>
         </div>
 
         {formData.versions && formData.versions.length > 0 ? (
           <Tabs value={activeVersionTab} onValueChange={setActiveVersionTab}>
-            <TabsList>
-              {formData.versions.map((version) => (
-                <TabsTrigger key={version.id} value={version.id}>
-                  <span className={`inline-block w-2 h-2 rounded-full mr-2 ${
-                    version.versionType === 'Free' ? 'bg-green-400' :
-                    version.versionType === 'Pro' ? 'bg-purple-400' :
-                    'bg-blue-400'
-                  }`}></span>
-                  {version.versionType}
-                </TabsTrigger>
-              ))}
-            </TabsList>
+            <div className="flex items-center gap-2">
+              <TabsList className="flex-1">
+                {formData.versions.map((version) => (
+                  <TabsTrigger key={version.id} value={version.id}>
+                    <span
+                      className="inline-block w-2 h-2 rounded-full mr-2"
+                      style={{ backgroundColor: version.color || '#a855f7' }}
+                    ></span>
+                    {version.versionType}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+              {/* Reorder arrows — move the active card left / right in the displayed order */}
+              {formData.versions.length > 1 && (
+                <div className="flex items-center gap-1 shrink-0">
+                  <span className="text-xs text-white/40 mr-1 select-none">Card order:</span>
+                  <button
+                    type="button"
+                    title="Move card left"
+                    disabled={!activeVersionTab || formData.versions.findIndex(v => v.id === activeVersionTab) === 0}
+                    onClick={() => activeVersionTab && reorderVersion(activeVersionTab, 'left')}
+                    className="p-1.5 rounded bg-white/5 hover:bg-white/15 disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-white"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    title="Move card right"
+                    disabled={!activeVersionTab || formData.versions.findIndex(v => v.id === activeVersionTab) === formData.versions.length - 1}
+                    onClick={() => activeVersionTab && reorderVersion(activeVersionTab, 'right')}
+                    className="p-1.5 rounded bg-white/5 hover:bg-white/15 disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-white"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+            </div>
 
             {formData.versions.map((version) => (
               <TabsContent key={version.id} value={version.id}>
@@ -1491,7 +1701,7 @@ export function ToolFormNew({
                   <VersionEditor
                     version={currentVersion}
                     onUpdate={(updates) => updateVersion(version.id, updates)}
-                    onDuplicate={() => openDuplicateModal(version.id)}
+                    onDuplicate={() => duplicateVersion(version.id)}
                     onDelete={() => deleteVersion(version.id)}
                     toolDemoUrl={formData.demoUrl || ''}
                     onUpdateDemoUrl={(url) => setFormData(prev => ({ ...prev, demoUrl: url }))}
@@ -1499,7 +1709,7 @@ export function ToolFormNew({
                     onRegenerate={() => handleRegenerateVersion(version.id)}
                     isRegenerating={generatingVersionId === version.id}
                     highlightedFields={highlightedFields}
-                    onOpenAiModal={(fk, fl, cv, apply) => openToolAiModal(fk, fl, cv, apply, version.versionType)}
+                    onOpenAiModal={(fk, fl, cv, apply) => openToolAiModal(fk, fl, cv, apply, version.versionType, version.pricingModel)}
                   />
                 )}
               </TabsContent>
@@ -1549,50 +1759,91 @@ export function ToolFormNew({
         />
       )}
 
-      {/* Duplicate Modal */}
-      {duplicateModalOpen && sourceVersion && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50" onClick={() => setDuplicateModalOpen(false)}>
-          <div className="bg-gray-900 border border-white/20 rounded-lg p-6 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
-            <h4 className="text-xl font-bold text-white mb-4">Duplicate to which version?</h4>
-            <p className="text-gray-400 mb-6">
-              Duplicating {sourceVersion.versionType} version to:
-            </p>
-            <div className="space-y-3">
-              {availableVersionTypes.map((versionType) => (
-                <button
-                  key={versionType}
-                  onClick={() => duplicateVersion(sourceDuplicateVersionId, versionType)}
-                  className={`w-full px-6 py-3 rounded-md font-medium transition-colors flex items-center justify-start gap-3 ${
-                    versionType === 'Free'
-                      ? 'bg-green-600 hover:bg-green-700 text-white'
-                      : versionType === 'Pro'
-                      ? 'bg-purple-600 hover:bg-purple-700 text-white'
-                      : 'bg-blue-600 hover:bg-blue-700 text-white'
-                  }`}
-                >
-                  <span className={`inline-block w-3 h-3 rounded-full ${
-                    versionType === 'Free' ? 'bg-green-200' :
-                    versionType === 'Pro' ? 'bg-purple-200' :
-                    'bg-blue-200'
-                  }`}></span>
-                  Duplicate to {versionType}
-                </button>
-              ))}
-              {availableVersionTypes.length === 0 && (
-                <p className="text-center text-gray-400 py-4">
-                  All version types are already created. Delete a version first to duplicate to it.
-                </p>
-              )}
-            </div>
-            <div className="mt-6 flex justify-end">
-              <Button
-                variant="outline"
-                onClick={() => setDuplicateModalOpen(false)}
-                className="cursor-pointer border-white/30 text-white hover:bg-white/10 hover:border-white/50"
+      {/* LemonSqueezy Import Modal */}
+      <LsImportModal
+        open={lsModalOpen}
+        onClose={() => setLsModalOpen(false)}
+        onImport={handleLsImport}
+      />
+
+      {/* Version Type Selection Modal */}
+      {versionTypeModalOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[9999] p-4">
+          <div className="bg-[#0a0a0a] border border-white/10 rounded-xl shadow-2xl max-w-md w-full p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-semibold text-white">Choose Version Type</h3>
+              <button
+                onClick={() => setVersionTypeModalOpen(false)}
+                className="text-white/60 hover:text-white transition-colors"
               >
-                <X className="w-4 h-4 mr-2" />
-                Cancel
-              </Button>
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <p className="text-white/60 text-sm mb-6">
+              Select the pricing model for this version. You can configure the details after creation.
+            </p>
+            
+            <div className="space-y-3">
+              {/* Subscription Option */}
+              <button
+                onClick={() => addVersionByType('subscription')}
+                className="w-full p-4 rounded-lg border border-violet-500/30 bg-violet-500/5 hover:bg-violet-500/10 hover:border-violet-500/50 transition-all group text-left"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-violet-500/20 flex items-center justify-center shrink-0 group-hover:bg-violet-500/30 transition-colors">
+                    <svg className="w-5 h-5 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="text-white font-medium mb-1">Subscription</h4>
+                    <p className="text-white/50 text-sm">Recurring monthly or yearly payments</p>
+                  </div>
+                </div>
+              </button>
+              
+              {/* Lifetime Option */}
+              <button
+                onClick={() => addVersionByType('lifetime')}
+                className="w-full p-4 rounded-lg border border-amber-500/30 bg-amber-500/5 hover:bg-amber-500/10 hover:border-amber-500/50 transition-all group text-left"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-amber-500/20 flex items-center justify-center shrink-0 group-hover:bg-amber-500/30 transition-colors">
+                    <svg className="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="text-white font-medium mb-1">Lifetime</h4>
+                    <p className="text-white/50 text-sm">One-time payment for permanent access</p>
+                  </div>
+                </div>
+              </button>
+              
+              {/* Free Option */}
+              <button
+                onClick={() => addVersionByType('free')}
+                className="w-full p-4 rounded-lg border border-emerald-500/30 bg-emerald-500/5 hover:bg-emerald-500/10 hover:border-emerald-500/50 transition-all group text-left"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-emerald-500/20 flex items-center justify-center shrink-0 group-hover:bg-emerald-500/30 transition-colors">
+                    <svg className="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="text-white font-medium mb-1">Free</h4>
+                    <p className="text-white/50 text-sm">No payment required, free forever</p>
+                  </div>
+                </div>
+              </button>
+            </div>
+            
+            <div className="mt-6 pt-4 border-t border-white/5">
+              <p className="text-white/40 text-xs text-center">
+                You can also import versions from LemonSqueezy using the "Import from LS" button
+              </p>
             </div>
           </div>
         </div>
@@ -1632,20 +1883,14 @@ function VersionEditor({
       ? 'ring-2 ring-purple-400/70 shadow-[0_0_14px_rgba(192,132,252,0.45)]'
       : '';
 
-  // Lifetime option section — auto-expand when data is already set
-  const [showLifetimeSection, setShowLifetimeSection] = useState(
-    () => !!(version.lifetimePrice?.trim() || version.lifetimeBuyUrl?.trim())
-  );
-
   return (
     <div className="space-y-6 p-6 bg-white/5 rounded-lg">
       <div className="flex justify-between items-center mb-4">
         <h5 className="text-white font-semibold flex items-center gap-2">
-          <span className={`inline-block w-3 h-3 rounded-full ${
-            version.versionType === 'Free' ? 'bg-green-400' :
-            version.versionType === 'Pro' ? 'bg-purple-400' :
-            'bg-blue-400'
-          }`}></span>
+          <span
+            className="inline-block w-3 h-3 rounded-full"
+            style={{ backgroundColor: version.color || '#a855f7' }}
+          ></span>
           {version.versionType} Version
         </h5>
         <div className="flex gap-2">
@@ -1701,6 +1946,41 @@ function VersionEditor({
         </div>
       </div>
 
+      {/* Version Name & Color */}
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-300 mb-2">
+            Version Name (English) *
+          </label>
+          <Input
+            placeholder="e.g., Starter, Pro, Agency"
+            value={version.versionType}
+            onChange={(e) => onUpdate({ versionType: e.target.value })}
+            className="bg-black/50 border-white/20 text-white"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-300 mb-2">
+            Accent Color
+          </label>
+          <div className="flex gap-2">
+            <input
+              type="color"
+              value={version.color || '#a855f7'}
+              onChange={(e) => onUpdate({ color: e.target.value })}
+              className="h-10 w-14 rounded border border-white/20 bg-black/50 cursor-pointer"
+            />
+            <Input
+              placeholder="#a855f7"
+              value={version.color || ''}
+              onChange={(e) => onUpdate({ color: e.target.value })}
+              className="bg-black/50 border-white/20 text-white flex-1"
+            />
+          </div>
+          <p className="text-xs text-white/30 mt-1">Used for badges and pricing card accents</p>
+        </div>
+      </div>
+
       {/* Pricing Model */}
       <div>
         <label className="block text-sm font-medium text-gray-300 mb-2">
@@ -1714,7 +1994,7 @@ function VersionEditor({
               checked={version.pricingModel === 'lifetime'}
               onChange={() => onUpdate({ pricingModel: 'lifetime' })}
               className="w-4 h-4"
-              disabled={version.versionType === 'Free'}
+              disabled={isVersionFree(version)}
             />
             Lifetime (one-time payment)
           </label>
@@ -1725,7 +2005,7 @@ function VersionEditor({
               checked={version.pricingModel === 'subscription'}
               onChange={() => onUpdate({ pricingModel: 'subscription' })}
               className="w-4 h-4"
-              disabled={version.versionType === 'Free'}
+              disabled={isVersionFree(version)}
             />
             Subscription (recurring)
           </label>
@@ -1733,7 +2013,7 @@ function VersionEditor({
       </div>
 
       {/* Pricing Fields */}
-      {version.versionType !== 'Free' && (
+      {!isVersionFree(version) && (
         <div className="space-y-4">
           {version.pricingModel === 'subscription' ? (
             <>
@@ -1763,70 +2043,6 @@ function VersionEditor({
                 </div>
               </div>
 
-              {/* ── Optional lifetime add-on ── */}
-              <div className="border border-white/10 rounded-xl overflow-hidden">
-                <div className="flex items-center justify-between px-4 py-3 bg-white/3">
-                  <div>
-                    <p className="text-sm font-semibold text-white/80 flex items-center gap-1.5">
-                      <span className="text-amber-400">⚡</span>
-                      Also offer lifetime pricing?
-                    </p>
-                    <p className="text-xs text-white/35 mt-0.5">
-                      Adds a "Lifetime" tab to the billing toggle on the public page
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (showLifetimeSection) {
-                        setShowLifetimeSection(false);
-                        onUpdate({ lifetimePrice: '', lifetimeBuyUrl: '' });
-                      } else {
-                        setShowLifetimeSection(true);
-                      }
-                    }}
-                    className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                      showLifetimeSection
-                        ? 'bg-red-500/15 border border-red-500/25 text-red-400 hover:bg-red-500/25'
-                        : 'bg-amber-500/12 border border-amber-500/25 text-amber-400 hover:bg-amber-500/22'
-                    }`}
-                  >
-                    {showLifetimeSection ? '✕ Remove' : '+ Add Lifetime'}
-                  </button>
-                </div>
-
-                {showLifetimeSection && (
-                  <div className="px-4 pb-4 pt-3 space-y-3 border-t border-white/8">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-semibold text-amber-400/80 mb-1.5 uppercase tracking-wide">
-                          Lifetime Price (e.g., $49)
-                        </label>
-                        <Input
-                          placeholder="$49 one-time"
-                          value={version.lifetimePrice || ''}
-                          onChange={(e) => onUpdate({ lifetimePrice: e.target.value })}
-                          className="bg-black/50 border-amber-500/20 text-white focus:border-amber-400/40"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-amber-400/80 mb-1.5 uppercase tracking-wide">
-                          Lifetime Checkout URL
-                        </label>
-                        <Input
-                          placeholder="https://yourstore.lemonsqueezy.com/buy/…"
-                          value={version.lifetimeBuyUrl || ''}
-                          onChange={(e) => onUpdate({ lifetimeBuyUrl: e.target.value })}
-                          className="bg-black/50 border-amber-500/20 text-white focus:border-amber-400/40"
-                        />
-                      </div>
-                    </div>
-                    <p className="text-xs text-white/30">
-                      Leave Checkout URL empty to fall back to the Subscription URL above — but a dedicated Lemon Squeezy one-time variant link is recommended.
-                    </p>
-                  </div>
-                )}
-              </div>
             </>
           ) : (
             <div>
@@ -1847,11 +2063,11 @@ function VersionEditor({
       {/* Download URL */}
       <div>
         <label className="block text-sm font-medium text-gray-300 mb-2">
-          {version.versionType === 'Free' ? 'Download URL' : 'Lemon Squeezy Checkout URL'}
+          {isVersionFree(version) ? 'Download URL' : 'Lemon Squeezy Checkout URL'}
         </label>
         <Input
           placeholder={
-            version.versionType === 'Free'
+            isVersionFree(version)
               ? 'https://your-cdn.com/tool-free.zip'
               : 'https://yourstore.lemonsqueezy.com/buy/variant-id'
           }
@@ -1859,7 +2075,7 @@ function VersionEditor({
           onChange={(e) => onUpdate({ downloadUrl: e.target.value })}
           className="bg-black/50 border-white/20 text-white"
         />
-        {version.versionType !== 'Free' && (
+        {!isVersionFree(version) && (
           <p className="text-xs text-white/30 mt-1">
             Paste your Lemon Squeezy checkout link. User email will be pre-filled automatically.
           </p>
@@ -1867,7 +2083,7 @@ function VersionEditor({
       </div>
 
       {/* Lemon Squeezy IDs (paid versions only) */}
-      {version.versionType !== 'Free' && (
+      {!isVersionFree(version) && (
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">
@@ -1992,6 +2208,7 @@ function FeaturesEditor({
       title: '',
       description: '',
       screenshots: [''],
+      featured: true,  // Default to featured when manually adding
     }]);
   };
 
@@ -2072,12 +2289,14 @@ function FeaturesEditor({
             title: ai.title,
             description: ai.description,
             screenshots: richFeatures[i]?.screenshots ?? [],
+            featured: richFeatures[i]?.featured ?? true,  // Keep existing featured state, default to true
           }));
           onChange(merged);
         } else {
           onChange(result.richFeatures.map((ai: any) => ({
             ...ai,
             screenshots: [''],
+            featured: true,  // Default AI-generated features to featured
           })));
         }
       } else {
@@ -2099,7 +2318,7 @@ function FeaturesEditor({
             ✨ Features with Screenshots
           </label>
           <p className="text-xs text-white/30 mt-0.5">
-            Showcased on the tool page — each feature gets a title, description, and carousel of images/GIFs.
+            Showcased on the tool page — each feature gets a title, description, and carousel of images/GIFs. Use "Show in Showcase" to control visibility (remember to save).
           </p>
         </div>
         <div className="flex gap-2 flex-shrink-0 ml-4">
@@ -2171,7 +2390,7 @@ function FeaturesEditor({
           >
             {/* Card header */}
             <div className="flex items-center justify-between px-4 py-2.5 bg-white/5 border-b border-white/8">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-3">
                 <GripVertical className="w-3.5 h-3.5 text-white/20" />
                 <span className="text-white/40 text-xs font-mono font-semibold tracking-wide">
                   Feature {fIdx + 1}
@@ -2179,6 +2398,21 @@ function FeaturesEditor({
                 {feature.title && (
                   <span className="text-white/60 text-xs truncate max-w-[160px]">— {feature.title}</span>
                 )}
+                
+                {/* Featured toggle */}
+                <label className="flex items-center gap-1.5 ml-2 cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    checked={feature.featured || false}
+                    onChange={(e) => updateFeature(feature.id, { featured: e.target.checked })}
+                    className="w-3.5 h-3.5 rounded bg-black/40 border border-white/20 
+                      checked:bg-purple-500 checked:border-purple-400 
+                      focus:ring-2 focus:ring-purple-500/50 transition-all cursor-pointer"
+                  />
+                  <span className="text-[10px] text-white/40 group-hover:text-white/60 transition-colors uppercase tracking-wide font-semibold cursor-pointer">
+                    Show in Showcase
+                  </span>
+                </label>
               </div>
               <button
                 type="button"

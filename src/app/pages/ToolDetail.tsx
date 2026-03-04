@@ -10,7 +10,8 @@ import { projectId, publicAnonKey } from '/utils/supabase/info';
 import {
   ArrowLeft, Check, Download, Play, ChevronDown, ChevronUp,
   Monitor, Zap, Star, ExternalLink, Sparkles, ShoppingCart, Quote,
-  ChevronLeft, ChevronRight, BookOpen,
+  ChevronLeft, ChevronRight, BookOpen, ArrowRight, Gift, Package,
+  Heart, Rocket, LucideIcon,
 } from 'lucide-react';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -45,12 +46,14 @@ interface RichFeature {
   title: string;
   description: string;
   screenshots: string[];
+  featured?: boolean;  // If true, show in showcase section with screenshots
 }
 
 interface ToolVersion {
   id: string;
-  versionType: 'Free' | 'Pro' | 'Studio';
-  versionTypeOriginal?: 'Free' | 'Pro' | 'Studio'; // Store original before translation
+  versionType: string;  // Dynamic name like "Starter", "Pro", "Agency" (will be translated via CMS)
+  versionTypeOriginal?: string; // Store original before translation
+  color?: string;       // Hex color for badges and accents
   pricingModel?: 'subscription' | 'lifetime';
   monthlyPrice?: string;
   yearlyPrice?: string;
@@ -59,8 +62,7 @@ interface ToolVersion {
   pricingDisplay?: string; // Server-computed display string (legacy / fallback)
   downloadUrl: string;
   lemonSqueezyVariantId?: string;
-  features?: string[];
-  richFeatures?: RichFeature[];
+  richFeatures?: RichFeature[];  // Only richFeatures now - used for both pricing cards and detail section
 }
 
 interface Tool {
@@ -77,9 +79,36 @@ interface Tool {
   howItWorks?: Array<{ title: string; description: string }>;
   faqs?: Array<{ question: string; answer: string }>;
   versions?: ToolVersion[];
+  // CTA customization
+  freeCtaText?: string;
+  freeCtaIcon?: string;
+  paidCtaText?: string;
+  paidCtaIcon?: string;
+  showcasePaidCtaText?: string;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+// Icon map for CTA customization
+const ICON_MAP: Record<string, LucideIcon> = {
+  Download,
+  ShoppingCart,
+  Zap,
+  Star,
+  Sparkles,
+  ArrowRight,
+  ExternalLink,
+  Play,
+  Gift,
+  Package,
+  Heart,
+  Rocket,
+};
+
+function getIconComponent(iconName?: string, defaultIcon: LucideIcon = Download): LucideIcon {
+  if (!iconName) return defaultIcon;
+  return ICON_MAP[iconName] || defaultIcon;
+}
 
 function parseYouTube(url: string): { embedUrl: string; videoId: string } | null {
   if (!url) return null;
@@ -108,8 +137,10 @@ interface ParsedPricing {
 }
 
 function parsePricing(version: ToolVersion, billingCycle: 'monthly' | 'yearly' | 'lifetime' = 'monthly'): ParsedPricing {
-  const raw = version.features ?? [];
-  const cleanFeatures: string[] = [];
+  // NEW: Extract feature titles from richFeatures instead of plain features array
+  const cleanFeatures = (version.richFeatures ?? [])
+    .map(f => f.title?.trim())
+    .filter(Boolean) as string[];
 
   // Add $ prefix if value is a bare number (admin may omit currency symbol)
   const fmt = (s: string): string => {
@@ -117,45 +148,20 @@ function parsePricing(version: ToolVersion, billingCycle: 'monthly' | 'yearly' |
     return /^\d/.test(s.trim()) ? `$${s.trim()}` : s.trim();
   };
 
-  // Extract raw price fields from sentinel or direct version fields
+  // Extract raw price fields from direct version fields
   let model   = version.pricingModel ?? 'lifetime';
   let monthly = version.monthlyPrice  ?? '';
   let yearly  = version.yearlyPrice   ?? '';
   let lifetime = version.lifetimePrice ?? '';
-  let sentinelFound = false;
-
-  for (const item of raw) {
-    if (item.startsWith('💰 ') && !sentinelFound) {
-      sentinelFound = true;
-      const sentinel = item.replace('💰 ', '');
-      if (sentinel === 'Free') {
-        // handled below
-      } else if (sentinel.startsWith('subscription|')) {
-        const [, p1, p2] = sentinel.split('|');
-        model   = 'subscription';
-        monthly = p1 ?? '';
-        yearly  = p2 ?? '';
-      } else if (sentinel.startsWith('lifetime|')) {
-        const [, p1] = sentinel.split('|');
-        model    = 'lifetime';
-        lifetime = p1 ?? '';
-      } else {
-        // Legacy plain-text sentinel — treat as lifetime label
-        lifetime = sentinel;
-      }
-    } else {
-      cleanFeatures.push(item);
-    }
-  }
 
   // ── Pre-compute subscription helpers (used by multiple branches) ──
   const toNum = (s: string) => parseFloat(s.replace(/[^0-9.]/g, '')) || 0;
   const hasMo = monthly.trim() !== '';
   const hasYr = yearly.trim()  !== '';
 
-  // ── Free ──
-  const originalType = version.versionTypeOriginal || version.versionType;
-  if (originalType === 'Free') {
+  // ── Free (detect by empty prices, not name) ──
+  const isFreeVersion = !hasMo && !hasYr && !lifetime.trim();
+  if (isFreeVersion) {
     return { mainPrice: 'Free', period: '', subLabel: 'forever free', ctaPrice: 'Free', cleanFeatures };
   }
 
@@ -199,25 +205,23 @@ function parsePricing(version: ToolVersion, billingCycle: 'monthly' | 'yearly' |
   // Normalise: strip leading "$" for math, re-add for display
 
   if (hasMo && hasYr) {
+    const moNum = toNum(monthly);
     const yrNum = toNum(yearly);
     const fmtMo = fmt(monthly);
     const fmtYr = fmt(yearly);
 
     if (billingCycle === 'yearly') {
-      const perMonth = yrNum / 12;
-      const perMonthStr = perMonth % 1 === 0
-        ? `$${perMonth}`
-        : `$${perMonth.toFixed(2)}`;
+      // Show yearly price in big, mention it's billed annually
       return {
-        mainPrice: perMonthStr,
-        period: '/ mo',
-        subLabel: `billed ${fmtYr} / yr`,
+        mainPrice: fmtYr,
+        period: '/ yr',
+        subLabel: 'billed annually',
         ctaPrice: fmtYr,
         cleanFeatures,
       };
     }
 
-    // monthly
+    // monthly toggle - show monthly price in big
     return {
       mainPrice: fmtMo,
       period: '/ mo',
@@ -228,10 +232,40 @@ function parsePricing(version: ToolVersion, billingCycle: 'monthly' | 'yearly' |
   }
   if (hasMo) {
     const fmtMo = fmt(monthly);
+    const moNum = toNum(monthly);
+    // If viewing yearly tab but only monthly exists, calculate yearly price for big display
+    if (billingCycle === 'yearly') {
+      const calculatedYearly = moNum * 12;
+      const fmtYr = calculatedYearly % 1 === 0 
+        ? `$${calculatedYearly}` 
+        : `$${calculatedYearly.toFixed(2)}`;
+      return { 
+        mainPrice: fmtYr,
+        period: '/ yr', 
+        subLabel: `${fmtMo} / mo • billed monthly`, 
+        ctaPrice: fmtYr, 
+        cleanFeatures 
+      };
+    }
     return { mainPrice: fmtMo, period: '/ mo', subLabel: 'billed monthly', ctaPrice: `${fmtMo} / mo`, cleanFeatures };
   }
   if (hasYr) {
     const fmtYr = fmt(yearly);
+    const yrNum = toNum(yearly);
+    // If viewing monthly tab but only yearly exists, calculate monthly price for big display
+    if (billingCycle === 'monthly') {
+      const perMonth = yrNum / 12;
+      const perMonthStr = perMonth % 1 === 0
+        ? `$${perMonth}`
+        : `$${perMonth.toFixed(2)}`;
+      return { 
+        mainPrice: perMonthStr, 
+        period: '/ mo', 
+        subLabel: `${fmtYr} / yr • billed annually`, 
+        ctaPrice: perMonthStr, 
+        cleanFeatures 
+      };
+    }
     return { mainPrice: fmtYr, period: '/ yr', subLabel: 'billed annually', ctaPrice: `${fmtYr} / yr`, cleanFeatures };
   }
 
@@ -252,7 +286,25 @@ function DemoPlayer({ url, toolId, toolName, toolSlug }: { url: string; toolId: 
   const { track } = useTracker();
   const { t } = useTranslation();
   const yt = parseYouTube(url);
-  const thumbnailUrl = yt ? `https://img.youtube.com/vi/${yt.videoId}/maxresdefault.jpg` : null;
+
+  // Fetch thumbnail via oEmbed for both YouTube and Vimeo.
+  // Direct img.youtube.com/vi/.../maxresdefault.jpg is unreliable — YouTube returns
+  // a 200 OK placeholder image (not a 404) when a quality tier is missing, so onError
+  // never fires and users see the blurred YouTube logo instead of the real thumbnail.
+  // The oEmbed API always returns the correct, available thumbnail URL.
+  const [resolvedThumbnail, setResolvedThumbnail] = useState<string | null>(null);
+  useEffect(() => {
+    if (!url) return;
+    let cancelled = false;
+    const oembedUrl = yt
+      ? `https://www.youtube.com/oembed?url=${encodeURIComponent('https://www.youtube.com/watch?v=' + yt.videoId)}&format=json`
+      : `https://vimeo.com/api/oembed.json?url=${encodeURIComponent(url)}&width=1280`;
+    fetch(oembedUrl)
+      .then(r => r.json())
+      .then(d => { if (!cancelled && d?.thumbnail_url) setResolvedThumbnail(d.thumbnail_url); })
+      .catch(() => { /* private/unavailable — keep gradient fallback */ });
+    return () => { cancelled = true; };
+  }, [url]);
 
   const handlePlay = () => {
     setPlaying(true);
@@ -291,9 +343,9 @@ function DemoPlayer({ url, toolId, toolName, toolSlug }: { url: string; toolId: 
             className="absolute inset-0 w-full h-full group focus:outline-none"
             aria-label="Play demo"
           >
-            {thumbnailUrl ? (
+            {resolvedThumbnail ? (
               <img
-                src={thumbnailUrl}
+                src={resolvedThumbnail}
                 alt="Demo preview"
                 className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.02]"
                 onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
@@ -344,6 +396,9 @@ function PricingCard({
   onBuyClick,
   sessionId,
   billingCycle,
+  isBestValue,
+  isMostPopular,
+  tool,
 }: {
   version: ToolVersion;
   index: number;
@@ -354,13 +409,25 @@ function PricingCard({
   onBuyClick?: (v: ToolVersion) => void;
   sessionId?: string;
   billingCycle?: 'monthly' | 'yearly' | 'lifetime';
+  isBestValue?: boolean;
+  isMostPopular?: boolean;
+  tool?: Tool;
 }) {
   const { t, i18n } = useTranslation();
   const { mainPrice, period, subLabel, ctaPrice, cleanFeatures } = parsePricing(version, billingCycle ?? 'monthly');
-  // Use original versionType for logic checks (not translated)
-  const originalType = version.versionTypeOriginal || version.versionType;
-  const isPro = originalType === 'Pro';
-  const isFree = originalType === 'Free';
+  
+  // Detect free version by prices, not name
+  const { monthlyPrice, yearlyPrice, lifetimePrice } = version;
+  const isFree = !monthlyPrice?.trim() && !yearlyPrice?.trim() && !lifetimePrice?.trim();
+
+  // Get custom CTA values
+  const freeCtaText = tool?.freeCtaText || t('tools.detail.downloadFree');
+  const paidCtaText = tool?.paidCtaText || t('tools.detail.buyNow');
+  const FreeCtaIcon = getIconComponent(tool?.freeCtaIcon, Download);
+  const PaidCtaIcon = getIconComponent(tool?.paidCtaIcon, ShoppingCart);
+  
+  // Get the version's custom color (default to purple if not set)
+  const versionColor = version.color || '#a855f7';
 
   // Translate period for AR only — EN and FR keep the raw string untouched
   const translatedPeriod = i18n.language === 'ar'
@@ -381,6 +448,9 @@ function PricingCard({
     translatedSubLabel = t('tools.detail.foreverFree');
   } else if (subLabel === 'subscription only') {
     translatedSubLabel = t('tools.detail.subscriptionOnly', { defaultValue: 'subscription only' });
+  } else if (subLabel.includes('billed annually')) {
+    // Handle complex format like "$90 / yr • billed annually"
+    translatedSubLabel = subLabel.replace('billed annually', t('tools.detail.billedAnnually'));
   } else if (subLabel.startsWith('billed ')) {
     // Handle "billed $90 / yr" format
     const match = subLabel.match(/^billed (.+)$/);
@@ -394,22 +464,24 @@ function PricingCard({
     translatedSubLabel = translatedSubLabel.replace('/ yr', '/ سنة').replace('/ mo', '/ شهر');
   }
   
-  // Prefer rich feature titles if available, otherwise fall back to plain features
-  const displayFeatures = (version.richFeatures ?? []).length > 0
-    ? (version.richFeatures ?? []).map(f => f.title).filter(Boolean)
-    : cleanFeatures;
+  // Use richFeatures titles for pricing card features (same source as detail section)
+  const displayFeatures = cleanFeatures;
 
   // Use boolean checks instead of string matching to avoid translation issues
   // True when this card is actively showing its lifetime price (not a subscription fallback)
   const isLifetimeActive = !isFree && billingCycle === 'lifetime' && !!version.lifetimePrice?.trim();
 
-  const config = isFree
-    ? { accent: 'text-emerald-400', dot: 'bg-emerald-400', ring: '', border: 'border-emerald-500/30', text: 'text-emerald-300' }
-    : isLifetimeActive
-    ? { accent: 'text-amber-400',   dot: 'bg-amber-400',   ring: '', border: 'border-amber-500/30',   text: 'text-amber-300'   }
-    : isPro
-    ? { accent: 'text-purple-400',  dot: 'bg-purple-400',  ring: 'ring-1 ring-purple-500/30 border-purple-500/40', border: 'border-purple-500/30', text: 'text-purple-300' }
-    : { accent: 'text-sky-400',     dot: 'bg-sky-400',     ring: '', border: 'border-sky-500/30',     text: 'text-sky-300'     };
+  // Extract RGB values from hex color for dynamic Tailwind-like classes
+  const hexToRgb = (hex: string) => {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result ? {
+      r: parseInt(result[1], 16),
+      g: parseInt(result[2], 16),
+      b: parseInt(result[3], 16)
+    } : { r: 168, g: 85, b: 247 }; // fallback to purple
+  };
+  const rgb = hexToRgb(versionColor);
+  const rgbString = `${rgb.r}, ${rgb.g}, ${rgb.b}`;
 
   // Build the checkout URL with pre-filled user data
   // When lifetime tab is active and a dedicated lifetimeBuyUrl is set, use it
@@ -448,20 +520,46 @@ function PricingCard({
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true }}
       transition={{ delay: index * 0.08 }}
-      className="h-full"
-      style={isLifetimeActive ? { filter: 'drop-shadow(0 0 24px rgba(245,158,11,0.14))' } : undefined}
+      className="h-full cursor-pointer"
+      onClick={() => {
+        // Make entire card clickable - trigger the appropriate action
+        if (isFree) {
+          if (!user) {
+            onSignInRequired('Sign in to download free tools.');
+            return;
+          }
+          onFreeDownload(version);
+        } else {
+          handlePaidCTA();
+        }
+      }}
+      style={isLifetimeActive 
+        ? { filter: 'drop-shadow(0 0 24px rgba(245,158,11,0.14))' } 
+        : !isFree 
+        ? { filter: `drop-shadow(0 0 16px rgba(${rgbString},0.12))` }
+        : undefined
+      }
     >
       <GlassCard
-        className={`relative p-7 h-full flex flex-col ${
-          isLifetimeActive ? '' : config.ring
-        }`}
-        neonBorder={isPro && !isLifetimeActive}
-        amberBorder={isPro && isLifetimeActive}
-        darkBg={!isPro && isLifetimeActive}
+        className="relative p-7 h-full flex flex-col"
+        style={!isFree && !isLifetimeActive ? {
+          borderColor: `rgba(${rgbString}, 0.3)`,
+          boxShadow: `0 0 0 1px rgba(${rgbString}, 0.2) inset`
+        } : undefined}
+        neonBorder={false}
+        amberBorder={isLifetimeActive && !isFree}
+        darkBg={isLifetimeActive && !isFree}
       >
-        {/* Amber hairline accent along the top edge when lifetime is active */}
-        {isLifetimeActive && (
-          <div className="absolute top-0 left-6 right-6 h-px bg-gradient-to-r from-transparent via-amber-400/60 to-transparent" />
+        {/* Colored hairline accent along the top edge for paid versions */}
+        {!isFree && (
+          <div 
+            className="absolute top-0 left-6 right-6 h-px"
+            style={{
+              background: isLifetimeActive
+                ? 'linear-gradient(90deg, transparent, rgba(251,191,36,0.6), transparent)'
+                : `linear-gradient(90deg, transparent, rgba(${rgbString},0.5), transparent)`
+            }}
+          />
         )}
 
         {/* Badge — changes per billing cycle × tier */}
@@ -486,42 +584,43 @@ function PricingCard({
               </span>
             </div>
           );
-          // ── Yearly ──────────────────────────────────────────────────
-          if (billingCycle === 'yearly') return (
-            <div className="absolute top-3 right-3 rtl:right-auto rtl:left-3">
-              <span className="px-3 py-1 rounded-full text-[11px] font-bold tracking-wide
-                bg-gradient-to-r from-emerald-500/20 to-teal-500/10
-                border border-emerald-500/30 text-emerald-300">
-                ★ {t('tools.detail.bestValue')}
-              </span>
-            </div>
-          );
-          // ── Monthly — Pro ────────────────────────────────────────────
-          if (isPro) return (
-            <div className="absolute top-3 right-3 rtl:right-auto rtl:left-3">
-              <span className="px-3 py-1 rounded-full text-[11px] font-bold tracking-wide
-                bg-gradient-to-r from-purple-500 to-blue-500 text-white shadow-md shadow-purple-500/30">
-                {t('tools.detail.mostPopular')}
-              </span>
-            </div>
-          );
-          // ── Monthly — other paid tiers ───────────────────────────────
-          return (
-            <div className="absolute top-3 right-3 rtl:right-auto rtl:left-3">
-              <span className="px-3 py-1 rounded-full text-[11px] font-bold tracking-wide
-                bg-gradient-to-r from-sky-500/20 to-blue-500/10
-                border border-sky-500/30 text-sky-300">
-                ↻ {t('tools.detail.monthly')}
-              </span>
-            </div>
-          );
+          // ── Most Popular (data-driven badge) ────────────────────────
+          if (isMostPopular) {
+            return (
+              <div className="absolute top-3 right-3 rtl:right-auto rtl:left-3">
+                <span 
+                  className="px-3 py-1 rounded-full text-[11px] font-bold tracking-wide text-white shadow-md"
+                  style={{
+                    background: `linear-gradient(135deg, rgba(${rgbString}, 0.9), rgba(${rgbString}, 0.6))`,
+                    boxShadow: `0 4px 12px rgba(${rgbString}, 0.25)`
+                  }}
+                >
+                  ⭐ {t('tools.detail.mostPopular')}
+                </span>
+              </div>
+            );
+          }
+          // No other badges
+          return null;
         })()}
 
         {/* Version label */}
         <div className="flex items-center gap-2 mb-5">
-          <span className={`w-2 h-2 rounded-full ${config.dot}`} />
-          <span className={`text-sm font-bold uppercase ${config.accent}`}>
-            {t(`tools.versionTypes.${version.versionTypeOriginal}`, { defaultValue: version.versionTypeOriginal })}
+          <span 
+            className="w-2 h-2 rounded-full" 
+            style={{ 
+              backgroundColor: isFree ? '#10b981' : isLifetimeActive ? '#f59e0b' : versionColor 
+            }}
+          />
+          <span 
+            className="text-sm font-bold uppercase"
+            style={{ 
+              color: isFree ? '#34d399' : isLifetimeActive ? '#fbbf24' : versionColor 
+            }}
+          >
+            {t(`tools.versionTypes.${version.versionTypeOriginal || version.versionType}`, { 
+              defaultValue: version.versionType 
+            })}
           </span>
         </div>
 
@@ -529,7 +628,7 @@ function PricingCard({
         <div className="mb-6">
           {isFree ? (
             <>
-              <div className={`text-4xl font-black ${config.accent}`}>{t('tools.free')}</div>
+              <div className="text-4xl font-black text-emerald-400">{t('tools.free')}</div>
               <p className="text-white/30 text-xs mt-1">{t('tools.detail.foreverFree')}</p>
             </>
           ) : (
@@ -557,7 +656,12 @@ function PricingCard({
           <ul className="space-y-2.5 flex-grow mb-7">
             {displayFeatures.map((item, i) => (
               <li key={i} className="flex items-start gap-2.5">
-                <Check className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 ${config.accent}`} />
+                <Check 
+                  className="w-3.5 h-3.5 mt-0.5 flex-shrink-0"
+                  style={{ 
+                    color: isFree ? '#34d399' : isLifetimeActive ? '#fbbf24' : versionColor 
+                  }}
+                />
                 <span className="text-white/60 text-sm leading-snug">{item}</span>
               </li>
             ))}
@@ -570,14 +674,17 @@ function PricingCard({
             /* ── Free: email-gate for guests, direct for signed-in users ── */
             <div>
               <button
-                onClick={() => onFreeDownload(version)}
-                className={`w-full inline-flex items-center justify-center gap-2 rtl:flex-row-reverse
+                onClick={(e) => {
+                  e.stopPropagation(); // Prevent card click when clicking button
+                  onFreeDownload(version);
+                }}
+                className="w-full inline-flex items-center justify-center gap-2 rtl:flex-row-reverse
                   px-5 py-3 rounded-xl text-sm font-semibold transition-all
-                  bg-white/8 hover:bg-white/12 border ${config.border}
-                  hover:border-opacity-50 ${config.text}`}
+                  bg-white/8 hover:bg-white/12 border border-emerald-500/30
+                  hover:border-emerald-500/50 text-emerald-300"
               >
-                <Download className="w-3.5 h-3.5" />
-                {t('tools.detail.downloadFree')}
+                <FreeCtaIcon className="w-3.5 h-3.5" />
+                {freeCtaText}
               </button>
               {!user && (
                 <p className="text-center text-white/35 text-xs mt-2 leading-snug">
@@ -589,22 +696,21 @@ function PricingCard({
             /* ── Paid: smart checkout CTA ── */
             <div>
               <button
-                onClick={handlePaidCTA}
-                className={`w-full inline-flex items-center justify-center gap-2 rtl:flex-row-reverse
-                  px-5 py-3 rounded-xl text-sm font-semibold transition-all
-                  ${isLifetimeActive
-                    ? 'bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-black shadow-lg shadow-amber-500/30 active:scale-[0.98]'
-                    : isPro
-                    ? 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white shadow-lg shadow-purple-500/25'
-                    : 'bg-white/10 hover:bg-white/15 border border-white/15 text-white'
-                  }`}
+                onClick={(e) => {
+                  e.stopPropagation(); // Prevent card click when clicking button
+                  handlePaidCTA();
+                }}
+                className="w-full inline-flex items-center justify-center gap-2 rtl:flex-row-reverse
+                  px-5 py-3 rounded-xl text-sm font-semibold transition-all active:scale-[0.98]
+                  bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-fuchsia-500
+                  text-white shadow-lg hover:shadow-purple-500/30"
               >
                 {isLifetimeActive
                   ? <Zap className="w-3.5 h-3.5 fill-current" />
-                  : <ShoppingCart className="w-3.5 h-3.5" />}
+                  : <PaidCtaIcon className="w-3.5 h-3.5" />}
                 {user
-                  ? `${t('tools.detail.buyNow')}${ctaPrice ? ` · ${ctaPrice}` : ''}`
-                  : isPro ? t('tools.detail.getPro') : t('tools.detail.getStudio')}
+                  ? `${paidCtaText}${ctaPrice ? ` · ${ctaPrice}` : ''}`
+                  : paidCtaText}
               </button>
               {!user && (
                 <p className="text-center text-white/35 text-xs mt-2 leading-snug">
@@ -767,6 +873,7 @@ function ScreenshotCarousel({ screenshots }: { screenshots: string[] }) {
 // ── FeaturesShowcase ────────��─────────────────────────────────────────────────
 
 function FeaturesShowcase({
+  tool,
   versions,
   user,
   sessionId,
@@ -774,6 +881,7 @@ function FeaturesShowcase({
   onSignInRequired,
   onBuyClick,
 }: {
+  tool: Tool;
   versions: ToolVersion[];
   user: ReturnType<typeof useUserAuth>['user'];
   sessionId?: string;
@@ -782,15 +890,77 @@ function FeaturesShowcase({
   onBuyClick?: (v: ToolVersion) => void;
 }) {
   const { t } = useTranslation();
-  // Use Pro version features first, then Free, then first version
-  const proVersion = versions.find(v => (v.versionTypeOriginal || v.versionType) === 'Pro');
-  const freeVersion = versions.find(v => (v.versionTypeOriginal || v.versionType) === 'Free');
-  const primaryVersion = proVersion ?? freeVersion ?? versions[0];
+  
+  // Get custom CTA values from tool
+  const freeCtaText = tool.freeCtaText || t('tools.detail.downloadFree');
+  const showcasePaidCtaText = tool.showcasePaidCtaText || tool.paidCtaText || t('tools.detail.viewPricing');
+  const FreeCtaIcon = getIconComponent(tool.freeCtaIcon, Download);
+  const PaidCtaIcon = getIconComponent(tool.paidCtaIcon, ShoppingCart);
+  
+  // Find version priorities for ordering
+  const versionWithFeatures = versions.find(v => 
+    v.richFeatures?.some(f => f.featured === true && f.title?.trim())
+  );
+  const paidVersion = versions.find(v => 
+    v.monthlyPrice?.trim() || v.yearlyPrice?.trim() || v.lifetimePrice?.trim()
+  );
+  const freeVersion = versions.find(v => 
+    !v.monthlyPrice?.trim() && !v.yearlyPrice?.trim() && !v.lifetimePrice?.trim()
+  );
+  
+  // Collect all featured richFeatures from all versions, deduplicating by title
+  const allFeaturedRichFeatures: RichFeature[] = [];
+  const seenTitles = new Set<string>();
+  
+  // Process versions in priority order to keep the best version of each feature
+  const orderedVersions = [
+    versionWithFeatures,
+    paidVersion,
+    freeVersion,
+    ...versions.filter(v => v !== versionWithFeatures && v !== paidVersion && v !== freeVersion)
+  ].filter(Boolean) as ToolVersion[];
+  
+  // Track which version each feature came from
+  const featureToVersionMap = new Map<string, ToolVersion>();
+  
+  for (const version of orderedVersions) {
+    const featuredFeatures = (version.richFeatures ?? [])
+      .filter(f => f.title?.trim() && f.featured === true);
+    
+    for (const feature of featuredFeatures) {
+      const normalizedTitle = feature.title.toLowerCase().trim();
+      if (!seenTitles.has(normalizedTitle)) {
+        seenTitles.add(normalizedTitle);
+        allFeaturedRichFeatures.push(feature);
+        featureToVersionMap.set(feature.id ?? feature.title, version);
+      }
+    }
+  }
+  
+  const displayRichFeatures = allFeaturedRichFeatures;
+  
+  // Hide section if no featured rich features exist
+  if (displayRichFeatures.length === 0) return null;
 
-  const richFeatures = (primaryVersion?.richFeatures ?? []).filter(f => f.title?.trim());
-  if (richFeatures.length === 0) return null;
+  // Use the first version with features for color/styling
+  const primaryVersion = versionWithFeatures ?? paidVersion ?? freeVersion ?? versions[0];
+  
+  const isFree = !primaryVersion?.monthlyPrice?.trim() && 
+                 !primaryVersion?.yearlyPrice?.trim() && 
+                 !primaryVersion?.lifetimePrice?.trim();
 
-  const isFree = (primaryVersion?.versionTypeOriginal || primaryVersion?.versionType) === 'Free';
+  // Helper to convert hex to RGB
+  const hexToRgb = (hex: string) => {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result ? {
+      r: parseInt(result[1], 16),
+      g: parseInt(result[2], 16),
+      b: parseInt(result[3], 16)
+    } : { r: 168, g: 85, b: 247 };
+  };
+  const versionColor = primaryVersion?.color || '#a855f7';
+  const rgb = hexToRgb(versionColor);
+  const rgbString = `${rgb.r}, ${rgb.g}, ${rgb.b}`;
 
   const buildCheckoutUrl = () => {
     if (!primaryVersion?.downloadUrl) return '/work-with-us';
@@ -825,13 +995,32 @@ function FeaturesShowcase({
       <SectionLabel>{t('tools.detail.whatYouCanDo')}</SectionLabel>
 
       <div className="space-y-20 md:space-y-28">
-        {richFeatures.map((feature, index) => {
+        {displayRichFeatures.map((feature, index) => {
           const isReversed = index % 2 === 1;
           const hasScreenshots = (feature.screenshots ?? []).filter(Boolean).length > 0;
+          
+          // Get the source version for this feature
+          const sourceVersion = featureToVersionMap.get(feature.id ?? feature.title) ?? primaryVersion;
+          const isFeatureFree = !sourceVersion?.monthlyPrice?.trim() && 
+                                !sourceVersion?.yearlyPrice?.trim() && 
+                                !sourceVersion?.lifetimePrice?.trim();
+          
+          // Determine CTA action per feature 
+          const handleFeatureCTA = () => {
+            if (isFeatureFree) {
+              onFreeDownload(sourceVersion);
+            } else {
+              // Scroll to pricing section for paid features
+              const pricingSection = document.getElementById('pricing-section');
+              if (pricingSection) {
+                pricingSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }
+            }
+          };
 
           return (
             <motion.div
-              key={feature.id ?? index}
+              key={feature.id ?? index} 
               initial={{ opacity: 0, y: 24 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, margin: '-60px' }}
@@ -860,23 +1049,29 @@ function FeaturesShowcase({
                   </p>
                 )}
 
-                {/* CTA button */}
+                {/* CTA button - dynamic per feature */}
                 <div>
                   <button
-                    onClick={handleCTA}
-                    className={`inline-flex items-center gap-2.5 rtl:flex-row-reverse px-6 py-3 rounded-xl
-                      text-sm font-semibold transition-all duration-200 active:scale-[0.97]
-                      ${isFree
-                        ? 'bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 hover:text-emerald-200'
-                        : 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white shadow-lg shadow-purple-900/40 hover:shadow-purple-500/30'
-                      }`}
+                    onClick={handleFeatureCTA}
+                    className="inline-flex items-center gap-2.5 rtl:flex-row-reverse px-6 py-3 rounded-xl
+                      text-sm font-semibold transition-all duration-200 active:scale-[0.97]"
+                    style={isFeatureFree ? {
+                      background: 'rgba(16, 185, 129, 0.15)',
+                      borderWidth: '1px',
+                      borderColor: 'rgba(16, 185, 129, 0.3)',
+                      color: '#6ee7b7'
+                    } : {
+                      background: `linear-gradient(135deg, rgba(${rgbString}, 0.85), rgba(${rgbString}, 0.65))`,
+                      color: '#fff',
+                      boxShadow: `0 10px 25px rgba(${rgbString}, 0.4)`
+                    }}
                   >
-                    {isFree
-                      ? <Download className="w-4 h-4" />
-                      : <ShoppingCart className="w-4 h-4" />}
-                    {isFree
-                      ? t('tools.detail.downloadFree')
-                      : t('tools.detail.getPro')}
+                    {isFeatureFree
+                      ? <FreeCtaIcon className="w-4 h-4" />
+                      : <PaidCtaIcon className="w-4 h-4" />}
+                    {isFeatureFree
+                      ? freeCtaText
+                      : showcasePaidCtaText}
                   </button>
                 </div>
               </div>
@@ -930,6 +1125,8 @@ export function ToolDetail() {
   const [cmsStatusTrans, setCmsStatusTrans] = useState<Record<string, string>>({});
   // Whether this tool has an uploaded user guide
   const [guideExists, setGuideExists] = useState(false);
+  // Purchase counts per version (for "Most Popular" badge)
+  const [versionPurchaseCounts, setVersionPurchaseCounts] = useState<Record<string, number>>({});
   const isRTL = i18n.language === 'ar';
 
   // Single effect — handles slug change AND language switch.
@@ -1055,6 +1252,18 @@ export function ToolDetail() {
               .then(d => setGuideExists(!!d.exists))
               .catch(() => setGuideExists(false));
           }
+
+          // Fetch version purchase counts for "Most Popular" badge (fire-and-forget)
+          fetch(`${API_BASE}/tools/${encodeURIComponent(found.id)}/version-stats`, {
+            headers: { Authorization: `Bearer ${publicAnonKey}` },
+          })
+            .then(r => r.json())
+            .then(d => {
+              if (d.success && d.data) {
+                setVersionPurchaseCounts(d.data);
+              }
+            })
+            .catch(() => setVersionPurchaseCounts({}));
         } else {
           setError('Tool not found');
         }
@@ -1138,9 +1347,19 @@ export function ToolDetail() {
   }
 
   // Cheapest paid version for the quick CTA
-  const proVersion = tool.versions?.find(v => (v.versionTypeOriginal || v.versionType) === 'Pro');
-  const freeVersion = tool.versions?.find(v => (v.versionTypeOriginal || v.versionType) === 'Free');
-  const primaryVersion = proVersion ?? freeVersion ?? tool.versions?.[0];
+  const paidVersion = tool.versions?.find(v => 
+    v.monthlyPrice?.trim() || v.yearlyPrice?.trim() || v.lifetimePrice?.trim()
+  );
+  const freeVersion = tool.versions?.find(v => 
+    !v.monthlyPrice?.trim() && !v.yearlyPrice?.trim() && !v.lifetimePrice?.trim()
+  );
+  const primaryVersion = paidVersion ?? freeVersion ?? tool.versions?.[0];
+  
+  // Get custom CTA values for hero section
+  const heroFreeCtaText = tool.freeCtaText || t('tools.detail.tryFree');
+  const heroPaidCtaText = tool.paidCtaText || t('tools.detail.buyNow');
+  const HeroFreeCtaIcon = getIconComponent(tool.freeCtaIcon, Download);
+  const HeroPaidCtaIcon = getIconComponent(tool.paidCtaIcon, Sparkles);
 
   return (
     <div className="min-h-screen pt-8 pb-24">
@@ -1233,19 +1452,19 @@ export function ToolDetail() {
                     bg-white/8 hover:bg-emerald-500/15 border border-white/12
                     hover:border-emerald-500/30 text-emerald-300 hover:text-emerald-200 transition-all"
                 >
-                  <Download className="w-3.5 h-3.5" />
-                  {t('tools.detail.tryFree')}
+                  <HeroFreeCtaIcon className="w-3.5 h-3.5" />
+                  {heroFreeCtaText}
                 </button>
               )}
-              {proVersion && (
+              {paidVersion && (
                 <NeonButton
-                  href={proVersion.downloadUrl || '#'}
+                  href={paidVersion.downloadUrl || '#'}
                   target="_blank"
                   rel="noopener noreferrer"
                   variant="primary"
                 >
-                  <Sparkles className="w-3.5 h-3.5 mr-2 rtl:mr-0 rtl:ml-2" />
-                  {t('tools.detail.getPro')}
+                  <HeroPaidCtaIcon className="w-3.5 h-3.5 mr-2 rtl:mr-0 rtl:ml-2" />
+                  {heroPaidCtaText}
                 </NeonButton>
               )}
               {tool.demoUrl && (
@@ -1308,6 +1527,7 @@ export function ToolDetail() {
         {/* ── Pricing ───────────────────────────────────────────────────────── */}
         {tool.versions && tool.versions.length > 0 && (
           <motion.section
+            id="pricing-section"
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
@@ -1317,11 +1537,12 @@ export function ToolDetail() {
 
             {/* ── Billing cycle toggle ── */}
             {(() => {
-              const hasSubscriptionBoth = tool.versions?.some(v =>
-                v.pricingModel === 'subscription' && v.monthlyPrice?.trim() && v.yearlyPrice?.trim()
-              );
+              // Show toggle if ANY version has monthly OR yearly price (not necessarily both on same version)
+              const hasMonthlyOption = tool.versions?.some(v => v.monthlyPrice?.trim());
+              const hasYearlyOption = tool.versions?.some(v => v.yearlyPrice?.trim());
+              const hasSubscriptionOptions = hasMonthlyOption || hasYearlyOption;
               const hasLifetimeOption = tool.versions?.some(v => v.lifetimePrice?.trim());
-              if (!hasSubscriptionBoth) return null;
+              if (!hasSubscriptionOptions) return null;
 
               // ── Slider position helper ──
               // LTR order: monthly(0) yearly(1) [lifetime(2)]
@@ -1348,18 +1569,6 @@ export function ToolDetail() {
               return (
                 <div className="flex justify-center mb-10">
                   <div className="flex flex-col items-center gap-3">
-                    {/* Floating badge — "Best value" for yearly, dim otherwise */}
-                    <motion.div
-                      animate={{ opacity: billingCycle === 'yearly' ? 1 : 0.3 }}
-                      transition={{ duration: 0.2 }}
-                      className="flex items-center gap-1.5 rtl:flex-row-reverse px-3 py-1 rounded-full
-                        bg-gradient-to-r from-emerald-500/15 to-teal-500/10
-                        border border-emerald-500/25 text-emerald-400 text-[11px] font-bold tracking-wide"
-                    >
-                      <span>✦</span>
-                      {t('tools.detail.bestValue')}
-                    </motion.div>
-
                     {/* Toggle pill */}
                     <div className="relative flex p-1 rounded-xl bg-white/5 border border-white/10">
                       {/* Sliding indicator */}
@@ -1423,25 +1632,77 @@ export function ToolDetail() {
                 ? 'grid-cols-1 max-w-sm mx-auto' 
                 : tool.versions.length === 2 
                   ? 'grid-cols-1 sm:grid-cols-2 max-w-3xl mx-auto' 
-                  : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'
+                  : tool.versions.length === 4
+                    ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4'
+                    : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'
             }`}>
-              {tool.versions.map((v, i) => (
-                <PricingCard
-                  key={v.id}
-                  version={v}
-                  index={i}
-                  user={user}
-                  userPurchasedProductNames={userPurchasedProductNames}
-                  onSignInRequired={openAuthModal}
-                  onFreeDownload={handleFreeDownload}
-                  sessionId={sessionId}
-                  onBuyClick={(ver) => track('buy_click', {
-                    toolId: tool.id, toolName: tool.name, toolSlug: tool.slug ?? '',
-                    versionType: ver.versionType, price: parsePricing(ver).ctaPrice,
-                  })}
-                  billingCycle={billingCycle}
-                />
-              ))}
+              {(() => {
+                // Calculate which version has the best yearly value
+                let bestValueVersionId: string | null = null;
+                if (billingCycle === 'yearly' && tool.versions) {
+                  const toNum = (s: string) => parseFloat(s.replace(/[^0-9.]/g, '')) || 0;
+                  const yearlyPrices = tool.versions
+                    .filter(v => {
+                      const isFree = !v.monthlyPrice?.trim() && !v.yearlyPrice?.trim() && !v.lifetimePrice?.trim();
+                      return !isFree; // Exclude free versions
+                    })
+                    .map(v => {
+                      let yearlyPrice = 0;
+                      if (v.yearlyPrice?.trim()) {
+                        yearlyPrice = toNum(v.yearlyPrice);
+                      } else if (v.monthlyPrice?.trim()) {
+                        yearlyPrice = toNum(v.monthlyPrice) * 12;
+                      }
+                      return { id: v.id, yearlyPrice };
+                    })
+                    .filter(item => item.yearlyPrice > 0);
+                  
+                  if (yearlyPrices.length > 0) {
+                    const best = yearlyPrices.reduce((min, curr) => 
+                      curr.yearlyPrice < min.yearlyPrice ? curr : min
+                    );
+                    bestValueVersionId = best.id;
+                  }
+                }
+
+                // Calculate most popular version based on purchase counts
+                let mostPopularVersionId: string | null = null;
+                if (tool.versions && Object.keys(versionPurchaseCounts).length > 0) {
+                  const paidVersions = tool.versions.filter(v => {
+                    const isFree = !v.monthlyPrice?.trim() && !v.yearlyPrice?.trim() && !v.lifetimePrice?.trim();
+                    return !isFree && versionPurchaseCounts[v.id] > 0;
+                  });
+                  
+                  if (paidVersions.length > 0) {
+                    const mostPopular = paidVersions.reduce((max, curr) => {
+                      const maxCount = versionPurchaseCounts[max.id] || 0;
+                      const currCount = versionPurchaseCounts[curr.id] || 0;
+                      return currCount > maxCount ? curr : max;
+                    });
+                    mostPopularVersionId = mostPopular.id;
+                  }
+                }
+
+                return tool.versions.map((v, i) => (
+                  <PricingCard
+                    key={v.id}
+                    version={v}
+                    index={i}
+                    user={user}
+                    userPurchasedProductNames={userPurchasedProductNames}
+                    onSignInRequired={openAuthModal}
+                    onFreeDownload={handleFreeDownload}
+                    sessionId={sessionId}
+                    onBuyClick={(ver) => track('buy_click', {
+                      toolId: tool.id, toolName: tool.name, toolSlug: tool.slug ?? '',
+                      versionType: ver.versionType, price: parsePricing(ver).ctaPrice,
+                    })}
+                    billingCycle={billingCycle}
+                    isBestValue={v.id === bestValueVersionId}
+                    isMostPopular={v.id === mostPopularVersionId}
+                  />
+                ));
+              })()}
             </div>
 
             {/* Sign-in nudge for unauthenticated users */}
@@ -1467,6 +1728,7 @@ export function ToolDetail() {
         {/* ── Features showcase ─────────────────────────────────────────────── */}
         {tool.versions && tool.versions.length > 0 && (
           <FeaturesShowcase
+            tool={tool}
             versions={tool.versions}
             user={user}
             sessionId={sessionId}
@@ -1530,7 +1792,7 @@ export function ToolDetail() {
           </motion.section>
         )}
 
-        {/* ── FAQ ───────────────────────────────────────────────────────────── */}
+        {/* ── FAQ ────────��──────────────────────────────────────────────────── */}
         {tool.faqs && tool.faqs.length > 0 && (
           <motion.section
             initial={{ opacity: 0, y: 20 }}

@@ -58,11 +58,16 @@ export function AdminSelect({
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
-  // Close on Escape or scroll
+  // Close on Escape or scroll (but not when scrolling inside the dropdown)
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
-    const onScroll = () => setOpen(false);
+    const onScroll = (e: Event) => {
+      // Don't close if scrolling inside the dropdown portal
+      const target = e.target as Node;
+      const isInsidePortal = (target as Element)?.closest?.('[data-admin-select-portal]');
+      if (!isInsidePortal) setOpen(false);
+    };
     document.addEventListener('keydown', onKey);
     document.addEventListener('scroll', onScroll, true);
     return () => {

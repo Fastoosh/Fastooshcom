@@ -45,6 +45,10 @@ const SKIP_KEYS = new Set([
   'url', 'href', 'src', 'link', 'path', 'route',
   'order', 'index', 'position', 'sort', 'rank',
   'createdAt', 'updatedAt', 'deletedAt', 'publishedAt',
+  // Version-specific non-translatable fields
+  'color', 'pricingModel', 'monthlyPrice', 'yearlyPrice', 'lifetimePrice',
+  'pricingDisplay', 'downloadUrl', 'lifetimeBuyUrl', 'lemonSqueezyVariantId',
+  'versionTypeOriginal',
 ]);
 
 /** Key suffixes that signal IDs or URLs regardless of prefix. */
@@ -64,11 +68,15 @@ function isTranslatableKey(key: string): boolean {
 function isTranslatableValue(val: string): boolean {
   if (!val.trim()) return false;
   // URLs
-  if (/^https?:\/\//i.test(val)) return false;
+  if (new RegExp('^https?://', 'i').test(val)) return false;
   // UUIDs
-  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val)) return false;
+  if (new RegExp('^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', 'i').test(val)) return false;
   // Pure numbers / semver
-  if (/^\d+(\.\d+)*$/.test(val)) return false;
+  if (new RegExp('^\\d+(\\.\\d+)*$').test(val)) return false;
+  // Hex colors (#abc123 or #abc)
+  if (new RegExp('^#[0-9a-f]{3}([0-9a-f]{3})?$', 'i').test(val)) return false;
+  // Prices ($99, $99.99, €50, etc.)
+  if (new RegExp('^[$€£¥]\\d+(\\.\\d{2})?$').test(val)) return false;
   return true;
 }
 
@@ -182,6 +190,12 @@ function flattenItems(
       
       // Handle arrays
       if (Array.isArray(val)) {
+        // Empty array - show at least a placeholder for top-level translatable arrays
+        if (val.length === 0 && keys.length === 1) {
+          // Skip empty arrays - they would just clutter the UI
+          continue;
+        }
+        
         val.forEach((arrItem: any, i: number) => {
           if (typeof arrItem === 'string') {
             // Simple string array — skip non-translatable values
@@ -199,21 +213,45 @@ function flattenItems(
               if (!isTranslatableKey(subKey)) continue;
               if (typeof subVal === 'string') {
                 if (!isTranslatableValue(subVal)) continue;
+                
+                // Enhanced label for version name translations
+                let displayLabel = `${f.label} ${i + 1} - ${subKey}`;
+                if (f.key === 'versions' && subKey === 'versionType' && arrItem.versionType) {
+                  displayLabel = `Version Name: \"${arrItem.versionType}\"`;
+                }
+                
                 rows.push({
                   key: `${item[idKey]}.${f.key}.${i}.${subKey}`,
-                  label: `${f.label} ${i + 1} - ${subKey}`,
+                  label: displayLabel,
                   section,
                   enValue: subVal,
                   multiline: subKey === 'description' || subKey === 'answer' || subKey === 'bio',
                 });
               } else if (Array.isArray(subVal)) {
-                // Handle nested arrays (e.g., versions[0].features[])
+                // Handle nested arrays (e.g., versions[0].features[], versions[0].whatsIncluded[])
                 subVal.forEach((nestedItem: any, j: number) => {
                   if (typeof nestedItem === 'string') {
                     if (!isTranslatableValue(nestedItem)) return;
+                    
+                    // Better labels for version-level nested arrays
+                    let nestedLabel = `${f.label} ${i + 1} - ${subKey} ${j + 1}`;
+                    if (f.key === 'versions') {
+                      // Clean up labels for version fields
+                      const versionName = arrItem.versionType || `Version ${i + 1}`;
+                      if (subKey === 'features') {
+                        nestedLabel = `${versionName} - Feature ${j + 1}`;
+                      } else if (subKey === 'whatsIncluded') {
+                        nestedLabel = `${versionName} - What's Included ${j + 1}`;
+                      } else if (subKey === 'activationSteps') {
+                        nestedLabel = `${versionName} - Activation Step ${j + 1}`;
+                      } else {
+                        nestedLabel = `${versionName} - ${subKey} ${j + 1}`;
+                      }
+                    }
+                    
                     rows.push({
                       key: `${item[idKey]}.${f.key}.${i}.${subKey}.${j}`,
-                      label: `${f.label} ${i + 1} - ${subKey} ${j + 1}`,
+                      label: nestedLabel,
                       section,
                       enValue: nestedItem,
                       multiline: false,
@@ -248,6 +286,18 @@ function flattenItems(
           enValue: val,
           multiline: f.multiline ?? false,
         });
+      } else if (val === undefined || val === null) {
+        // Show empty fields for top-level single-value fields (not arrays/objects)
+        // This allows translators to see all available fields even if not populated yet
+        if (keys.length === 1 && isTranslatableKey(f.key)) {
+          rows.push({
+            key: `${item[idKey]}.${f.key}`,
+            label: f.label,
+            section,
+            enValue: '', // Empty value will show as placeholder
+            multiline: f.multiline ?? false,
+          });
+        }
       }
     }
   }
@@ -270,9 +320,6 @@ const TOOL_FIELDS = [
   { key: 'tagline',           label: 'Tagline',           multiline: true },
   { key: 'description',       label: 'Description',       multiline: true },
   { key: 'systemRequirements',label: 'System Requirements', multiline: true },
-  { key: 'features',          label: 'Feature',           multiline: false },
-  { key: 'useCases',          label: 'Use Case',          multiline: false },
-  { key: 'specifications',    label: 'Specification',     multiline: false },
   { key: 'howItWorks',        label: 'How It Works',      multiline: false },
   { key: 'faqs',              label: 'FAQ',               multiline: false },
   { key: 'versions',          label: 'Version',           multiline: false },
@@ -564,13 +611,23 @@ export function TranslationTab() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // ── Flat field list (memoised) ────────────────────────────────────────���────
+  // ── Flat field list (memoised) ────────────────────────────────────────────
   const fields = useMemo<FlatField[]>(() => {
     if (!sourceData) return [];
     if (contentType === 'home')       return flattenHome(sourceData);
     if (contentType === 'categories') return flattenCategories(sourceData);
     // Ensure sourceData is an array before passing to flattenItems
     const itemsArray = Array.isArray(sourceData) ? sourceData : [];
+    
+    // Debug: log first tool to see what fields exist
+    if (contentType === 'tools' && itemsArray.length > 0) {
+      console.log('[TranslationTab] First tool data:', itemsArray[0]);
+      console.log('[TranslationTab] Tool keys:', Object.keys(itemsArray[0]));
+      if (itemsArray[0].versions && itemsArray[0].versions.length > 0) {
+        console.log('[TranslationTab] First version keys:', Object.keys(itemsArray[0].versions[0]));
+      }
+    }
+    
     if (contentType === 'projects') return flattenItems(itemsArray, PROJECT_FIELDS, 'id', 'title');
     if (contentType === 'tools')    return flattenItems(itemsArray, TOOL_FIELDS,    'id', 'name');
     return flattenItems(itemsArray, TEAM_FIELDS, 'id', 'name');
@@ -717,7 +774,7 @@ export function TranslationTab() {
   const toggleSection = (s: string) =>
     setCollapsed(prev => ({ ...prev, [s]: !prev[s] }));
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-6">
 

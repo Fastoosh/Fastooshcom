@@ -203,6 +203,11 @@ const normalizeTool = (tool: Record<string, any>): Record<string, any> => {
   //   🖥️  → tool.systemRequirements
   //   🏷️  → tool.tagline
   //   🗂️  → tool.toolCategory (type category tag)
+  //   🆓  → tool.freeCtaText
+  //   🔵  → tool.freeCtaIcon
+  //   💵  → tool.paidCtaText
+  //   🟣  → tool.paidCtaIcon
+  //   🎯  → tool.showcasePaidCtaText
   if (Array.isArray(t.faqs)) {
     const demoEntry = t.faqs.find((f: any) => f.question === '🎬');
     if (demoEntry) {
@@ -224,10 +229,32 @@ const normalizeTool = (tool: Record<string, any>): Record<string, any> => {
     if (toolCategoryEntry) {
       t.toolCategory = toolCategoryEntry.answer;
     }
+    const freeCtaTextEntry = t.faqs.find((f: any) => f.question === '🆓');
+    if (freeCtaTextEntry) {
+      t.freeCtaText = freeCtaTextEntry.answer;
+    }
+    const freeCtaIconEntry = t.faqs.find((f: any) => f.question === '🔵');
+    if (freeCtaIconEntry) {
+      t.freeCtaIcon = freeCtaIconEntry.answer;
+    }
+    const paidCtaTextEntry = t.faqs.find((f: any) => f.question === '💵');
+    if (paidCtaTextEntry) {
+      t.paidCtaText = paidCtaTextEntry.answer;
+    }
+    const paidCtaIconEntry = t.faqs.find((f: any) => f.question === '🟣');
+    if (paidCtaIconEntry) {
+      t.paidCtaIcon = paidCtaIconEntry.answer;
+    }
+    const showcasePaidCtaTextEntry = t.faqs.find((f: any) => f.question === '🎯');
+    if (showcasePaidCtaTextEntry) {
+      t.showcasePaidCtaText = showcasePaidCtaTextEntry.answer;
+    }
     // Strip sentinels so they never appear in the visible FAQ list
     t.faqs = t.faqs.filter((f: any) =>
       f.question !== '🎬' && f.question !== '📋' && f.question !== '🖥️' &&
-      f.question !== '🏷️' && f.question !== '🗂️'
+      f.question !== '🏷️' && f.question !== '🗂️' && f.question !== '🆓' &&
+      f.question !== '🔵' && f.question !== '💵' && f.question !== '🟣' &&
+      f.question !== '🎯'
     );
   }
 
@@ -247,14 +274,16 @@ const normalizeTool = (tool: Record<string, any>): Record<string, any> => {
           v.pricingDisplay = 'Free';
         } else if (raw.startsWith('subscription|') || raw.startsWith('lifetime|')) {
           // Unambiguous pipe-delimited format introduced to replace the old plain-text format
-          const [model, p1, p2] = raw.split('|');
+          const [model, p1, p2, p3] = raw.split('|');
           v.pricingModel = model;
           if (model === 'subscription') {
             v.monthlyPrice   = p1 || '';
             v.yearlyPrice    = p2 || '';
             v.pricingDisplay = [v.monthlyPrice, v.yearlyPrice ? v.yearlyPrice + '/yr' : ''].filter(Boolean).join(' / ');
           } else {
+            // lifetime|<price>|<buyUrl>
             v.lifetimePrice  = p1 || '';
+            v.lifetimeBuyUrl = p2 || '';
             v.pricingDisplay = v.lifetimePrice;
           }
         } else {
@@ -273,14 +302,21 @@ const normalizeTool = (tool: Record<string, any>): Record<string, any> => {
       }
       // Decode rich features with screenshots (🎨 JSON)
       const richFeatEntries = v.features.filter((f: string) => typeof f === 'string' && f.startsWith('🎨 '));
+      console.log(`[DECODE] Version "${v.name}" richFeatEntries:`, richFeatEntries);
       if (richFeatEntries.length > 0) {
         v.richFeatures = richFeatEntries.map((f: string) => {
           try { return JSON.parse(f.replace('🎨 ', '')); } catch { return null; }
         }).filter(Boolean);
+        console.log(`[DECODE] Version "${v.name}" parsed richFeatures:`, v.richFeatures);
       }
-      v.features = v.features.filter(
-        (f: string) => typeof f === 'string' && !f.startsWith('💰 ') && !f.startsWith('📦 ') && !f.startsWith('🔑 ') && !f.startsWith('🎨 ')
-      );
+      // Decode version accent color: 🖌️ color|#hex
+      const colorEntry = v.features.find((f: string) => typeof f === 'string' && f.startsWith('🖌️ '));
+      if (colorEntry) {
+        const parts = (colorEntry as string).replace('🖌️ ', '').split('|');
+        v.color = parts[1] || parts[0] || '';
+      }
+      // No more plain features - remove the features field after decoding sentinels
+      delete v.features;
       return v;
     });
   }
@@ -1139,6 +1175,7 @@ Return ONLY valid JSON:
       title: (f.title ?? '').slice(0, 80),
       description: (f.description ?? '').slice(0, 100),
       screenshots: [],
+      featured: true,  // AI-generated features default to featured
     }));
 
     console.log(`✅ Generated ${richFeatures.length} rich features for "${toolName}" [${versionType}]`);
@@ -1440,6 +1477,17 @@ app.post("/make-server-e07959ec/admin/improve-field", requireAuth, async (c) => 
         rule: 'A clear professional job title. E.g. "Motion Design Director", "Lead After Effects Artist", "Brand Strategist". 2-5 words.',
         format: 'Return plain text only — just the job title.',
       },
+      // ── Version name translations ─────────────────────────────────────────
+      versionType_ar: {
+        label: 'Version Name (Arabic Translation)',
+        rule: 'Translate the English version name to natural Arabic. Keep it short (1-3 words). E.g. "Free" → "مجاني", "Pro" → "محترف", "Starter" → "مبتدئ", "Agency" → "وكالة", "Studio" → "استوديو".',
+        format: 'Return ONLY the Arabic translation — no English, no explanations, no quotes.',
+      },
+      versionType_fr: {
+        label: 'Version Name (French Translation)',
+        rule: 'Translate the English version name to natural French. Keep it short (1-3 words). E.g. "Free" → "Gratuit", "Pro" → "Pro", "Starter" → "Démarrage", "Agency" → "Agence", "Studio" → "Studio".',
+        format: 'Return ONLY the French translation — no English, no explanations, no quotes.',
+      },
     };
 
     const field = fieldRules[fieldKey];
@@ -1459,9 +1507,17 @@ app.post("/make-server-e07959ec/admin/improve-field", requireAuth, async (c) => 
       entityLine = `Tool: "${entityName}"${categoryCtx}${versionCtx}`;
     }
 
+    // Special handling for version name translations
+    let contextNote = '';
+    if ((fieldKey === 'versionType_ar' || fieldKey === 'versionType_fr') && context?.versionType) {
+      const descLine = context?.description ? `\nTool description: "${context.description}"` : '';
+      const pricingLine = context?.pricingModel ? `\nPricing model: ${context.pricingModel}` : '';
+      contextNote = `\n\nEnglish version name to translate: "${context.versionType}"${descLine}${pricingLine}`;
+    }
+
     const prompt = `You are a professional copywriter for Fastoosh, a premium motion design studio.
 ${entityLine}
-Field to improve: ${field.label}${instructionLine}${alternativeDirective}
+Field to improve: ${field.label}${instructionLine}${alternativeDirective}${contextNote}
 
 Current content:
 """
@@ -2450,6 +2506,56 @@ app.get("/make-server-e07959ec/tools/slug/:slug", async (c) => {
   }
 });
 
+// Get purchase counts for each version of a tool (public)
+app.get("/make-server-e07959ec/tools/:toolId/version-stats", async (c) => {
+  try {
+    const toolId = c.req.param("toolId");
+    
+    // Get all version IDs for this tool
+    const { data: versions, error: versionError } = await supabase
+      .from('tool_versions')
+      .select('id')
+      .eq('tool_id', toolId);
+    
+    if (versionError) {
+      console.log(`Error fetching tool versions: ${versionError.message}`);
+      return c.json({ success: false, error: versionError.message }, 500);
+    }
+    
+    if (!versions || versions.length === 0) {
+      return c.json({ success: true, data: {} });
+    }
+    
+    const versionIds = versions.map(v => v.id);
+    
+    // Count purchases per version (only active purchases, exclude free versions by checking amount > 0)
+    const { data: purchases, error: purchaseError } = await supabase
+      .from('user_purchases')
+      .select('tool_version_id')
+      .in('tool_version_id', versionIds)
+      .eq('status', 'active')
+      .gt('amount', 0);
+    
+    if (purchaseError) {
+      console.log(`Error fetching purchase stats: ${purchaseError.message}`);
+      return c.json({ success: false, error: purchaseError.message }, 500);
+    }
+    
+    // Count purchases by version_id
+    const stats: Record<string, number> = {};
+    for (const p of (purchases || [])) {
+      if (p.tool_version_id) {
+        stats[p.tool_version_id] = (stats[p.tool_version_id] || 0) + 1;
+      }
+    }
+    
+    return c.json({ success: true, data: stats });
+  } catch (error) {
+    console.log(`Error fetching version stats: ${error}`);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
 // Create tool (protected)
 app.post("/make-server-e07959ec/tools", requireAuth, async (c) => {
   try {
@@ -2459,6 +2565,11 @@ app.post("/make-server-e07959ec/tools", requireAuth, async (c) => {
     // howItWorks         → NO DB column → 📋 sentinel in faqs (JSON-encoded array)
     // systemRequirements → NO DB column → 🖥️ sentinel in faqs (plain string)
     // demoUrl            → NO DB column → 🎬 sentinel in faqs (plain string)
+    // freeCtaText        → NO DB column → 🆓 sentinel in faqs (plain string)
+    // freeCtaIcon        → NO DB column → 🔵 sentinel in faqs (plain string)
+    // paidCtaText        → NO DB column → 💵 sentinel in faqs (plain string)
+    // paidCtaIcon        → NO DB column → 🟣 sentinel in faqs (plain string)
+    // showcasePaidCtaText → NO DB column → 🎯 sentinel in faqs (plain string)
     const {
       versions,
       id: _tempId,
@@ -2467,6 +2578,11 @@ app.post("/make-server-e07959ec/tools", requireAuth, async (c) => {
       systemRequirements: toolSysReq,
       tagline: toolTagline,
       toolCategory: toolCat,
+      freeCtaText: toolFreeCtaText,
+      freeCtaIcon: toolFreeCtaIcon,
+      paidCtaText: toolPaidCtaText,
+      paidCtaIcon: toolPaidCtaIcon,
+      showcasePaidCtaText: toolShowcasePaidCtaText,
       ...toolRest
     } = body;
 
@@ -2478,6 +2594,11 @@ app.post("/make-server-e07959ec/tools", requireAuth, async (c) => {
       ...(toolSysReq    ? [{ question: '🖥️', answer: toolSysReq }]                           : []),
       ...(toolTagline   ? [{ question: '🏷️', answer: toolTagline }]                          : []),
       ...(toolCat       ? [{ question: '🗂️', answer: toolCat }]                              : []),
+      ...(toolFreeCtaText ? [{ question: '🆓', answer: toolFreeCtaText }]                    : []),
+      ...(toolFreeCtaIcon ? [{ question: '🔵', answer: toolFreeCtaIcon }]                    : []),
+      ...(toolPaidCtaText ? [{ question: '💵', answer: toolPaidCtaText }]                    : []),
+      ...(toolPaidCtaIcon ? [{ question: '🟣', answer: toolPaidCtaIcon }]                    : []),
+      ...(toolShowcasePaidCtaText ? [{ question: '🎯', answer: toolShowcasePaidCtaText }]    : []),
       ...(toolRest.faqs ?? []),
     ];
     const toolDbRow = toDbRow({ ...toolRest, faqs: toolFaqs });
@@ -2504,6 +2625,8 @@ app.post("/make-server-e07959ec/tools", requireAuth, async (c) => {
           monthlyPrice,
           yearlyPrice,
           lifetimePrice,
+          lifetimeBuyUrl,
+          color,
           whatsIncluded,
           activationSteps,
           richFeatures,
@@ -2513,23 +2636,24 @@ app.post("/make-server-e07959ec/tools", requireAuth, async (c) => {
         } = v;
 
         // Encode pricing as the first 💰 feature in an unambiguous pipe-delimited format:
-        //   Free version    → "Free"
-        //   Subscription    → "subscription|<monthly>|<yearly>"
-        //   Lifetime        → "lifetime|<price>"
+        //   Subscription       → "subscription|<monthly>|<yearly>"
+        //   Lifetime / Free    → "lifetime|<price>|<buyUrl>"  (free = empty price)
         const priceSentinel =
-          v.versionType === 'Free'
-            ? 'Free'
-            : pricingModel === 'subscription'
+          pricingModel === 'subscription'
             ? `subscription|${monthlyPrice ?? ''}|${yearlyPrice ?? ''}`
-            : `lifetime|${lifetimePrice ?? ''}`;
+            : `lifetime|${lifetimePrice ?? ''}|${lifetimeBuyUrl ?? ''}`;
 
+        // Store all version metadata as sentinels in features column
+        // No more plain features - only richFeatures (encoded as 🎨 JSON)
+        console.log(`[CREATE] Version "${v.name}" richFeatures:`, richFeatures);
         const enrichedFeatures = [
           ...(priceSentinel ? [`💰 ${priceSentinel}`] : []),
+          ...(color ? [`🖌️ color|${color}`] : []),
           ...((whatsIncluded ?? []) as string[]).filter(Boolean).map((item: string) => `📦 ${item}`),
           ...((activationSteps ?? []) as string[]).filter(Boolean).map((step: string) => `🔑 ${step}`),
           ...((richFeatures ?? []) as any[]).filter(Boolean).map((f: any) => `🎨 ${JSON.stringify(f)}`),
-          ...(vRest.features ?? []),
         ];
+        console.log(`[CREATE] Version "${v.name}" enriched:`, enrichedFeatures);
 
         return { ...toDbRow(vRest), features: enrichedFeatures, tool_id: tool.id };
       });
@@ -2574,6 +2698,11 @@ app.put("/make-server-e07959ec/tools/:id", requireAuth, async (c) => {
     // systemRequirements → NO DB column → 🖥️ sentinel in faqs (plain string)
     // demoUrl            → NO DB column → 🎬 sentinel in faqs (plain string)
     // toolCategory       → NO DB column → 🗂️ sentinel in faqs (plain string)
+    // freeCtaText        → NO DB column → 🆓 sentinel in faqs (plain string)
+    // freeCtaIcon        → NO DB column → 🔵 sentinel in faqs (plain string)
+    // paidCtaText        → NO DB column → 💵 sentinel in faqs (plain string)
+    // paidCtaIcon        → NO DB column → 🟣 sentinel in faqs (plain string)
+    // showcasePaidCtaText → NO DB column → 🎯 sentinel in faqs (plain string)
     const {
       versions,
       id: _bodyId,
@@ -2582,6 +2711,11 @@ app.put("/make-server-e07959ec/tools/:id", requireAuth, async (c) => {
       systemRequirements: toolSysReq,
       tagline: toolTagline,
       toolCategory: toolCat,
+      freeCtaText: toolFreeCtaText,
+      freeCtaIcon: toolFreeCtaIcon,
+      paidCtaText: toolPaidCtaText,
+      paidCtaIcon: toolPaidCtaIcon,
+      showcasePaidCtaText: toolShowcasePaidCtaText,
       ...toolRest
     } = body;
 
@@ -2593,6 +2727,11 @@ app.put("/make-server-e07959ec/tools/:id", requireAuth, async (c) => {
       ...(toolSysReq    ? [{ question: '🖥️', answer: toolSysReq }]                           : []),
       ...(toolTagline   ? [{ question: '🏷️', answer: toolTagline }]                          : []),
       ...(toolCat       ? [{ question: '🗂️', answer: toolCat }]                              : []),
+      ...(toolFreeCtaText ? [{ question: '🆓', answer: toolFreeCtaText }]                    : []),
+      ...(toolFreeCtaIcon ? [{ question: '🔵', answer: toolFreeCtaIcon }]                    : []),
+      ...(toolPaidCtaText ? [{ question: '💵', answer: toolPaidCtaText }]                    : []),
+      ...(toolPaidCtaIcon ? [{ question: '🟣', answer: toolPaidCtaIcon }]                    : []),
+      ...(toolShowcasePaidCtaText ? [{ question: '🎯', answer: toolShowcasePaidCtaText }]    : []),
       ...(toolRest.faqs ?? []),
     ];
     const toolDbRow = toDbRow({ ...toolRest, faqs: toolFaqs });
@@ -2610,8 +2749,11 @@ app.put("/make-server-e07959ec/tools/:id", requireAuth, async (c) => {
       return c.json({ success: false, error: toolError.message }, 400);
     }
     
-    // Update versions if provided
-    if (versions && Array.isArray(versions)) {
+    // Update versions only when the caller sends a non-empty array.
+    // An empty array most likely means the form state was uninitialised at
+    // save-time (e.g. data hadn't loaded yet), so we skip the delete/insert
+    // cycle entirely to avoid silently wiping existing version rows.
+    if (versions && Array.isArray(versions) && versions.length > 0) {
       // Delete existing versions
       const { error: deleteError } = await supabase
         .from('tool_versions')
@@ -2633,6 +2775,8 @@ app.put("/make-server-e07959ec/tools/:id", requireAuth, async (c) => {
             monthlyPrice,
             yearlyPrice,
             lifetimePrice,
+            lifetimeBuyUrl,
+            color,
             whatsIncluded,
             activationSteps,
             richFeatures,
@@ -2642,23 +2786,22 @@ app.put("/make-server-e07959ec/tools/:id", requireAuth, async (c) => {
           } = v;
 
           // Encode pricing as the first 💰 feature in an unambiguous pipe-delimited format:
-          //   Free version    → "Free"
           //   Subscription    → "subscription|<monthly>|<yearly>"
-          //   Lifetime        → "lifetime|<price>"
+          //   Lifetime / Free → "lifetime|<price>|<buyUrl>"  (free = empty price)
           const priceSentinel =
-            v.versionType === 'Free'
-              ? 'Free'
-              : pricingModel === 'subscription'
+            pricingModel === 'subscription'
               ? `subscription|${monthlyPrice ?? ''}|${yearlyPrice ?? ''}`
-              : `lifetime|${lifetimePrice ?? ''}`;
+              : `lifetime|${lifetimePrice ?? ''}|${lifetimeBuyUrl ?? ''}`;
 
+          console.log(`[UPDATE] Version "${v.name}" richFeatures:`, richFeatures);
           const enrichedFeatures = [
             ...(priceSentinel ? [`💰 ${priceSentinel}`] : []),
+            ...(color ? [`🖌️ color|${color}`] : []),
             ...((whatsIncluded ?? []) as string[]).filter(Boolean).map((item: string) => `📦 ${item}`),
             ...((activationSteps ?? []) as string[]).filter(Boolean).map((step: string) => `🔑 ${step}`),
             ...((richFeatures ?? []) as any[]).filter(Boolean).map((f: any) => `🎨 ${JSON.stringify(f)}`),
-            ...(vRest.features ?? []),
           ];
+          console.log(`[UPDATE] Version "${v.name}" enriched:`, enrichedFeatures);
 
           return { ...toDbRow(vRest), features: enrichedFeatures, tool_id: id };
         });
@@ -4301,6 +4444,52 @@ async function lsFetchAll(apiKey: string, path: string, extraParams: Record<stri
   return results;
 }
 
+// GET /ls/variants — admin: fetch all LS products with their variants for the import picker
+app.get('/make-server-e07959ec/ls/variants', requireAuth, async (c) => {
+  try {
+    const apiKey = Deno.env.get('LEMON_SQUEEZY_API_KEY');
+    if (!apiKey) return c.json({ success: false, error: 'LEMON_SQUEEZY_API_KEY is not configured' }, 500);
+
+    const [rawProducts, rawVariants] = await Promise.all([
+      lsFetchAll(apiKey, '/products'),
+      lsFetchAll(apiKey, '/variants'),
+    ]);
+
+    // Group variants by product_id
+    const variantsByProduct: Record<string, any[]> = {};
+    for (const v of rawVariants as any[]) {
+      const pid = String(v.attributes?.product_id ?? '');
+      if (!variantsByProduct[pid]) variantsByProduct[pid] = [];
+      variantsByProduct[pid].push({
+        id:             String(v.id),
+        name:           v.attributes?.name ?? '',
+        price:          v.attributes?.price ?? 0,
+        interval:       v.attributes?.interval ?? null,
+        isSubscription: !!v.attributes?.is_subscription,
+        buyNowUrl:      v.attributes?.buy_now_url ?? '',
+        status:         v.attributes?.status ?? 'pending',
+      });
+    }
+
+    const products = (rawProducts as any[]).map(p => ({
+      id:       String(p.id),
+      name:     p.attributes?.name ?? '',
+      variants: (variantsByProduct[String(p.id)] ?? [])
+        .sort((a: any, b: any) => {
+          // sort: monthly → yearly → one-time, then by price asc
+          const order = (v: any) => v.interval === 'month' ? 0 : v.interval === 'year' ? 1 : 2;
+          return order(a) - order(b) || a.price - b.price;
+        }),
+    }));
+
+    console.log(`[ls/variants] ${products.length} products, ${rawVariants.length} total variants`);
+    return c.json({ success: true, products });
+  } catch (error) {
+    console.log(`[ls/variants] Error: ${error}`);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
 // GET /admin/ls-revenue — live revenue data pulled directly from Lemon Squeezy API
 app.get('/make-server-e07959ec/admin/ls-revenue', requireAuth, async (c) => {
   try {
@@ -5227,10 +5416,13 @@ app.post("/make-server-e07959ec/init", async (c) => {
               ? `subscription|${v.monthlyPrice ?? ''}|${v.yearlyPrice ?? ''}`
               : `lifetime|${v.lifetimePrice ?? ''}`;
 
-          // demoUrl now lives at the tool level — only fold price into features
+          // Store all version metadata as sentinels - no plain features
           const enrichedFeatures = [
             ...(priceSentinel ? [`💰 ${priceSentinel}`] : []),
-            ...(v.features ?? []),
+            ...(v.color ? [`🖌️ color|${v.color}`] : []),
+            ...((v.whatsIncluded ?? []) as string[]).filter(Boolean).map((item: string) => `📦 ${item}`),
+            ...((v.activationSteps ?? []) as string[]).filter(Boolean).map((step: string) => `🔑 ${step}`),
+            ...((v.richFeatures ?? []) as any[]).filter(Boolean).map((f: any) => `🎨 ${JSON.stringify(f)}`),
           ];
 
           return {

@@ -11,6 +11,8 @@ export interface AIImproveContext {
   title?: string;       // project title
   category?: string;
   versionType?: string;
+  description?: string; // tool description
+  pricingModel?: string; // 'subscription' | 'lifetime'
   role?: string;        // team member role (for team context)
 }
 
