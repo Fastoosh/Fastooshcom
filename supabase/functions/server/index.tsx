@@ -3413,7 +3413,7 @@ app.post("/make-server-e07959ec/webhooks/lemon-squeezy", async (c) => {
     const rawBody   = await c.req.text();
     const signature = c.req.header('X-Signature') || '';
 
-    // ── Signature verification ────────────────────────────────────────────
+    // ── Signature verification ──────────────────────────────────��─────────
     const webhookSecret = Deno.env.get('LEMON_SQUEEZY_WEBHOOK_SECRET');
     if (webhookSecret) {
       const valid = await verifyLSSignature(webhookSecret, rawBody, signature);
@@ -4450,6 +4450,24 @@ app.get('/make-server-e07959ec/ls/variants', requireAuth, async (c) => {
     const apiKey = Deno.env.get('LEMON_SQUEEZY_API_KEY');
     if (!apiKey) return c.json({ success: false, error: 'LEMON_SQUEEZY_API_KEY is not configured' }, 500);
 
+    // Fetch store info to get the store slug for constructing checkout URLs
+    const storeRes = await fetch('https://api.lemonsqueezy.com/v1/stores', {
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Accept': 'application/vnd.api+json',
+      },
+    });
+    
+    let storeSlug = '';
+    if (storeRes.ok) {
+      const storeData = await storeRes.json();
+      const firstStore = storeData.data?.[0];
+      storeSlug = firstStore?.attributes?.slug ?? '';
+      console.log(`[ls/variants] Found store slug: ${storeSlug}`);
+    } else {
+      console.log(`[ls/variants] Failed to fetch store info: ${storeRes.status}`);
+    }
+
     const [rawProducts, rawVariants] = await Promise.all([
       lsFetchAll(apiKey, '/products'),
       lsFetchAll(apiKey, '/variants'),
@@ -4460,13 +4478,21 @@ app.get('/make-server-e07959ec/ls/variants', requireAuth, async (c) => {
     for (const v of rawVariants as any[]) {
       const pid = String(v.attributes?.product_id ?? '');
       if (!variantsByProduct[pid]) variantsByProduct[pid] = [];
+      
+      const variantId = String(v.id);
+      // Construct checkout URL: use buy_now_url if available, otherwise construct it manually
+      let buyNowUrl = v.attributes?.buy_now_url || '';
+      if (!buyNowUrl && storeSlug && variantId) {
+        buyNowUrl = `https://${storeSlug}.lemonsqueezy.com/checkout/buy/${variantId}`;
+      }
+      
       variantsByProduct[pid].push({
-        id:             String(v.id),
+        id:             variantId,
         name:           v.attributes?.name ?? '',
         price:          v.attributes?.price ?? 0,
         interval:       v.attributes?.interval ?? null,
         isSubscription: !!v.attributes?.is_subscription,
-        buyNowUrl:      v.attributes?.buy_now_url ?? '',
+        buyNowUrl:      buyNowUrl,
         status:         v.attributes?.status ?? 'pending',
       });
     }
