@@ -6,20 +6,23 @@ interface GlassCardProps {
   className?: string;
   hover?: boolean;
   neonBorder?: boolean;
+  amberBorder?: boolean;
+  darkBg?: boolean;
   onClick?: () => void;
 }
 
-export function GlassCard({ children, className = "", hover = false, neonBorder = false, onClick }: GlassCardProps) {
+export function GlassCard({ children, className = "", hover = false, neonBorder = false, amberBorder = false, darkBg = false, onClick }: GlassCardProps) {
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const hasSyntheticBorder = neonBorder || amberBorder;
 
   return (
     <motion.div
-      className={`relative rounded-2xl backdrop-blur-xl shadow-2xl ${neonBorder ? '' : 'border border-white/10'} ${className}`}
+      className={`relative rounded-2xl backdrop-blur-xl shadow-2xl ${hasSyntheticBorder ? '' : 'border border-white/10'} ${className}`}
       {...(neonBorder ? { 'data-fastoosh-dark': 'true' } : {})}
       onClick={onClick}
       style={{
-        backgroundColor: neonBorder 
-          ? 'var(--fastoosh-card-dark, rgba(255,255,255,0.02))'
+        backgroundColor: (neonBorder || amberBorder || darkBg)
+          ? 'var(--fastoosh-card-dark, rgba(0,0,0,0.95))'
           : 'var(--fastoosh-card-bg, rgba(255,255,255,0.02))',
       }}
       initial={false}
@@ -33,9 +36,7 @@ export function GlassCard({ children, className = "", hover = false, neonBorder 
     >
       {children}
 
-      {/* Neon gradient border — MUST come after {children} and carry a high z-index
-          so it always paints on top of images or any child that forms its own
-          stacking context (e.g. <img>, transformed elements, overflow:hidden wrappers). */}
+      {/* Neon gradient border (purple) */}
       {neonBorder && (
         <div
           className="absolute inset-0 rounded-2xl pointer-events-none"
@@ -43,6 +44,21 @@ export function GlassCard({ children, className = "", hover = false, neonBorder 
             zIndex: 10,
             padding: '2px',
             background: 'linear-gradient(135deg, var(--color-purple-500, #a855f7), var(--color-violet-500, #3b82f6))',
+            WebkitMask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
+            WebkitMaskComposite: 'xor',
+            maskComposite: 'exclude',
+          }}
+        />
+      )}
+
+      {/* Amber gradient border (lifetime) */}
+      {amberBorder && (
+        <div
+          className="absolute inset-0 rounded-2xl pointer-events-none"
+          style={{
+            zIndex: 10,
+            padding: '2px',
+            background: 'linear-gradient(135deg, #f59e0b, #fbbf24, #d97706)',
             WebkitMask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
             WebkitMaskComposite: 'xor',
             maskComposite: 'exclude',

@@ -194,6 +194,8 @@
       "paidGuestHint": "Connectez-vous ou créez un compte gratuit pour acheter",
       "monthly": "Mensuel",
       "yearly": "Annuel",
+      "lifetime": "À vie",
+      "subscriptionOnly": "abonnement uniquement",
       "bestValue": "Meilleur rapport",
       "savePercent": "Économisez {{percent}}%",
       "signInToTrack": "pour suivre vos licences et accéder aux achats.",

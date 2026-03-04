@@ -74,80 +74,55 @@ const supabase = createClient(
 const BUCKET_NAME       = 'make-e07959ec-images';
 const VIDEO_BUCKET_NAME = 'make-e07959ec-videos';
 const BRAND_BUCKET_NAME = 'make-e07959ec-brand';
+const GUIDE_BUCKET_NAME = 'make-e07959ec-guides';
+
+/** Attempt to create a bucket, treating 409 as success. Retries up to 3× on 5xx. */
+async function ensureBucket(
+  name: string,
+  options: { public: boolean; fileSizeLimit?: number },
+  attempt = 1
+): Promise<void> {
+  try {
+    const { error } = await supabase.storage.createBucket(name, options);
+    if (!error) {
+      console.log(`[storage] Bucket "${name}" created.`);
+    } else if (
+      error.message?.toLowerCase().includes('already exists') ||
+      (error as any)?.statusCode === '409' ||
+      (error as any)?.status === 409
+    ) {
+      console.log(`[storage] Bucket "${name}" already exists — OK.`);
+    } else if (
+      attempt < 3 &&
+      (Number((error as any)?.status) >= 500 || Number((error as any)?.statusCode) >= 500)
+    ) {
+      const delay = attempt * 1500;
+      console.log(`[storage] Bucket "${name}" got ${(error as any)?.status ?? (error as any)?.statusCode} on attempt ${attempt}, retrying in ${delay}ms…`);
+      await new Promise(r => setTimeout(r, delay));
+      return ensureBucket(name, options, attempt + 1);
+    } else {
+      console.error(`[storage] Error ensuring bucket "${name}" (attempt ${attempt}):`, error);
+    }
+  } catch (err) {
+    if (attempt < 3) {
+      const delay = attempt * 1500;
+      console.log(`[storage] Unexpected error for bucket "${name}" on attempt ${attempt}, retrying in ${delay}ms…`, err);
+      await new Promise(r => setTimeout(r, delay));
+      return ensureBucket(name, options, attempt + 1);
+    }
+    console.error(`[storage] Failed to ensure bucket "${name}" after ${attempt} attempts:`, err);
+  }
+}
 
 async function initializeStorage() {
-  try {
-    console.log('Initializing storage buckets...');
-    
-    const { data: buckets, error: listError } = await supabase.storage.listBuckets();
-    
-    if (listError) {
-      console.error('Error listing buckets:', listError);
-      return;
-    }
-    
-    // Initialize image bucket
-    const imageBucketExists = buckets?.some(bucket => bucket.name === BUCKET_NAME);
-    
-    if (!imageBucketExists) {
-      console.log('Creating image storage bucket:', BUCKET_NAME);
-      const { error } = await supabase.storage.createBucket(BUCKET_NAME, {
-        public: true,
-        fileSizeLimit: 10485760, // 10MB limit
-      });
-      
-      if (error && (error.message?.includes('already exists') || error?.statusCode === '409')) {
-        console.log('Image bucket already exists (409 error caught)');
-      } else if (error) {
-        console.error('Error creating image bucket:', error);
-      } else {
-        console.log('Image bucket created successfully');
-      }
-    } else {
-      console.log('Image bucket already exists');
-    }
-    
-    // Initialize video bucket
-    const videoBucketExists = buckets?.some(bucket => bucket.name === VIDEO_BUCKET_NAME);
-    
-    if (!videoBucketExists) {
-      console.log('Creating video storage bucket:', VIDEO_BUCKET_NAME);
-      const { error } = await supabase.storage.createBucket(VIDEO_BUCKET_NAME, {
-        public: true,
-      });
-      
-      if (error && (error.message?.includes('already exists') || error?.statusCode === '409')) {
-        console.log('Video bucket already exists (409 error caught)');
-      } else if (error) {
-        console.error('Error creating video bucket:', error);
-      } else {
-        console.log('Video bucket created successfully');
-      }
-    } else {
-      console.log('Video bucket already exists');
-    }
-
-    // Initialize brand bucket (public — logo is a public asset)
-    const brandBucketExists = buckets?.some(bucket => bucket.name === BRAND_BUCKET_NAME);
-    if (!brandBucketExists) {
-      console.log('Creating brand storage bucket:', BRAND_BUCKET_NAME);
-      const { error } = await supabase.storage.createBucket(BRAND_BUCKET_NAME, {
-        public: true,
-        fileSizeLimit: 5242880, // 5 MB
-      });
-      if (error && (error.message?.includes('already exists') || error?.statusCode === '409')) {
-        console.log('Brand bucket already exists (409 caught)');
-      } else if (error) {
-        console.error('Error creating brand bucket:', error);
-      } else {
-        console.log('Brand bucket created successfully');
-      }
-    } else {
-      console.log('Brand bucket already exists');
-    }
-  } catch (error) {
-    console.error('Error initializing storage:', error);
-  }
+  console.log('[storage] Initializing buckets…');
+  await Promise.all([
+    ensureBucket(BUCKET_NAME,       { public: true, fileSizeLimit: 10485760 }),
+    ensureBucket(VIDEO_BUCKET_NAME, { public: true }),
+    ensureBucket(BRAND_BUCKET_NAME, { public: true, fileSizeLimit: 5242880 }),
+    ensureBucket(GUIDE_BUCKET_NAME, { public: true, fileSizeLimit: 5242880 }),
+  ]);
+  console.log('[storage] Bucket initialization complete.');
 }
 
 // Initialize storage on startup
@@ -3498,7 +3473,7 @@ app.post("/make-server-e07959ec/webhooks/lemon-squeezy", async (c) => {
       return c.json({ success: true, message: 'Subscription linked' });
     }
 
-    // ── subscription_updated ──────────────────────────────────────────────
+    // ── subscription_updated ────────���─────────────────────────────────────
     // Fires whenever subscription data changes (renewals, plan changes, etc.)
     if (eventType === 'subscription_updated') {
       const sub      = body.data;
@@ -6897,6 +6872,243 @@ app.post('/make-server-e07959ec/admin/reset', requireAuth, async (c) => {
   } catch (error) {
     console.log('[admin/reset] Unexpected error:', error);
     return c.json({ success: false, error: `Reset failed: ${String(error)}` }, 500);
+  }
+});
+
+// ========== TOOL GUIDES ==========
+
+// GET /tools/:slug/guide-exists — public, check if a guide HTML exists for this tool
+app.get('/make-server-e07959ec/tools/:slug/guide-exists', async (c) => {
+  try {
+    const slug = c.req.param('slug');
+    const { data, error } = await supabase.storage
+      .from(GUIDE_BUCKET_NAME)
+      .list(slug, { limit: 5 });
+    if (error) {
+      console.log(`[guide-exists] Storage list error for "${slug}":`, error.message);
+      return c.json({ exists: false });
+    }
+    const exists = Array.isArray(data) && data.some(f => f.name === 'guide.html');
+    return c.json({ exists });
+  } catch (err) {
+    console.log('[guide-exists] Unexpected error:', err);
+    return c.json({ exists: false });
+  }
+});
+
+// GET /tools/:slug/guide-html — public, fetch the raw guide HTML
+app.get('/make-server-e07959ec/tools/:slug/guide-html', async (c) => {
+  try {
+    const slug = c.req.param('slug');
+    const path = `${slug}/guide.html`;
+    const { data, error } = await supabase.storage
+      .from(GUIDE_BUCKET_NAME)
+      .download(path);
+    if (error || !data) {
+      console.log(`[guide-html] Not found for slug "${slug}":`, error?.message);
+      return c.json({ success: false, error: 'Guide not found' }, 404);
+    }
+    const html = await data.text();
+    return c.json({ success: true, html });
+  } catch (err) {
+    console.log('[guide-html] Unexpected error:', err);
+    return c.json({ success: false, error: `Failed to fetch guide: ${String(err)}` }, 500);
+  }
+});
+
+// ── Shared Gemini dark-theme transformation ───────────────────────────────────
+async function applyDarkThemeWithGemini(originalHtml: string): Promise<{ ok: true; html: string } | { ok: false; error: string }> {
+  const apiKey = Deno.env.get('GEMINI_API_KEY');
+  if (!apiKey) return { ok: false, error: 'GEMINI_API_KEY not configured' };
+
+  const prompt = `You are a dark-theme conversion expert. Transform this HTML document from a light theme to a dark theme.
+
+CRITICAL RULES (must follow all):
+1. Preserve the COMPLETE HTML structure — every tag, attribute, class, ID stays exactly the same.
+2. Preserve ALL non-color CSS: font-size, font-weight, font-family, line-height, margin, padding, border-radius, border-width, width, height, display, flex, grid, transform, etc.
+3. Preserve ALL text content exactly as-is.
+4. ONLY modify color-related values: background, background-color, color, border-color, fill, stroke, outline-color, box-shadow colors.
+
+DARK COLOR MAP:
+• White/near-white bg (#fff, #ffffff, #fafafa, #f8f8f8, #f5f5f5) → #0a0a0f
+• Light gray bg (#eee, #e8e8e8, #e0e0e0, #ddd) → rgba(255,255,255,0.05)
+• Medium gray bg (#ccc, #bbb) → rgba(255,255,255,0.08)
+• Black/very dark text (#000, #111, #1a1a1a, #222, #333) → rgba(255,255,255,0.85)
+• Dark gray text (#444, #555) → rgba(255,255,255,0.65)
+• Medium gray text (#666, #777, #888) → rgba(255,255,255,0.50)
+• Light gray text (#999, #aaa, #bbb) → rgba(255,255,255,0.35)
+• Blue/purple links → #a855f7
+• Light borders (#ddd, #e0e0e0, #ccc) → rgba(255,255,255,0.10)
+• Dark borders (#333, #444) → rgba(255,255,255,0.18)
+
+HEADINGS — apply gradient text via inline style (keep all existing non-color styles):
+• h1 → add: background: linear-gradient(135deg, #a855f7, #7c3aed); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+• h2, h3 → color: #a855f7
+• h4, h5, h6 → color: rgba(168,85,247,0.80)
+
+CODE: <code> → background: rgba(0,0,0,0.45); color: #a855f7
+      <pre>  → background: rgba(0,0,0,0.45); color: rgba(255,255,255,0.80)
+
+CALLOUT BOXES (class contains: tip, note, warning, caution, danger, error, info, success, alert, callout, admonition):
+• tip / success / hint → background: rgba(124,58,237,0.10); border-color: rgba(124,58,237,0.35); color: rgba(196,181,253,0.90)
+• warning / caution   → background: rgba(245,158,11,0.10); border-color: rgba(245,158,11,0.35); color: rgba(252,211,77,0.90)
+• error / danger      → background: rgba(239,68,68,0.10);  border-color: rgba(239,68,68,0.35);  color: rgba(252,165,165,0.90)
+• info / note         → background: rgba(99,102,241,0.10); border-color: rgba(99,102,241,0.35); color: rgba(165,180,252,0.90)
+
+TABLES: header bg → rgba(124,58,237,0.15); header color → rgba(196,181,253,0.95); all borders → rgba(255,255,255,0.08)
+
+BODY TAG:
+• Remove ALL background, background-color, background-image properties from the <body> tag's inline style attribute.
+• Inside every <style> block, find any rule that targets body or html (e.g. body { … }, html { … }, html,body { … }) and DELETE the background, background-color, and background-image declarations from those rules entirely — do not replace them, just remove those declarations.
+• Then add this rule at the very end of the last <style> block (or create a new <style> block before </head> if none exists):
+  body { background-color: rgba(0,0,0,0.55) !important; background-image: none !important; }
+  html { background: transparent !important; }
+
+DIV BACKGROUNDS:
+• Any <div> element that has a background-color or background set to a solid light or coloured value (anything that is NOT transparent, rgba(...,0), or already a dark near-black value like #0a0a0f) should have that background-color/background set to transparent.
+• Exception: divs that have a semantic callout/card class (tip, note, warning, caution, danger, error, info, success, alert, callout, admonition, card, panel, box) keep their callout background per the CALLOUT BOXES rules above.
+• Do this for both inline style attributes and inside <style> blocks.
+
+TABLE OF CONTENTS: The page provides its own sidebar navigation, so you MUST remove any inline Table of Contents section from the document. This includes:
+• Any heading element (h1–h6) whose visible text matches: "Contents", "Table of Contents", "TOC", "Navigation", "In this guide", "In this article", "In this page" — remove the heading AND the immediately-following list/nav/div element.
+• Any element whose id or class contains "toc", "table-of-contents", or "contents" (case-insensitive).
+Do NOT add a new TOC. Leave the rest of the document structure unchanged.
+
+Return ONLY the complete transformed HTML. No markdown fences. No explanation. Raw HTML only.
+
+--- HTML DOCUMENT BELOW ---
+${originalHtml}`;
+
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.1, maxOutputTokens: 65536 },
+        }),
+      }
+    );
+    if (!res.ok) {
+      const txt = await res.text();
+      console.log('[guide-theme] Gemini error:', txt);
+      return { ok: false, error: `Gemini API error (${res.status})` };
+    }
+    const json = await res.json();
+    let themed = (json.candidates?.[0]?.content?.parts?.[0]?.text ?? '') as string;
+    // Strip any accidental markdown fences
+    themed = themed.replace(/^```html?\s*/i, '').replace(/```\s*$/, '').trim();
+    if (!themed) return { ok: false, error: 'Gemini returned empty response' };
+    return { ok: true, html: themed };
+  } catch (err) {
+    console.log('[guide-theme] Unexpected error:', err);
+    return { ok: false, error: String(err) };
+  }
+}
+
+// POST /tools/:id/guide — admin only, upload + AI-theme HTML guide { html, slug }
+app.post('/make-server-e07959ec/tools/:id/guide', requireAuth, async (c) => {
+  try {
+    const toolId = c.req.param('id');
+    const body = await c.req.json();
+    const { html, slug } = body;
+    if (!html) return c.json({ success: false, error: 'html field is required' }, 400);
+    if (!slug) return c.json({ success: false, error: 'slug field is required' }, 400);
+
+    // ── Theme with Gemini (color-only dark conversion) ─────────────────────
+    console.log(`[guide-upload] Theming guide for tool "${toolId}" with Gemini…`);
+    const themeResult = await applyDarkThemeWithGemini(html);
+    const finalHtml = themeResult.ok ? themeResult.html : html; // fallback to original if AI fails
+    if (!themeResult.ok) {
+      console.log(`[guide-upload] Gemini theming failed (saving original): ${themeResult.error}`);
+    } else {
+      console.log(`[guide-upload] ✅ Gemini theming succeeded for tool "${toolId}"`);
+    }
+
+    const path = `${slug}/guide.html`;
+    const blob = new Blob([finalHtml], { type: 'text/html; charset=utf-8' });
+
+    const { error } = await supabase.storage
+      .from(GUIDE_BUCKET_NAME)
+      .upload(path, blob, { contentType: 'text/html', upsert: true });
+
+    if (error) {
+      console.log(`[guide-upload] Error uploading guide for tool "${toolId}":`, error.message);
+      return c.json({ success: false, error: error.message }, 500);
+    }
+
+    const { data: { publicUrl } } = supabase.storage
+      .from(GUIDE_BUCKET_NAME)
+      .getPublicUrl(path);
+
+    console.log(`[guide-upload] ✅ Guide saved for tool "${toolId}" at path "${path}"`);
+    return c.json({ success: true, url: publicUrl, themedHtml: finalHtml, aiThemed: themeResult.ok });
+  } catch (err) {
+    console.log('[guide-upload] Unexpected error:', err);
+    return c.json({ success: false, error: `Upload failed: ${String(err)}` }, 500);
+  }
+});
+
+// POST /tools/:slug/guide-retheme — admin only, re-apply dark theme to an existing guide
+app.post('/make-server-e07959ec/tools/:slug/guide-retheme', requireAuth, async (c) => {
+  try {
+    const slug = c.req.param('slug');
+    const path = `${slug}/guide.html`;
+
+    const { data, error: fetchErr } = await supabase.storage
+      .from(GUIDE_BUCKET_NAME)
+      .download(path);
+    if (fetchErr || !data) {
+      return c.json({ success: false, error: 'Guide not found' }, 404);
+    }
+    const originalHtml = await data.text();
+
+    console.log(`[guide-retheme] Re-theming guide for slug "${slug}" with Gemini…`);
+    const themeResult = await applyDarkThemeWithGemini(originalHtml);
+    if (!themeResult.ok) {
+      return c.json({ success: false, error: `Theming failed: ${themeResult.error}` }, 500);
+    }
+
+    const blob = new Blob([themeResult.html], { type: 'text/html; charset=utf-8' });
+    const { error: uploadErr } = await supabase.storage
+      .from(GUIDE_BUCKET_NAME)
+      .upload(path, blob, { contentType: 'text/html', upsert: true });
+
+    if (uploadErr) {
+      return c.json({ success: false, error: uploadErr.message }, 500);
+    }
+
+    console.log(`[guide-retheme] ✅ Re-themed guide for slug "${slug}"`);
+    return c.json({ success: true, themedHtml: themeResult.html });
+  } catch (err) {
+    console.log('[guide-retheme] Unexpected error:', err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// DELETE /tools/:id/guide?slug= — admin only, remove guide
+app.delete('/make-server-e07959ec/tools/:id/guide', requireAuth, async (c) => {
+  try {
+    const toolId = c.req.param('id');
+    const slug = c.req.query('slug') || toolId;
+    const path = `${slug}/guide.html`;
+
+    const { error } = await supabase.storage
+      .from(GUIDE_BUCKET_NAME)
+      .remove([path]);
+
+    if (error) {
+      console.log(`[guide-delete] Error deleting guide for tool "${toolId}":`, error.message);
+      return c.json({ success: false, error: error.message }, 500);
+    }
+
+    console.log(`[guide-delete] ✅ Guide deleted for tool "${toolId}"`);
+    return c.json({ success: true });
+  } catch (err) {
+    console.log('[guide-delete] Unexpected error:', err);
+    return c.json({ success: false, error: `Delete failed: ${String(err)}` }, 500);
   }
 });
 

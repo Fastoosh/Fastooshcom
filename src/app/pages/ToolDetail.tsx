@@ -10,7 +10,7 @@ import { projectId, publicAnonKey } from '/utils/supabase/info';
 import {
   ArrowLeft, Check, Download, Play, ChevronDown, ChevronUp,
   Monitor, Zap, Star, ExternalLink, Sparkles, ShoppingCart, Quote,
-  ChevronLeft, ChevronRight,
+  ChevronLeft, ChevronRight, BookOpen,
 } from 'lucide-react';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -55,6 +55,7 @@ interface ToolVersion {
   monthlyPrice?: string;
   yearlyPrice?: string;
   lifetimePrice?: string;
+  lifetimeBuyUrl?: string;
   pricingDisplay?: string; // Server-computed display string (legacy / fallback)
   downloadUrl: string;
   lemonSqueezyVariantId?: string;
@@ -106,7 +107,7 @@ interface ParsedPricing {
   cleanFeatures: string[];
 }
 
-function parsePricing(version: ToolVersion, billingCycle: 'monthly' | 'yearly' = 'monthly'): ParsedPricing {
+function parsePricing(version: ToolVersion, billingCycle: 'monthly' | 'yearly' | 'lifetime' = 'monthly'): ParsedPricing {
   const raw = version.features ?? [];
   const cleanFeatures: string[] = [];
 
@@ -147,13 +148,42 @@ function parsePricing(version: ToolVersion, billingCycle: 'monthly' | 'yearly' =
     }
   }
 
+  // ── Pre-compute subscription helpers (used by multiple branches) ──
+  const toNum = (s: string) => parseFloat(s.replace(/[^0-9.]/g, '')) || 0;
+  const hasMo = monthly.trim() !== '';
+  const hasYr = yearly.trim()  !== '';
+
   // ── Free ──
   const originalType = version.versionTypeOriginal || version.versionType;
   if (originalType === 'Free') {
     return { mainPrice: 'Free', period: '', subLabel: 'forever free', ctaPrice: 'Free', cleanFeatures };
   }
 
-  // ── Lifetime ──
+  // ── Lifetime billing tab selected ──
+  if (billingCycle === 'lifetime') {
+    if (lifetime.trim()) {
+      const price = fmt(lifetime) || '—';
+      return { mainPrice: price, period: '', subLabel: 'one-time payment', ctaPrice: price, cleanFeatures };
+    }
+    // No lifetime price on this version — show yearly billing info (same as yearly tab)
+    if (hasMo && hasYr) {
+      const yrNum = toNum(yearly);
+      const fmtYr = fmt(yearly);
+      const perMonth = yrNum / 12;
+      const perMonthStr = perMonth % 1 === 0 ? `$${perMonth}` : `$${perMonth.toFixed(2)}`;
+      return { mainPrice: perMonthStr, period: '/ mo', subLabel: `billed ${fmtYr} / yr`, ctaPrice: fmtYr, cleanFeatures };
+    }
+    if (hasYr) {
+      const yrNum = toNum(yearly);
+      const fmtYr = fmt(yearly);
+      const perMonth = yrNum / 12;
+      const perMonthStr = perMonth % 1 === 0 ? `$${perMonth}` : `$${perMonth.toFixed(2)}`;
+      return { mainPrice: perMonthStr, period: '/ mo', subLabel: `billed ${fmtYr} / yr`, ctaPrice: fmtYr, cleanFeatures };
+    }
+    if (hasMo) return { mainPrice: fmt(monthly), period: '/ mo', subLabel: 'billed monthly', ctaPrice: fmt(monthly), cleanFeatures };
+  }
+
+  // ── Lifetime-only model ──
   if (model === 'lifetime') {
     const price = fmt(lifetime) || '—';
     return {
@@ -167,9 +197,6 @@ function parsePricing(version: ToolVersion, billingCycle: 'monthly' | 'yearly' =
 
   // ── Subscription ──
   // Normalise: strip leading "$" for math, re-add for display
-  const toNum = (s: string) => parseFloat(s.replace(/[^0-9.]/g, '')) || 0;
-  const hasMo = monthly.trim() !== '';
-  const hasYr = yearly.trim()  !== '';
 
   if (hasMo && hasYr) {
     const yrNum = toNum(yearly);
@@ -326,7 +353,7 @@ function PricingCard({
   onFreeDownload: (v: ToolVersion) => void;
   onBuyClick?: (v: ToolVersion) => void;
   sessionId?: string;
-  billingCycle?: 'monthly' | 'yearly';
+  billingCycle?: 'monthly' | 'yearly' | 'lifetime';
 }) {
   const { t, i18n } = useTranslation();
   const { mainPrice, period, subLabel, ctaPrice, cleanFeatures } = parsePricing(version, billingCycle ?? 'monthly');
@@ -352,6 +379,8 @@ function PricingCard({
     translatedSubLabel = t('tools.detail.oneTimePayment');
   } else if (subLabel === 'forever free') {
     translatedSubLabel = t('tools.detail.foreverFree');
+  } else if (subLabel === 'subscription only') {
+    translatedSubLabel = t('tools.detail.subscriptionOnly', { defaultValue: 'subscription only' });
   } else if (subLabel.startsWith('billed ')) {
     // Handle "billed $90 / yr" format
     const match = subLabel.match(/^billed (.+)$/);
@@ -371,17 +400,26 @@ function PricingCard({
     : cleanFeatures;
 
   // Use boolean checks instead of string matching to avoid translation issues
+  // True when this card is actively showing its lifetime price (not a subscription fallback)
+  const isLifetimeActive = !isFree && billingCycle === 'lifetime' && !!version.lifetimePrice?.trim();
+
   const config = isFree
     ? { accent: 'text-emerald-400', dot: 'bg-emerald-400', ring: '', border: 'border-emerald-500/30', text: 'text-emerald-300' }
+    : isLifetimeActive
+    ? { accent: 'text-amber-400',   dot: 'bg-amber-400',   ring: '', border: 'border-amber-500/30',   text: 'text-amber-300'   }
     : isPro
     ? { accent: 'text-purple-400',  dot: 'bg-purple-400',  ring: 'ring-1 ring-purple-500/30 border-purple-500/40', border: 'border-purple-500/30', text: 'text-purple-300' }
-    : { accent: 'text-sky-400', dot: 'bg-sky-400', ring: '', border: 'border-sky-500/30', text: 'text-sky-300' };
+    : { accent: 'text-sky-400',     dot: 'bg-sky-400',     ring: '', border: 'border-sky-500/30',     text: 'text-sky-300'     };
 
   // Build the checkout URL with pre-filled user data
+  // When lifetime tab is active and a dedicated lifetimeBuyUrl is set, use it
   const buildCheckoutUrl = () => {
-    if (!version.downloadUrl) return '/work-with-us';
+    const baseUrl = (billingCycle === 'lifetime' && version.lifetimeBuyUrl?.trim())
+      ? version.lifetimeBuyUrl
+      : version.downloadUrl;
+    if (!baseUrl) return '/work-with-us';
     try {
-      const url = new URL(version.downloadUrl);
+      const url = new URL(baseUrl);
       if (user?.email) url.searchParams.set('checkout[email]', user.email);
       if (user?.id)    url.searchParams.set('checkout[custom][user_id]', user.id);
       // Pass version ID so the webhook can record tool_version_id
@@ -411,16 +449,73 @@ function PricingCard({
       viewport={{ once: true }}
       transition={{ delay: index * 0.08 }}
       className="h-full"
+      style={isLifetimeActive ? { filter: 'drop-shadow(0 0 24px rgba(245,158,11,0.14))' } : undefined}
     >
-      <GlassCard className={`relative p-7 h-full flex flex-col ${config.ring}`} neonBorder={isPro}>
-        {isPro && (
-          <div className="absolute top-3 right-3 rtl:right-auto rtl:left-3">
-            <span className="px-3 py-1 rounded-full text-[11px] font-bold tracking-wide
-              bg-gradient-to-r from-purple-500 to-blue-500 text-white shadow-md shadow-purple-500/30">
-              {t('tools.detail.mostPopular')}
-            </span>
-          </div>
+      <GlassCard
+        className={`relative p-7 h-full flex flex-col ${
+          isLifetimeActive ? '' : config.ring
+        }`}
+        neonBorder={isPro && !isLifetimeActive}
+        amberBorder={isPro && isLifetimeActive}
+        darkBg={!isPro && isLifetimeActive}
+      >
+        {/* Amber hairline accent along the top edge when lifetime is active */}
+        {isLifetimeActive && (
+          <div className="absolute top-0 left-6 right-6 h-px bg-gradient-to-r from-transparent via-amber-400/60 to-transparent" />
         )}
+
+        {/* Badge — changes per billing cycle × tier */}
+        {!isFree && (() => {
+          // ── Lifetime ────────────────────────────────────────────────
+          if (isLifetimeActive) return (
+            <div className="absolute top-3 right-3 rtl:right-auto rtl:left-3">
+              <span className="px-3 py-1 rounded-full text-[11px] font-bold tracking-wide
+                bg-gradient-to-r from-amber-500/20 to-yellow-500/10
+                border border-amber-500/30 text-amber-300">
+                ⚡ {t('tools.detail.lifetime')}
+              </span>
+            </div>
+          );
+          // ── One-time model shown on any non-lifetime tab ─────────────
+          if (subLabel === 'one-time payment') return (
+            <div className="absolute top-3 right-3 rtl:right-auto rtl:left-3">
+              <span className="px-3 py-1 rounded-full text-[11px] font-bold tracking-wide
+                bg-gradient-to-r from-amber-500/20 to-yellow-500/10
+                border border-amber-500/30 text-amber-300">
+                ⚡ {t('tools.detail.lifetime')}
+              </span>
+            </div>
+          );
+          // ── Yearly ──────────────────────────────────────────────────
+          if (billingCycle === 'yearly') return (
+            <div className="absolute top-3 right-3 rtl:right-auto rtl:left-3">
+              <span className="px-3 py-1 rounded-full text-[11px] font-bold tracking-wide
+                bg-gradient-to-r from-emerald-500/20 to-teal-500/10
+                border border-emerald-500/30 text-emerald-300">
+                ★ {t('tools.detail.bestValue')}
+              </span>
+            </div>
+          );
+          // ── Monthly — Pro ────────────────────────────────────────────
+          if (isPro) return (
+            <div className="absolute top-3 right-3 rtl:right-auto rtl:left-3">
+              <span className="px-3 py-1 rounded-full text-[11px] font-bold tracking-wide
+                bg-gradient-to-r from-purple-500 to-blue-500 text-white shadow-md shadow-purple-500/30">
+                {t('tools.detail.mostPopular')}
+              </span>
+            </div>
+          );
+          // ── Monthly — other paid tiers ───────────────────────────────
+          return (
+            <div className="absolute top-3 right-3 rtl:right-auto rtl:left-3">
+              <span className="px-3 py-1 rounded-full text-[11px] font-bold tracking-wide
+                bg-gradient-to-r from-sky-500/20 to-blue-500/10
+                border border-sky-500/30 text-sky-300">
+                ↻ {t('tools.detail.monthly')}
+              </span>
+            </div>
+          );
+        })()}
 
         {/* Version label */}
         <div className="flex items-center gap-2 mb-5">
@@ -448,7 +543,10 @@ function PricingCard({
               </div>
               {/* Sub-label: e.g. "$90 / yr · save 17%" or "one-time payment" */}
               {translatedSubLabel && (
-                <p className="text-white/30 text-xs mt-1">{translatedSubLabel}</p>
+                <p className={`text-xs mt-1 ${subLabel === 'subscription only' ? 'text-amber-500/60' : 'text-white/30'}`}>
+                  {subLabel === 'subscription only' && <span className="mr-1">↩</span>}
+                  {translatedSubLabel}
+                </p>
               )}
             </>
           )}
@@ -494,12 +592,16 @@ function PricingCard({
                 onClick={handlePaidCTA}
                 className={`w-full inline-flex items-center justify-center gap-2 rtl:flex-row-reverse
                   px-5 py-3 rounded-xl text-sm font-semibold transition-all
-                  ${isPro
+                  ${isLifetimeActive
+                    ? 'bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-black shadow-lg shadow-amber-500/30 active:scale-[0.98]'
+                    : isPro
                     ? 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white shadow-lg shadow-purple-500/25'
                     : 'bg-white/10 hover:bg-white/15 border border-white/15 text-white'
                   }`}
               >
-                <ShoppingCart className="w-3.5 h-3.5" />
+                {isLifetimeActive
+                  ? <Zap className="w-3.5 h-3.5 fill-current" />
+                  : <ShoppingCart className="w-3.5 h-3.5" />}
                 {user
                   ? `${t('tools.detail.buyNow')}${ctaPrice ? ` · ${ctaPrice}` : ''}`
                   : isPro ? t('tools.detail.getPro') : t('tools.detail.getStudio')}
@@ -822,10 +924,12 @@ export function ToolDetail() {
   const [freeDownloadVersion, setFreeDownloadVersion] = useState<ToolVersion | null>(null);
   const [userPurchasedProductNames, setUserPurchasedProductNames] = useState<string[]>([]);
   const [reviews, setReviews] = useState<any[]>([]);
-  // Billing cycle toggle — only relevant when a subscription version has both prices
-  const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('yearly');
+  // Billing cycle toggle — monthly/yearly for subscriptions; lifetime when any version has lifetimePrice
+  const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly' | 'lifetime'>('yearly');
   // CMS category translations for tool status badges { "New": "Nouveau", ... }
   const [cmsStatusTrans, setCmsStatusTrans] = useState<Record<string, string>>({});
+  // Whether this tool has an uploaded user guide
+  const [guideExists, setGuideExists] = useState(false);
   const isRTL = i18n.language === 'ar';
 
   // Single effect — handles slug change AND language switch.
@@ -939,6 +1043,17 @@ export function ToolDetail() {
             lastTrackedSlug.current = found.slug ?? slug ?? null;
             track('tool_view', { toolId: found.id, toolName: found.name, toolSlug: found.slug ?? slug });
             fetchReviews(found.id);
+          }
+
+          // Check if this tool has an uploaded user guide (fire-and-forget, non-blocking)
+          const guideSlug = found.slug ?? slug;
+          if (guideSlug) {
+            fetch(`${API_BASE}/tools/${encodeURIComponent(guideSlug)}/guide-exists`, {
+              headers: { Authorization: `Bearer ${publicAnonKey}` },
+            })
+              .then(r => r.json())
+              .then(d => setGuideExists(!!d.exists))
+              .catch(() => setGuideExists(false));
           }
         } else {
           setError('Tool not found');
@@ -1147,6 +1262,19 @@ export function ToolDetail() {
                   {t('tools.detail.watchDemo')}
                 </button>
               )}
+              {guideExists && tool.slug && (
+                <Link
+                  to={`/tools/${tool.slug}/guide`}
+                  className="inline-flex items-center gap-2 rtl:flex-row-reverse px-4 py-2 rounded-xl
+                    text-sm font-medium
+                    text-purple-300/80 hover:text-purple-200
+                    border border-purple-500/20 hover:border-purple-400/40
+                    bg-purple-500/8 hover:bg-purple-500/14 transition-all"
+                >
+                  <BookOpen className="w-3.5 h-3.5" />
+                  User Guide
+                </Link>
+              )}
             </div>
           </div>
 
@@ -1187,92 +1315,108 @@ export function ToolDetail() {
           >
             <SectionLabel>{t('tools.detail.chooseYourVersion')}</SectionLabel>
 
-            {/* ── Billing cycle toggle — shown only for tools with subscription + both prices ── */}
-            {tool.versions?.some(v =>
-              v.pricingModel === 'subscription' && v.monthlyPrice?.trim() && v.yearlyPrice?.trim()
-            ) && (
-              <div className="flex justify-center mb-10">
-                <div className="flex flex-col items-center gap-3">
-                  {/* "Best value" badge floats above, dims when Monthly is active */}
-                  <motion.div
-                    animate={{ opacity: billingCycle === 'yearly' ? 1 : 0.3 }}
-                    transition={{ duration: 0.2 }}
-                    className="flex items-center gap-1.5 rtl:flex-row-reverse px-3 py-1 rounded-full
-                      bg-gradient-to-r from-emerald-500/15 to-teal-500/10
-                      border border-emerald-500/25 text-emerald-400 text-[11px] font-bold tracking-wide"
-                  >
-                    <span>✦</span>
-                    {t('tools.detail.bestValue')}
-                  </motion.div>
+            {/* ── Billing cycle toggle ── */}
+            {(() => {
+              const hasSubscriptionBoth = tool.versions?.some(v =>
+                v.pricingModel === 'subscription' && v.monthlyPrice?.trim() && v.yearlyPrice?.trim()
+              );
+              const hasLifetimeOption = tool.versions?.some(v => v.lifetimePrice?.trim());
+              if (!hasSubscriptionBoth) return null;
 
-                  {/* Toggle pill — fixed-width buttons so the sliding bg is always accurate */}
-                  <div className="relative flex p-1 rounded-xl bg-white/5 border border-white/10">
-                    <div
-                      style={{
-                        position: 'absolute',
-                        top: 4,
-                        bottom: 4,
-                        left: billingCycle === 'monthly' ? 4 : 'calc(50% + 2px)',
-                        right: billingCycle === 'yearly' ? 4 : 'calc(50% + 2px)',
-                        borderRadius: 10,
-                        border: '1px solid',
-                        background: billingCycle === 'yearly'
-                          ? 'linear-gradient(135deg,rgba(16,185,129,.18),rgba(20,184,166,.10))'
-                          : 'rgba(255,255,255,.09)',
-                        borderColor: billingCycle === 'yearly'
-                          ? 'rgba(16,185,129,.28)'
-                          : 'rgba(255,255,255,.13)',
-                        transition: [
-                          'left 0.38s cubic-bezier(0.34,1.56,0.64,1)',
-                          'right 0.38s cubic-bezier(0.34,1.56,0.64,1)',
-                          'background 0.25s ease',
-                          'border-color 0.25s ease',
-                        ].join(', '),
-                      }}
-                    />
-                    {isRTL ? (
+              // ── Slider position helper ──
+              // LTR order: monthly(0) yearly(1) [lifetime(2)]
+              // RTL order: [lifetime(0)] yearly(0/1) monthly(1/2)
+              const btnCount = hasLifetimeOption ? 3 : 2;
+              const ltrIdx = hasLifetimeOption
+                ? ({ monthly: 0, yearly: 1, lifetime: 2 } as Record<string, number>)[billingCycle] ?? 1
+                : ({ monthly: 0, yearly: 1, lifetime: 1 } as Record<string, number>)[billingCycle] ?? 1;
+              const idx = isRTL ? (btnCount - 1 - ltrIdx) : ltrIdx;
+              const pct = 100 / btnCount;
+              const sliderLeft  = idx === 0 ? 4 : `calc(${pct * idx}% + 2px)`;
+              const sliderRight = idx === btnCount - 1 ? 4 : `calc(${pct * (btnCount - 1 - idx)}% + 2px)`;
+              const sliderBg = billingCycle === 'yearly'
+                ? 'linear-gradient(135deg,rgba(16,185,129,.18),rgba(20,184,166,.10))'
+                : billingCycle === 'lifetime'
+                ? 'linear-gradient(135deg,rgba(245,158,11,.15),rgba(251,191,36,.08))'
+                : 'rgba(255,255,255,.09)';
+              const sliderBorder = billingCycle === 'yearly'
+                ? 'rgba(16,185,129,.28)'
+                : billingCycle === 'lifetime'
+                ? 'rgba(245,158,11,.30)'
+                : 'rgba(255,255,255,.13)';
+
+              return (
+                <div className="flex justify-center mb-10">
+                  <div className="flex flex-col items-center gap-3">
+                    {/* Floating badge — "Best value" for yearly, dim otherwise */}
+                    <motion.div
+                      animate={{ opacity: billingCycle === 'yearly' ? 1 : 0.3 }}
+                      transition={{ duration: 0.2 }}
+                      className="flex items-center gap-1.5 rtl:flex-row-reverse px-3 py-1 rounded-full
+                        bg-gradient-to-r from-emerald-500/15 to-teal-500/10
+                        border border-emerald-500/25 text-emerald-400 text-[11px] font-bold tracking-wide"
+                    >
+                      <span>✦</span>
+                      {t('tools.detail.bestValue')}
+                    </motion.div>
+
+                    {/* Toggle pill */}
+                    <div className="relative flex p-1 rounded-xl bg-white/5 border border-white/10">
+                      {/* Sliding indicator */}
+                      <div
+                        style={{
+                          position: 'absolute',
+                          top: 4,
+                          bottom: 4,
+                          left: sliderLeft,
+                          right: sliderRight,
+                          borderRadius: 10,
+                          border: '1px solid',
+                          background: sliderBg,
+                          borderColor: sliderBorder,
+                          transition: [
+                            'left 0.38s cubic-bezier(0.34,1.56,0.64,1)',
+                            'right 0.38s cubic-bezier(0.34,1.56,0.64,1)',
+                            'background 0.25s ease',
+                            'border-color 0.25s ease',
+                          ].join(', '),
+                        }}
+                      />
+
+                      {/* Buttons — RTL flex direction naturally flips visual order; no DOM reversal needed */}
                       <>
                         <button
-                          onClick={() => setBillingCycle('yearly')}
-                          className={`relative z-10 w-28 py-2.5 text-sm font-semibold rounded-[10px] transition-colors duration-200 ${
-                            billingCycle === 'yearly' ? 'text-emerald-300' : 'text-white/35 hover:text-white/65'
-                          }`}
-                        >
-                          {t('tools.detail.yearly')}
-                        </button>
-                        <button
                           onClick={() => setBillingCycle('monthly')}
-                          className={`relative z-10 w-28 py-2.5 text-sm font-semibold rounded-[10px] transition-colors duration-200 ${
+                          className={`relative z-10 w-24 py-2.5 text-sm font-semibold rounded-[10px] transition-colors duration-200 ${
                             billingCycle === 'monthly' ? 'text-white' : 'text-white/35 hover:text-white/65'
                           }`}
                         >
                           {t('tools.detail.monthly')}
                         </button>
-                      </>
-                    ) : (
-                      <>
-                        <button
-                          onClick={() => setBillingCycle('monthly')}
-                          className={`relative z-10 w-28 py-2.5 text-sm font-semibold rounded-[10px] transition-colors duration-200 ${
-                            billingCycle === 'monthly' ? 'text-white' : 'text-white/35 hover:text-white/65'
-                          }`}
-                        >
-                          {t('tools.detail.monthly')}
-                        </button>
                         <button
                           onClick={() => setBillingCycle('yearly')}
-                          className={`relative z-10 w-28 py-2.5 text-sm font-semibold rounded-[10px] transition-colors duration-200 ${
+                          className={`relative z-10 w-24 py-2.5 text-sm font-semibold rounded-[10px] transition-colors duration-200 ${
                             billingCycle === 'yearly' ? 'text-emerald-300' : 'text-white/35 hover:text-white/65'
                           }`}
                         >
                           {t('tools.detail.yearly')}
                         </button>
+                        {hasLifetimeOption && (
+                          <button
+                            onClick={() => setBillingCycle('lifetime')}
+                            className={`relative z-10 w-24 py-2.5 text-sm font-semibold rounded-[10px] transition-colors duration-200 flex items-center justify-center gap-1 ${
+                              billingCycle === 'lifetime' ? 'text-amber-300' : 'text-white/35 hover:text-white/65'
+                            }`}
+                          >
+                            ⚡ {t('tools.detail.lifetime')}
+                          </button>
+                        )}
                       </>
-                    )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             <div className={`grid gap-5 ${
               tool.versions.length === 1 

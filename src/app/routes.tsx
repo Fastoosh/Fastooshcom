@@ -16,6 +16,7 @@ import { Account } from "./pages/Account";
 import { AuthCallback } from "./pages/AuthCallback";
 import { ResetPassword } from "./pages/ResetPassword";
 import { DownloadRedirect } from "./pages/DownloadRedirect";
+import { ToolGuide } from "./pages/ToolGuide";
 
 export const router = createBrowserRouter([
   // Auth routes — dedicated pages, no navbar
@@ -40,6 +41,7 @@ export const router = createBrowserRouter([
       { path: "projects/:slug",    Component: ProjectDetail },
       { path: "tools",             Component: Tools         },
       { path: "tools/:slug",       Component: ToolDetail    },
+      { path: "tools/:slug/guide", Component: ToolGuide     },
       { path: "about",             Component: About         },
       { path: "work-with-us",      Component: WorkWithUs    },
       { path: "account",           Component: Account       },

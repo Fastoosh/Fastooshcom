@@ -4,9 +4,13 @@ import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { AdminSelect } from './AdminSelect';
-import { Plus, Save, X, Upload, Copy, Trash2, Sparkles, ChevronLeft, ChevronRight, GripVertical, ImageIcon } from 'lucide-react';
+import { Plus, Save, X, Upload, Copy, Trash2, Sparkles, ChevronLeft, ChevronRight, GripVertical, ImageIcon, BookOpen, FileCode, CheckCircle2, AlertCircle, Pencil, Maximize2, Minimize2, Eye, Code2 } from 'lucide-react';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import { AIImproveModal, type AIImproveContext } from './AIImproveModal';
+import CodeMirror from '@uiw/react-codemirror';
+import { html as htmlLang } from '@codemirror/lang-html';
+import { oneDark } from '@codemirror/theme-one-dark';
+
 
 // ── Rich Feature type ─────────────────────────────────────────────────────────
 export interface RichFeature {
@@ -36,6 +40,7 @@ interface ToolVersion {
   monthlyPrice?: string;
   yearlyPrice?: string;
   lifetimePrice?: string;
+  lifetimeBuyUrl?: string;
   downloadUrl: string;
   lemonSqueezyVariantId?: string;
   lemonSqueezyProductId?: string;
@@ -111,6 +116,18 @@ export function ToolFormNew({
   const [showAiOptions, setShowAiOptions] = useState(false);
   // Glow highlight for auto-filled fields
   const [highlightedFields, setHighlightedFields] = useState<Set<string>>(new Set());
+  // User guide upload state
+  const [guideExists, setGuideExists]     = useState(false);
+  const [guideUploading, setGuideUploading] = useState(false);
+  const [guideDeleting, setGuideDeleting]   = useState(false);
+  const [guideMsg, setGuideMsg]             = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+  // Inline guide editor
+  const [guideEditorOpen, setGuideEditorOpen]     = useState(false);
+  const [guideEditorHtml, setGuideEditorHtml]     = useState('');
+  const [guideEditorLoading, setGuideEditorLoading] = useState(false);
+  const [guideEditorSaving, setGuideEditorSaving]   = useState(false);
+  const [guideEditorExpanded, setGuideEditorExpanded] = useState(false);
+  const [guideEditorTab, setGuideEditorTab] = useState<'edit' | 'preview'>('edit');
   // Per-field AI improve modal
   const [aiModal, setAiModal] = useState<null | {
     fieldLabel: string; fieldKey: string; currentValue: string;
@@ -164,6 +181,181 @@ export function ToolFormNew({
       setActiveVersionTab(formData.versions[0].id);
     }
   }, [formData.versions]);
+
+  // Check whether a guide is already uploaded for this tool
+  useEffect(() => {
+    const slug = tool.slug;
+    if (!slug) return;
+    fetch(`${API_BASE}/tools/${encodeURIComponent(slug)}/guide-exists`, {
+      headers: { Authorization: `Bearer ${publicAnonKey}` },
+    })
+      .then(r => r.json())
+      .then(d => setGuideExists(!!d.exists))
+      .catch(() => setGuideExists(false));
+  }, [tool.slug]);
+
+  // ── Guide handlers ──────────────────────────────────────────────────────────
+  const handleGuideUpload = async (file: File) => {
+    const slug = formData.slug || tool.slug;
+    const id   = tool.id;
+    if (!slug || !id) {
+      setGuideMsg({ type: 'err', text: 'Save the tool first to upload a guide.' });
+      return;
+    }
+    setGuideUploading(true);
+    setGuideMsg(null);
+    try {
+      const html = await file.text();
+      const adminToken = localStorage.getItem('admin_token') ?? '';
+      const res = await fetch(`${API_BASE}/tools/${id}/guide`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${publicAnonKey}`,
+          'X-Admin-Token': adminToken,
+        },
+        body: JSON.stringify({ html, slug }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setGuideExists(true);
+        const aiNote = data.aiThemed ? ' AI dark theme applied.' : ' (AI theming skipped, original saved)';
+        setGuideMsg({ type: 'ok', text: `Guide uploaded.${aiNote}` });
+        // Open the editor automatically so the admin sees the themed result
+        if (data.themedHtml) {
+          setGuideEditorHtml(data.themedHtml);
+          setGuideEditorOpen(true);
+          setGuideEditorTab('preview');
+        }
+      } else {
+        setGuideMsg({ type: 'err', text: data.error ?? 'Upload failed.' });
+      }
+    } catch (err) {
+      setGuideMsg({ type: 'err', text: `Upload error: ${String(err)}` });
+    } finally {
+      setGuideUploading(false);
+    }
+  };
+
+  const handleGuideRetheme = async () => {
+    const slug = formData.slug || tool.slug;
+    if (!slug) return;
+    setGuideUploading(true);
+    setGuideMsg(null);
+    try {
+      const adminToken = localStorage.getItem('admin_token') ?? '';
+      const res = await fetch(`${API_BASE}/tools/${encodeURIComponent(slug)}/guide-retheme`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${publicAnonKey}`,
+          'X-Admin-Token': adminToken,
+        },
+      });
+      const data = await res.json();
+      if (data.success) {
+        setGuideMsg({ type: 'ok', text: 'Guide re-themed with AI successfully.' });
+        if (data.themedHtml) {
+          setGuideEditorHtml(data.themedHtml);
+          setGuideEditorOpen(true);
+          setGuideEditorTab('preview');
+        }
+      } else {
+        setGuideMsg({ type: 'err', text: data.error ?? 'Re-theming failed.' });
+      }
+    } catch (err) {
+      setGuideMsg({ type: 'err', text: `Re-theme error: ${String(err)}` });
+    } finally {
+      setGuideUploading(false);
+    }
+  };
+
+  const handleGuideDelete = async () => {
+    const slug = formData.slug || tool.slug;
+    const id   = tool.id;
+    if (!slug || !id) return;
+    if (!window.confirm('Delete the uploaded guide for this tool?')) return;
+    setGuideDeleting(true);
+    setGuideMsg(null);
+    try {
+      const adminToken = localStorage.getItem('admin_token') ?? '';
+      const res = await fetch(`${API_BASE}/tools/${id}/guide?slug=${encodeURIComponent(slug)}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${publicAnonKey}`,
+          'X-Admin-Token': adminToken,
+        },
+      });
+      const data = await res.json();
+      if (data.success) {
+        setGuideExists(false);
+        setGuideMsg({ type: 'ok', text: 'Guide deleted.' });
+      } else {
+        setGuideMsg({ type: 'err', text: data.error ?? 'Delete failed.' });
+      }
+    } catch (err) {
+      setGuideMsg({ type: 'err', text: `Delete error: ${String(err)}` });
+    } finally {
+      setGuideDeleting(false);
+    }
+  };
+
+  // Open the inline HTML editor — fetch current content from server
+  const handleOpenGuideEditor = async () => {
+    const slug = formData.slug || tool.slug;
+    if (!slug) return;
+    setGuideEditorOpen(true);
+    setGuideEditorLoading(true);
+    setGuideMsg(null);
+    try {
+      const res = await fetch(`${API_BASE}/tools/${encodeURIComponent(slug)}/guide-html`, {
+        headers: { Authorization: `Bearer ${publicAnonKey}` },
+      });
+      const data = await res.json();
+      if (data.success) {
+        setGuideEditorHtml(data.html ?? '');
+      } else {
+        setGuideEditorHtml('');
+        setGuideMsg({ type: 'err', text: data.error ?? 'Could not load guide.' });
+      }
+    } catch (err) {
+      setGuideMsg({ type: 'err', text: `Load error: ${String(err)}` });
+    } finally {
+      setGuideEditorLoading(false);
+    }
+  };
+
+  // Save edited HTML back via the existing POST route
+  const handleSaveGuideEditor = async () => {
+    const slug = formData.slug || tool.slug;
+    const id   = tool.id;
+    if (!slug || !id) return;
+    setGuideEditorSaving(true);
+    setGuideMsg(null);
+    try {
+      const adminToken = localStorage.getItem('admin_token') ?? '';
+      const res = await fetch(`${API_BASE}/tools/${id}/guide`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${publicAnonKey}`,
+          'X-Admin-Token': adminToken,
+        },
+        body: JSON.stringify({ html: guideEditorHtml, slug }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setGuideExists(true);
+        setGuideMsg({ type: 'ok', text: 'Guide saved successfully.' });
+      } else {
+        setGuideMsg({ type: 'err', text: data.error ?? 'Save failed.' });
+      }
+    } catch (err) {
+      setGuideMsg({ type: 'err', text: `Save error: ${String(err)}` });
+    } finally {
+      setGuideEditorSaving(false);
+    }
+  };
 
   const parseFaqText = (text: string) => {
     const lines = text.split('\n');
@@ -505,6 +697,7 @@ export function ToolFormNew({
       monthlyPrice: versionType === 'Free' ? undefined : '',
       yearlyPrice: versionType === 'Free' ? undefined : '',
       lifetimePrice: versionType === 'Free' ? undefined : '',
+      lifetimeBuyUrl: versionType === 'Free' ? undefined : '',
     };
 
     const updatedVersions = [...(formData.versions || []), newVersion];
@@ -525,6 +718,7 @@ export function ToolFormNew({
       monthlyPrice: targetVersionType === 'Free' ? undefined : sourceVersion.monthlyPrice,
       yearlyPrice: targetVersionType === 'Free' ? undefined : sourceVersion.yearlyPrice,
       lifetimePrice: targetVersionType === 'Free' ? undefined : sourceVersion.lifetimePrice,
+      lifetimeBuyUrl: targetVersionType === 'Free' ? undefined : sourceVersion.lifetimeBuyUrl,
     };
 
     const updatedVersions = [...(formData.versions || []), newVersion];
@@ -972,6 +1166,275 @@ export function ToolFormNew({
         </label>
       </div>
 
+      {/* ── User Guide upload section ─────────────────────────────────────── */}
+      <div className="space-y-4 mb-8 pb-8 border-b border-white/10">
+        <div className="flex items-center gap-2.5">
+          <BookOpen className="w-4 h-4 text-purple-400" />
+          <h4 className="text-base font-semibold text-white">User Guide</h4>
+          {guideExists && (
+            <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full
+              bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">
+              Uploaded
+            </span>
+          )}
+        </div>
+        <p className="text-xs text-white/35 leading-relaxed">
+          Upload an HTML file for this tool's user guide. It will be accessible at{' '}
+          <code className="text-purple-300/70 bg-purple-500/10 px-1 py-0.5 rounded text-[11px]">
+            /tools/{formData.slug || tool.slug || '<slug>'}/guide
+          </code>
+          {' '}and the page will automatically restyle it with the site's current colour theme.
+        </p>
+
+        {!tool.id && (
+          <p className="text-xs text-amber-400/70 flex items-center gap-1.5">
+            <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+            Save the tool first before uploading a guide.
+          </p>
+        )}
+
+        {tool.id && (
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Upload button */}
+            <label
+              className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium
+                border transition-all cursor-pointer select-none
+                ${guideUploading
+                  ? 'bg-purple-500/15 border-purple-500/30 text-purple-300/50 cursor-wait'
+                  : 'bg-purple-500/10 border-purple-500/25 text-purple-300 hover:bg-purple-500/20 hover:border-purple-400/40'
+                }`}
+            >
+              {guideUploading ? (
+                <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                </svg>
+              ) : (
+                <FileCode className="w-3.5 h-3.5" />
+              )}
+              {guideUploading ? 'Theming with AI…' : guideExists ? 'Replace Guide' : 'Upload Guide (.html)'}
+              <input
+                type="file"
+                accept=".html,text/html"
+                className="hidden"
+                disabled={guideUploading}
+                onChange={e => {
+                  const file = e.target.files?.[0];
+                  if (file) handleGuideUpload(file);
+                  e.target.value = '';
+                }}
+              />
+            </label>
+
+            {/* Edit in-place button — only when guide exists */}
+            {guideExists && (
+              <button
+                type="button"
+                onClick={() => guideEditorOpen ? setGuideEditorOpen(false) : handleOpenGuideEditor()}
+                className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium
+                  border transition-all
+                  ${guideEditorOpen
+                    ? 'bg-indigo-500/20 border-indigo-400/40 text-indigo-300'
+                    : 'bg-indigo-500/10 border-indigo-500/25 text-indigo-300 hover:bg-indigo-500/20 hover:border-indigo-400/40'
+                  }`}
+              >
+                <Pencil className="w-3.5 h-3.5" />
+                {guideEditorOpen ? 'Close Editor' : 'Edit Guide'}
+              </button>
+            )}
+
+            {/* Re-theme with AI — apply dark theme to already-uploaded guide */}
+            {guideExists && (
+              <button
+                type="button"
+                onClick={handleGuideRetheme}
+                disabled={guideUploading}
+                title="Re-apply AI dark theme to the current guide HTML"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium
+                  bg-violet-500/8 border border-violet-500/20 text-violet-300/70
+                  hover:bg-violet-500/15 hover:border-violet-400/30 hover:text-violet-300 transition-all
+                  disabled:opacity-40 disabled:cursor-wait"
+              >
+                {guideUploading ? (
+                  <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                  </svg>
+                ) : (
+                  <Sparkles className="w-3.5 h-3.5" />
+                )}
+                Re-theme with AI
+              </button>
+            )}
+
+            {/* Delete */}
+            {guideExists && (
+              <button
+                type="button"
+                onClick={handleGuideDelete}
+                disabled={guideDeleting}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium
+                  bg-red-500/8 border border-red-500/20 text-red-400/70
+                  hover:bg-red-500/15 hover:border-red-400/30 hover:text-red-300 transition-all
+                  disabled:opacity-40 disabled:cursor-wait"
+              >
+                {guideDeleting ? (
+                  <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                  </svg>
+                ) : (
+                  <Trash2 className="w-3.5 h-3.5" />
+                )}
+                {guideDeleting ? 'Deleting…' : 'Delete Guide'}
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Feedback message */}
+        {guideMsg && (
+          <p className={`flex items-center gap-1.5 text-xs ${guideMsg.type === 'ok' ? 'text-emerald-400' : 'text-red-400'}`}>
+            {guideMsg.type === 'ok'
+              ? <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
+              : <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+            }
+            {guideMsg.text}
+          </p>
+        )}
+
+        {/* ── Inline HTML editor ───────────────────────────────────────────── */}
+        {guideEditorOpen && (
+          <div className="mt-2 rounded-2xl border border-indigo-500/20 bg-[#1a1a2e]/60 overflow-hidden">
+            {/* Toolbar */}
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/8 bg-white/3">
+              {/* Left: filename + loading indicator */}
+              <div className="flex items-center gap-2">
+                <FileCode className="w-3.5 h-3.5 text-indigo-400" />
+                <span className="text-xs font-medium text-white/60">guide.html</span>
+                {guideEditorLoading && (
+                  <span className="flex items-center gap-1 text-[11px] text-white/35">
+                    <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                    </svg>
+                    Loading…
+                  </span>
+                )}
+              </div>
+
+              {/* Centre: Edit / Preview tab pill */}
+              <div className="flex items-center bg-white/5 rounded-lg p-0.5 border border-white/8">
+                <button
+                  type="button"
+                  onClick={() => setGuideEditorTab('edit')}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-all
+                    ${guideEditorTab === 'edit'
+                      ? 'bg-indigo-500/25 text-indigo-300 border border-indigo-500/30'
+                      : 'text-white/40 hover:text-white/60 border border-transparent'}`}
+                >
+                  <Code2 className="w-3 h-3" />
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGuideEditorTab('preview')}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-all
+                    ${guideEditorTab === 'preview'
+                      ? 'bg-indigo-500/25 text-indigo-300 border border-indigo-500/30'
+                      : 'text-white/40 hover:text-white/60 border border-transparent'}`}
+                >
+                  <Eye className="w-3 h-3" />
+                  Preview
+                </button>
+              </div>
+
+              {/* Right: expand, save, close */}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setGuideEditorExpanded(v => !v)}
+                  className="p-1.5 rounded-lg text-white/30 hover:text-white/60 hover:bg-white/8 transition-all"
+                  title={guideEditorExpanded ? 'Collapse' : 'Expand'}
+                >
+                  {guideEditorExpanded ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+                </button>
+                {guideEditorTab === 'edit' && (
+                  <button
+                    type="button"
+                    onClick={handleSaveGuideEditor}
+                    disabled={guideEditorSaving || guideEditorLoading}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium
+                      bg-indigo-500/20 border border-indigo-500/30 text-indigo-300
+                      hover:bg-indigo-500/30 hover:border-indigo-400/40 transition-all
+                      disabled:opacity-40 disabled:cursor-wait"
+                  >
+                    {guideEditorSaving ? (
+                      <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                      </svg>
+                    ) : (
+                      <Save className="w-3 h-3" />
+                    )}
+                    {guideEditorSaving ? 'Saving…' : 'Save'}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setGuideEditorOpen(false)}
+                  className="p-1.5 rounded-lg text-white/30 hover:text-white/60 hover:bg-white/8 transition-all"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Content area */}
+            <div style={{ height: guideEditorExpanded ? '70vh' : '460px' }} className="overflow-hidden">
+              {guideEditorLoading ? (
+                <div className="flex items-center justify-center h-full text-white/25 text-sm gap-2">
+                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                  </svg>
+                  Loading guide…
+                </div>
+              ) : guideEditorTab === 'edit' ? (
+                <div className="h-full overflow-auto">
+                  <CodeMirror
+                    value={guideEditorHtml}
+                    height={guideEditorExpanded ? '70vh' : '460px'}
+                    extensions={[htmlLang()]}
+                    theme={oneDark}
+                    onChange={val => setGuideEditorHtml(val)}
+                    basicSetup={{
+                      lineNumbers: true,
+                      highlightActiveLineGutter: true,
+                      foldGutter: true,
+                      autocompletion: true,
+                      bracketMatching: true,
+                      closeBrackets: true,
+                      indentOnInput: true,
+                    }}
+                    style={{ fontSize: '13px' }}
+                  />
+                </div>
+              ) : (
+                /* Live preview — same HTML that ToolGuide.tsx renders in production */
+                <iframe
+                  srcDoc={guideEditorHtml}
+                  title="Guide Preview"
+                  sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
+                  className="w-full h-full border-0"
+                  style={{ colorScheme: 'dark' }}
+                />
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* VERSIONS SECTION */}
       <div className="space-y-6">
         <div className="flex justify-between items-center">
@@ -1169,6 +1632,11 @@ function VersionEditor({
       ? 'ring-2 ring-purple-400/70 shadow-[0_0_14px_rgba(192,132,252,0.45)]'
       : '';
 
+  // Lifetime option section — auto-expand when data is already set
+  const [showLifetimeSection, setShowLifetimeSection] = useState(
+    () => !!(version.lifetimePrice?.trim() || version.lifetimeBuyUrl?.trim())
+  );
+
   return (
     <div className="space-y-6 p-6 bg-white/5 rounded-lg">
       <div className="flex justify-between items-center mb-4">
@@ -1266,32 +1734,100 @@ function VersionEditor({
 
       {/* Pricing Fields */}
       {version.versionType !== 'Free' && (
-        <div>
+        <div className="space-y-4">
           {version.pricingModel === 'subscription' ? (
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Monthly Price (e.g., $9)
-                </label>
-                <Input
-                  placeholder="$9/month"
-                  value={version.monthlyPrice || ''}
-                  onChange={(e) => onUpdate({ monthlyPrice: e.target.value })}
-                  className="bg-black/50 border-white/20 text-white"
-                />
+            <>
+              {/* Subscription prices */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Monthly Price (e.g., $9)
+                  </label>
+                  <Input
+                    placeholder="$9/month"
+                    value={version.monthlyPrice || ''}
+                    onChange={(e) => onUpdate({ monthlyPrice: e.target.value })}
+                    className="bg-black/50 border-white/20 text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Yearly Price (e.g., $90)
+                  </label>
+                  <Input
+                    placeholder="$90/year"
+                    value={version.yearlyPrice || ''}
+                    onChange={(e) => onUpdate({ yearlyPrice: e.target.value })}
+                    className="bg-black/50 border-white/20 text-white"
+                  />
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Yearly Price (e.g., $90)
-                </label>
-                <Input
-                  placeholder="$90/year"
-                  value={version.yearlyPrice || ''}
-                  onChange={(e) => onUpdate({ yearlyPrice: e.target.value })}
-                  className="bg-black/50 border-white/20 text-white"
-                />
+
+              {/* ── Optional lifetime add-on ── */}
+              <div className="border border-white/10 rounded-xl overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-3 bg-white/3">
+                  <div>
+                    <p className="text-sm font-semibold text-white/80 flex items-center gap-1.5">
+                      <span className="text-amber-400">⚡</span>
+                      Also offer lifetime pricing?
+                    </p>
+                    <p className="text-xs text-white/35 mt-0.5">
+                      Adds a "Lifetime" tab to the billing toggle on the public page
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (showLifetimeSection) {
+                        setShowLifetimeSection(false);
+                        onUpdate({ lifetimePrice: '', lifetimeBuyUrl: '' });
+                      } else {
+                        setShowLifetimeSection(true);
+                      }
+                    }}
+                    className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                      showLifetimeSection
+                        ? 'bg-red-500/15 border border-red-500/25 text-red-400 hover:bg-red-500/25'
+                        : 'bg-amber-500/12 border border-amber-500/25 text-amber-400 hover:bg-amber-500/22'
+                    }`}
+                  >
+                    {showLifetimeSection ? '✕ Remove' : '+ Add Lifetime'}
+                  </button>
+                </div>
+
+                {showLifetimeSection && (
+                  <div className="px-4 pb-4 pt-3 space-y-3 border-t border-white/8">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-semibold text-amber-400/80 mb-1.5 uppercase tracking-wide">
+                          Lifetime Price (e.g., $49)
+                        </label>
+                        <Input
+                          placeholder="$49 one-time"
+                          value={version.lifetimePrice || ''}
+                          onChange={(e) => onUpdate({ lifetimePrice: e.target.value })}
+                          className="bg-black/50 border-amber-500/20 text-white focus:border-amber-400/40"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-amber-400/80 mb-1.5 uppercase tracking-wide">
+                          Lifetime Checkout URL
+                        </label>
+                        <Input
+                          placeholder="https://yourstore.lemonsqueezy.com/buy/…"
+                          value={version.lifetimeBuyUrl || ''}
+                          onChange={(e) => onUpdate({ lifetimeBuyUrl: e.target.value })}
+                          className="bg-black/50 border-amber-500/20 text-white focus:border-amber-400/40"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-xs text-white/30">
+                      Leave Checkout URL empty to fall back to the Subscription URL above — but a dedicated Lemon Squeezy one-time variant link is recommended.
+                    </p>
+                  </div>
+                )}
               </div>
-            </div>
+            </>
           ) : (
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">

@@ -194,6 +194,8 @@
       "paidGuestHint": "سجّل الدخول أو أنشئ حساباً مجانياً للشراء",
       "monthly": "شهري",
       "yearly": "سنوي",
+      "lifetime": "مدى الحياة",
+      "subscriptionOnly": "اشتراك فقط",
       "bestValue": "أفضل قيمة",
       "savePercent": "وفّر {{percent}}%",
       "signInToTrack": "لتتبع تراخيصك والوصول إلى المشتريات.",
