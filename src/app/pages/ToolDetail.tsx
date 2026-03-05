@@ -11,7 +11,7 @@ import {
   ArrowLeft, Check, Download, Play, ChevronDown, ChevronUp,
   Monitor, Zap, Star, ExternalLink, Sparkles, ShoppingCart, Quote,
   ChevronLeft, ChevronRight, BookOpen, ArrowRight, Gift, Package,
-  Heart, Rocket, LucideIcon,
+  Heart, Rocket, LucideIcon, Tag, Wrench, AlertTriangle,
 } from 'lucide-react';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -1101,6 +1101,151 @@ function FeaturesShowcase({
   );
 }
 
+// ── VersionHistory ────────────────────────────────────────────────────────────
+
+const CHANGE_TYPE_CFG: Record<string, { label: string; color: string; bg: string; border: string; icon: React.ReactNode }> = {
+  new:      { label: 'New',      color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/25', icon: <Sparkles className="w-2.5 h-2.5" /> },
+  fix:      { label: 'Fix',      color: 'text-blue-400',    bg: 'bg-blue-500/10',    border: 'border-blue-500/25',    icon: <Wrench className="w-2.5 h-2.5" /> },
+  improved: { label: 'Improved', color: 'text-purple-400',  bg: 'bg-purple-500/10',  border: 'border-purple-500/25',  icon: <Zap className="w-2.5 h-2.5" /> },
+  breaking: { label: 'Breaking', color: 'text-red-400',     bg: 'bg-red-500/10',     border: 'border-red-500/25',     icon: <AlertTriangle className="w-2.5 h-2.5" /> },
+};
+
+const RELEASE_TYPE_CFG: Record<string, { label: string; color: string; bg: string; border: string }> = {
+  major: { label: 'Major', color: 'text-red-300',   bg: 'bg-red-500/10',   border: 'border-red-500/25' },
+  minor: { label: 'Minor', color: 'text-amber-300', bg: 'bg-amber-500/10', border: 'border-amber-500/25' },
+  patch: { label: 'Patch', color: 'text-blue-300',  bg: 'bg-blue-500/10',  border: 'border-blue-500/25' },
+};
+
+function VersionHistory({ changelog }: { changelog: any[] }) {
+  const INITIAL_SHOW = 3;
+  const [showAll, setShowAll] = useState(false);
+  const [expandedVersions, setExpandedVersions] = useState<Set<string>>(
+    new Set(changelog.length > 0 ? [changelog[0]?.version] : [])
+  );
+
+  const visible = showAll ? changelog : changelog.slice(0, INITIAL_SHOW);
+
+  const toggle = (v: string) => {
+    setExpandedVersions(prev => {
+      const next = new Set(prev);
+      if (next.has(v)) next.delete(v); else next.add(v);
+      return next;
+    });
+  };
+
+  return (
+    <motion.section
+      initial={{ opacity: 0, y: 20 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true }}
+      className="mb-20"
+    >
+      <SectionLabel>Version History</SectionLabel>
+
+      <div className="space-y-2">
+        {visible.map((entry: any, idx: number) => {
+          const isLatest = idx === 0;
+          const isExpanded = expandedVersions.has(entry.version);
+          const relCfg = RELEASE_TYPE_CFG[entry.type] ?? RELEASE_TYPE_CFG.patch;
+
+          return (
+            <motion.div
+              key={entry.version}
+              initial={{ opacity: 0, y: 8 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ delay: idx * 0.05 }}
+              className={`rounded-2xl border overflow-hidden transition-all
+                ${isLatest ? 'border-purple-500/25 bg-purple-500/4' : 'border-white/8 bg-white/2'}`}
+            >
+              {/* Header row */}
+              <button
+                onClick={() => toggle(entry.version)}
+                className="w-full flex items-center gap-3 px-5 py-4 text-left hover:bg-white/2 transition-colors"
+              >
+                {/* Version pill */}
+                <span className={`font-mono text-xs font-bold px-2.5 py-1 rounded-full border shrink-0
+                  ${isLatest ? 'bg-purple-500/15 border-purple-400/30 text-purple-300' : 'bg-white/5 border-white/12 text-white/55'}`}>
+                  v{entry.version}
+                  {isLatest && (
+                    <span className="ml-1.5 text-[9px] tracking-widest uppercase text-purple-400/70">latest</span>
+                  )}
+                </span>
+
+                {/* Release type badge */}
+                <span className={`hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-widest border shrink-0
+                  ${relCfg.bg} ${relCfg.border} ${relCfg.color}`}>
+                  {relCfg.label}
+                </span>
+
+                {/* Title + date */}
+                <div className="flex-1 min-w-0 text-left">
+                  {entry.title && (
+                    <span className="block text-white/75 text-sm font-medium truncate">{entry.title}</span>
+                  )}
+                  <span className="text-white/30 text-xs">
+                    {new Date(entry.releaseDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+                    {entry.changes?.length > 0 && ` · ${entry.changes.length} change${entry.changes.length !== 1 ? 's' : ''}`}
+                  </span>
+                </div>
+
+                {/* Expand chevron */}
+                <span className="shrink-0 text-white/25">
+                  {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </span>
+              </button>
+
+              {/* Changes */}
+              <AnimatePresence initial={false}>
+                {isExpanded && entry.changes?.length > 0 && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="px-5 pb-5 pt-1 border-t border-white/6 space-y-2">
+                      {entry.changes.map((change: any, ci: number) => {
+                        const cfg = CHANGE_TYPE_CFG[change.type] ?? CHANGE_TYPE_CFG.new;
+                        return (
+                          <div key={ci} className="flex items-start gap-2.5">
+                            <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0 mt-0.5 border ${cfg.bg} ${cfg.border} ${cfg.color}`}>
+                              {cfg.icon}
+                              {cfg.label}
+                            </span>
+                            <span className="text-white/55 text-sm leading-relaxed">{change.description}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.div>
+          );
+        })}
+      </div>
+
+      {/* Show more / less */}
+      {changelog.length > INITIAL_SHOW && (
+        <div className="text-center mt-4">
+          <button
+            onClick={() => setShowAll(v => !v)}
+            className="inline-flex items-center gap-1.5 text-sm text-white/35 hover:text-white/65 transition-colors"
+          >
+            {showAll ? (
+              <><ChevronUp className="w-4 h-4" /> Show fewer releases</>
+            ) : (
+              <><ChevronDown className="w-4 h-4" /> Show {changelog.length - INITIAL_SHOW} older release{changelog.length - INITIAL_SHOW !== 1 ? 's' : ''}</>
+            )}
+          </button>
+        </div>
+      )}
+    </motion.section>
+  );
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 export function ToolDetail() {
@@ -1127,6 +1272,8 @@ export function ToolDetail() {
   const [guideExists, setGuideExists] = useState(false);
   // Purchase counts per version (for "Most Popular" badge)
   const [versionPurchaseCounts, setVersionPurchaseCounts] = useState<Record<string, number>>({});
+  // Version changelog
+  const [changelog, setChangelog] = useState<any[]>([]);
   const isRTL = i18n.language === 'ar';
 
   // Single effect — handles slug change AND language switch.
@@ -1251,6 +1398,14 @@ export function ToolDetail() {
               .then(r => r.json())
               .then(d => setGuideExists(!!d.exists))
               .catch(() => setGuideExists(false));
+
+            // Fetch changelog (fire-and-forget)
+            fetch(`${API_BASE}/tools/${encodeURIComponent(guideSlug)}/changelog`, {
+              headers: { Authorization: `Bearer ${publicAnonKey}` },
+            })
+              .then(r => r.json())
+              .then(d => { if (d.success) setChangelog(d.data || []); })
+              .catch(() => setChangelog([]));
           }
 
           // Fetch version purchase counts for "Most Popular" badge (fire-and-forget)
@@ -1470,7 +1625,9 @@ export function ToolDetail() {
               {tool.demoUrl && (
                 <button
                   onClick={() => {
-                    document.getElementById('demo-section')?.scrollIntoView({ behavior: 'smooth' });
+                    const demoSection = document.getElementById('demo-section');
+                    demoSection?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    demoSection?.querySelector<HTMLButtonElement>('button[aria-label="Play demo"]')?.click();
                   }}
                   className="inline-flex items-center gap-2 rtl:flex-row-reverse px-4 py-2 rounded-xl
                     text-sm text-white/50 hover:text-white/80
@@ -1926,6 +2083,11 @@ export function ToolDetail() {
             </motion.section>
           );
         })()}
+
+        {/* ── Version History ───────────────────────────────────────────────── */}
+        {changelog.length > 0 && (
+          <VersionHistory changelog={changelog} />
+        )}
 
         {/* ── Support CTA ───────────────────────────────────────────────────── */}
         <motion.section

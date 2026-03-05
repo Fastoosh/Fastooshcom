@@ -5,10 +5,11 @@ import { Textarea } from '../ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { AdminSelect } from './AdminSelect';
 import { IconPicker } from './IconPicker';
-import { Plus, Save, X, Upload, Copy, Trash2, Sparkles, ChevronLeft, ChevronRight, GripVertical, ImageIcon, BookOpen, FileCode, CheckCircle2, AlertCircle, Pencil, Maximize2, Minimize2, Eye, Code2, PackageOpen, MousePointer2 } from 'lucide-react';
+import { Plus, Save, X, Upload, Copy, Trash2, Sparkles, ChevronLeft, ChevronRight, GripVertical, ImageIcon, BookOpen, FileCode, CheckCircle2, AlertCircle, Pencil, Maximize2, Minimize2, Eye, Code2, PackageOpen, MousePointer2, Tag } from 'lucide-react';
 import { LsImportModal, type LsImportPayload } from './LsImportModal';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import { AIImproveModal, type AIImproveContext } from './AIImproveModal';
+import { ChangelogTab } from './ChangelogTab';
 import CodeMirror from '@uiw/react-codemirror';
 import { html as htmlLang } from '@codemirror/lang-html';
 import { oneDark } from '@codemirror/theme-one-dark';
@@ -1626,6 +1627,15 @@ export function ToolFormNew({
             </div>
           </div>
         )}
+      </div>
+
+      {/* ── Changelog section ─────────────────────────────────────────────── */}
+      <div className="space-y-4 mb-8 pb-8 border-b border-white/10">
+        <div className="flex items-center gap-2.5">
+          <Tag className="w-4 h-4 text-purple-400" />
+          <h4 className="text-base font-semibold text-white">Version Changelog</h4>
+        </div>
+        <ChangelogTab toolSlug={formData.slug || tool.slug || ''} toolId={tool.id || ''} />
       </div>
 
       {/* VERSIONS SECTION */}

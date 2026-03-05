@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router';
 import { GlassCard } from '../components/shared/GlassCard';
 import { Button } from '../components/ui/button';
 import { CheckCircle2, AlertCircle, Loader2, Database, Layers, Users, Settings2, Zap } from 'lucide-react';
@@ -648,9 +649,16 @@ const SEED_SUMMARY = [
 type LogLine = { type: 'info' | 'success' | 'error' | 'warn'; text: string };
 
 export function DataInit() {
+  const navigate = useNavigate();
   const [log, setLog] = useState<LogLine[]>([]);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
+
+  // ── Auth gate: only admins may access this page ──────────────────────────
+  useEffect(() => {
+    const token = localStorage.getItem('admin_token');
+    if (!token) navigate('/admin/login');
+  }, [navigate]);
 
   const addLog = (type: LogLine['type'], text: string) =>
     setLog((prev) => [...prev, { type, text }]);
@@ -663,11 +671,13 @@ export function DataInit() {
     addLog('info', `Starting data init — ${sampleProjects.length} projects, ${sampleTools.length} tools (${sampleTools.reduce((n, t) => n + t.versions.length, 0)} versions), ${sampleTeam.length} team members…`);
 
     try {
+      const adminToken = localStorage.getItem('admin_token') || '';
       const response = await fetch(`${API_BASE}/init`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${publicAnonKey}`,
+          'X-Admin-Token': adminToken,
         },
         body: JSON.stringify({
           projects: sampleProjects,

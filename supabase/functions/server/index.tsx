@@ -5353,8 +5353,8 @@ app.get('/make-server-e07959ec/admin/dashboard', requireAuth, async (c) => {
 
 // ========== DATA INITIALIZATION ENDPOINT ==========
 
-// Public init endpoint for seeding sample data (no auth required)
-app.post("/make-server-e07959ec/init", async (c) => {
+// Init endpoint for seeding sample data — requires admin auth
+app.post("/make-server-e07959ec/init", requireAuth, async (c) => {
   try {
     const body = await c.req.json();
     const { projects = [], tools = [], team = [] } = body;
@@ -5520,9 +5520,42 @@ app.post("/make-server-e07959ec/init", async (c) => {
         },
         updated_at: new Date().toISOString(),
       },
+      // ── Legal pages (EN) ──────────────────────────────────────────────────
+      {
+        key: 'termsContent',
+        value: `<h2>1. Acceptance of Terms</h2>\n<p>By accessing and using this website, you accept and agree to be bound by the terms and provision of this agreement.</p>\n\n<h2>2. Use License</h2>\n<p>Permission is granted to temporarily download one copy of the materials on our website for personal, non-commercial transitory viewing only.</p>\n\n<h2>3. Disclaimer</h2>\n<p>The materials on our website are provided on an 'as is' basis. We make no warranties, expressed or implied, and hereby disclaim and negate all other warranties including, without limitation, implied warranties or conditions of merchantability, fitness for a particular purpose, or non-infringement of intellectual property or other violation of rights.</p>\n\n<h2>4. Limitations</h2>\n<p>In no event shall Fastoosh or its suppliers be liable for any damages (including, without limitation, damages for loss of data or profit, or due to business interruption) arising out of the use or inability to use the materials on our website.</p>\n\n<h2>5. Contact Information</h2>\n<p>If you have any questions about these Terms, please contact us through our website.</p>`,
+        updated_at: new Date().toISOString(),
+      },
+      {
+        key: 'privacyContent',
+        value: `<h2>1. Information We Collect</h2>\n<p>We collect information that you provide directly to us, including when you create an account, make a purchase, subscribe to our newsletter, or contact us for support.</p>\n\n<h2>2. How We Use Your Information</h2>\n<p>We use the information we collect to provide, maintain, and improve our services, process transactions, and communicate with you.</p>\n\n<h2>3. Data Security</h2>\n<p>We implement appropriate technical and organizational measures to protect your personal information against unauthorized access, alteration, disclosure, or destruction.</p>\n\n<h2>4. Your Rights</h2>\n<p>You have the right to access, correct, or delete your personal information. Contact us for assistance.</p>\n\n<h2>5. Contact Us</h2>\n<p>If you have any questions about this Privacy Policy, please contact us through our website.</p>`,
+        updated_at: new Date().toISOString(),
+      },
+      {
+        key: 'refundsContent',
+        value: `<h2>1. Refund Eligibility</h2>\n<p>We want you to be completely satisfied with your purchase. If you're not happy with your Fastoosh product, you may be eligible for a refund under certain conditions.</p>\n\n<h2>2. How to Request a Refund</h2>\n<p>To request a refund, please contact our support team with your order number and reason for the refund request.</p>\n\n<h2>3. Refund Processing Time</h2>\n<p>Once your refund request is approved, refunds are processed within 5-7 business days to your original payment method.</p>\n\n<h2>4. Contact Us</h2>\n<p>If you have any questions about our refund policy, please contact us through our website support form.</p>`,
+        updated_at: new Date().toISOString(),
+      },
+      {
+        key: 'disclaimerContent',
+        value: `<h2>1. General Disclaimer</h2>\n<p>The information provided by Fastoosh on this website is for general informational and commercial purposes only. All information is provided in good faith; however, we make no representation or warranty of any kind regarding the accuracy, adequacy, validity, reliability, availability, or completeness of any information on the site.</p>\n\n<h2>2. No Professional Advice</h2>\n<p>The content on this website does not constitute professional advice of any kind. All tools, scripts, and plugins offered by Fastoosh are designed for use in creative production workflows.</p>\n\n<h2>3. Software & Tools Disclaimer</h2>\n<p>All software, scripts, and plugins provided by Fastoosh are delivered "as is" and "as available" without any warranty of any kind. You assume full responsibility for the use of any product downloaded or purchased from this website.</p>\n\n<h2>4. Limitation of Liability</h2>\n<p>Under no circumstances shall Fastoosh be liable for any direct, indirect, incidental, or consequential damages arising from your use of or inability to use any product or content on this site.</p>\n\n<h2>5. Third-Party Links</h2>\n<p>This website may contain links to third-party websites. Fastoosh has no control over, and assumes no responsibility for, the content or practices of any third-party websites.</p>\n\n<h2>6. Changes to This Disclaimer</h2>\n<p>We reserve the right to update or modify this disclaimer at any time without prior notice.</p>\n\n<h2>7. Contact Us</h2>\n<p>If you have any questions about this disclaimer, please contact us through our website.</p>`,
+        updated_at: new Date().toISOString(),
+      },
     ];
 
+    // Fetch which keys already exist so we don't overwrite values
+    // that /setup/brand already wrote with real client data.
+    const { data: existingRows } = await supabase.from('site_settings').select('key');
+    const existingKeys = new Set((existingRows || []).map((r: any) => r.key));
+
+    // These keys are owned by /setup/brand — only seed them when no value exists yet.
+    const skipIfExists = new Set(['showreelUrl', 'socialLinks']);
+
     for (const setting of defaultSettings) {
+      if (skipIfExists.has(setting.key) && existingKeys.has(setting.key)) {
+        counts.settings++; // already set by setup wizard — leave untouched
+        continue;
+      }
       const { error } = await supabase
         .from('site_settings')
         .upsert(setting, { onConflict: 'key' });
@@ -6289,11 +6322,10 @@ app.post('/make-server-e07959ec/setup/create-admin', async (c) => {
 app.post('/make-server-e07959ec/setup/brand', async (c) => {
   try {
     const body = await c.req.json();
-    const allowed = [
-      'studioName', 'contactEmail', 'siteUrl', 'calendlyUrl', 'showreelUrl',
-      'linkedin', 'instagram', 'twitter', 'tiktok', 'behance', 'dribbble',
-    ];
-    for (const key of allowed) {
+
+    // Scalar settings — each saved as its own row
+    const scalarKeys = ['studioName', 'contactEmail', 'siteUrl', 'calendlyUrl', 'showreelUrl'];
+    for (const key of scalarKeys) {
       if (body[key] !== undefined && body[key] !== '') {
         await supabase.from('site_settings').upsert(
           { key, value: body[key], updated_at: new Date().toISOString() },
@@ -6301,6 +6333,26 @@ app.post('/make-server-e07959ec/setup/brand', async (c) => {
         );
       }
     }
+
+    // Social links — save both individual keys (legacy) AND the combined
+    // socialLinks object that the footer and StyleTab read from.
+    const socialKeys = ['linkedin', 'instagram', 'twitter', 'tiktok', 'behance', 'dribbble'];
+    const socialLinks: Record<string, string> = {};
+    for (const key of socialKeys) {
+      socialLinks[key] = body[key] || '';
+      if (body[key] !== undefined && body[key] !== '') {
+        await supabase.from('site_settings').upsert(
+          { key, value: body[key], updated_at: new Date().toISOString() },
+          { onConflict: 'key' },
+        );
+      }
+    }
+    // Always write the combined object so the footer resolves social links correctly
+    await supabase.from('site_settings').upsert(
+      { key: 'socialLinks', value: socialLinks, updated_at: new Date().toISOString() },
+      { onConflict: 'key' },
+    );
+
     console.log('✅ Setup: brand settings saved');
     return c.json({ success: true });
   } catch (err) {
@@ -7401,6 +7453,93 @@ app.delete('/make-server-e07959ec/tools/:id/guide', requireAuth, async (c) => {
   } catch (err) {
     console.log('[guide-delete] Unexpected error:', err);
     return c.json({ success: false, error: `Delete failed: ${String(err)}` }, 500);
+  }
+});
+
+// ========== CHANGELOG ==========
+
+// Semver sort helper — descending (newest first)
+function sortChangelogDesc(entries: any[]): any[] {
+  return [...entries].sort((a, b) => {
+    const pa = (a.version ?? '0.0.0').split('.').map(Number);
+    const pb = (b.version ?? '0.0.0').split('.').map(Number);
+    for (let i = 0; i < 3; i++) {
+      const diff = (pb[i] || 0) - (pa[i] || 0);
+      if (diff !== 0) return diff;
+    }
+    return 0;
+  });
+}
+
+// GET /tools/:slug/changelog — public, full history
+app.get('/make-server-e07959ec/tools/:slug/changelog', async (c) => {
+  try {
+    const slug = c.req.param('slug');
+    const raw = await kv.get(`tool_changelog:${slug}`);
+    const entries: any[] = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+    return c.json({ success: true, data: sortChangelogDesc(entries) });
+  } catch (err) {
+    console.log('[changelog] GET error:', err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// GET /tools/:slug/latest-version — public, lightweight ping for in-app update checks
+app.get('/make-server-e07959ec/tools/:slug/latest-version', async (c) => {
+  try {
+    const slug = c.req.param('slug');
+    const raw = await kv.get(`tool_changelog:${slug}`);
+    const entries: any[] = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+    if (!entries.length) return c.json({ success: false, error: 'No changelog found' }, 404);
+    const sorted = sortChangelogDesc(entries);
+    const latest = sorted[0];
+    return c.json({ success: true, data: { version: latest.version, releaseDate: latest.releaseDate, type: latest.type, title: latest.title } });
+  } catch (err) {
+    console.log('[latest-version] GET error:', err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// POST /tools/:slug/changelog — admin, add or update a release by version string
+app.post('/make-server-e07959ec/tools/:slug/changelog', requireAuth, async (c) => {
+  try {
+    const slug = c.req.param('slug');
+    const body = await c.req.json();
+    const { version, releaseDate, type, title, changes } = body;
+    if (!version?.trim()) return c.json({ success: false, error: 'version is required' }, 400);
+    if (!releaseDate)       return c.json({ success: false, error: 'releaseDate is required' }, 400);
+    if (!type)              return c.json({ success: false, error: 'type is required' }, 400);
+
+    const raw = await kv.get(`tool_changelog:${slug}`);
+    const entries: any[] = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+
+    const entry = { version: version.trim(), releaseDate, type, title: title?.trim() || '', changes: changes || [] };
+    const idx = entries.findIndex((e: any) => e.version === entry.version);
+    if (idx >= 0) entries[idx] = entry; else entries.push(entry);
+
+    await kv.set(`tool_changelog:${slug}`, entries);
+    console.log(`[changelog] Saved entry v${entry.version} for slug "${slug}"`);
+    return c.json({ success: true, data: entry });
+  } catch (err) {
+    console.log('[changelog] POST error:', err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// DELETE /tools/:slug/changelog/:version — admin, remove a release
+app.delete('/make-server-e07959ec/tools/:slug/changelog/:version', requireAuth, async (c) => {
+  try {
+    const slug    = c.req.param('slug');
+    const version = c.req.param('version');
+    const raw = await kv.get(`tool_changelog:${slug}`);
+    const entries: any[] = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+    const updated = entries.filter((e: any) => e.version !== version);
+    await kv.set(`tool_changelog:${slug}`, updated);
+    console.log(`[changelog] Deleted entry v${version} for slug "${slug}"`);
+    return c.json({ success: true });
+  } catch (err) {
+    console.log('[changelog] DELETE error:', err);
+    return c.json({ success: false, error: String(err) }, 500);
   }
 });
 

@@ -179,10 +179,14 @@ export function Setup() {
   const supabaseCallbackUrl = `https://${projectId}.supabase.co/auth/v1/callback`;
   const appCallbackUrl      = `${window.location.origin}/auth/callback`;
 
-  // ── On mount: redirect if already configured ──────────────────────────────
+  // ── On mount: if already configured, only allow access when logged in ────
   useEffect(() => {
     apiGet('/setup/status').then(d => {
-      if (d.isComplete) navigate('/admin/login');
+      if (d.isComplete) {
+        const token = localStorage.getItem('admin_token');
+        if (!token) navigate('/admin/login');
+        // Admin has a valid token → allow access to re-run wizard steps
+      }
     }).catch(() => {});
   }, [navigate]);
 
@@ -220,6 +224,23 @@ export function Setup() {
     try {
       const d = await apiPost('/setup/create-admin', { email: adminEmail, password: adminPass });
       if (!d.success) return setError(d.error || 'Failed to create admin account.');
+
+      // Auto sign-in immediately so subsequent wizard steps (seed) can hit
+      // protected endpoints without asking the deployer to log in separately.
+      try {
+        const loginRes = await fetch(`${API_BASE}/login`, {
+          method: 'POST',
+          headers: { ...authHeaders, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: adminEmail, password: adminPass }),
+        });
+        const loginData = await loginRes.json();
+        if (loginData.session?.access_token) {
+          localStorage.setItem('admin_token', loginData.session.access_token);
+        }
+      } catch {
+        // Non-fatal — token will be obtained on next manual login
+      }
+
       setAdminDone(true);
       next();
     } catch (e: any) {
@@ -251,7 +272,17 @@ export function Setup() {
     setSeedLog(l => [...l, { type: 'info', text: 'Connecting to database…' }]);
     try {
       setSeedLog(l => [...l, { type: 'info', text: `Seeding ${sampleData.projects.length} projects, ${sampleData.tools.length} tools, ${sampleData.team.length} team members…` }]);
-      const d = await apiPost('/init', { projects: sampleData.projects, tools: sampleData.tools, team: sampleData.team });
+      const adminToken = localStorage.getItem('admin_token') || '';
+      const initRes = await fetch(`${API_BASE}/init`, {
+        method: 'POST',
+        headers: {
+          ...authHeaders,
+          'Content-Type': 'application/json',
+          'X-Admin-Token': adminToken,
+        },
+        body: JSON.stringify({ projects: sampleData.projects, tools: sampleData.tools, team: sampleData.team }),
+      });
+      const d = await initRes.json();
       if (d.success) {
         const c = d.counts;
         setSeedLog(l => [
@@ -260,7 +291,7 @@ export function Setup() {
           { type: 'ok', text: `✓ ${c.tools} tools inserted` },
           { type: 'ok', text: `✓ ${c.versions} tool versions inserted` },
           { type: 'ok', text: `✓ ${c.team} team members inserted` },
-          { type: 'ok', text: `✓ ${c.settings} site settings seeded` },
+          { type: 'ok', text: `✓ ${c.settings} site settings seeded (incl. 4 legal pages)` },
         ]);
         if (d.errors?.length) {
           d.errors.forEach((e: string) => setSeedLog(l => [...l, { type: 'err', text: e }]));
