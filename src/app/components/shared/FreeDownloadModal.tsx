@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X, Mail, AlertCircle, CheckCircle, Loader2, Download,
@@ -30,6 +31,7 @@ export function FreeDownloadModal({
 }: FreeDownloadModalProps) {
   // ── Step 1: email ────────────────────────────────────────────────────────
   const [email,       setEmail]       = useState('');
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   // ── Step 2: OTP ─────────────────────────────────────────────────────────
   const [otp,         setOtp]         = useState('');
   const [resendLeft,  setResendLeft]  = useState(0);
@@ -70,6 +72,10 @@ export function FreeDownloadModal({
     setError('');
     if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       setError('Please enter a valid email address');
+      return;
+    }
+    if (!acceptedTerms) {
+      setError('Please accept the Terms of Service to continue');
       return;
     }
 
@@ -410,12 +416,43 @@ export function FreeDownloadModal({
                       )}
                     </div>
 
+                    {/* Terms Acceptance Checkbox */}
+                    <label className="flex items-start gap-2.5 cursor-pointer group">
+                      <input
+                        type="checkbox"
+                        checked={acceptedTerms}
+                        onChange={(e) => { setAcceptedTerms(e.target.checked); setError(''); }}
+                        className="mt-0.5 w-4 h-4 rounded border-white/20 bg-white/5 text-emerald-600 
+                          focus:ring-2 focus:ring-emerald-500/30 focus:ring-offset-0 cursor-pointer"
+                      />
+                      <span className="text-xs text-white/50 group-hover:text-white/70 transition-colors leading-relaxed">
+                        I agree to the{' '}
+                        <Link 
+                          to="/terms" 
+                          target="_blank" 
+                          className="text-emerald-400 hover:text-emerald-300 underline"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          Terms of Service
+                        </Link>
+                        {' '}and{' '}
+                        <Link 
+                          to="/privacy" 
+                          target="_blank" 
+                          className="text-emerald-400 hover:text-emerald-300 underline"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          Privacy Policy
+                        </Link>
+                      </span>
+                    </label>
+
                     <button
                       type="submit"
-                      disabled={loading}
+                      disabled={loading || !acceptedTerms}
                       className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600
                         hover:from-emerald-500 hover:to-teal-500 text-white font-semibold text-sm
-                        transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-60
+                        transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-60 disabled:cursor-not-allowed
                         flex items-center justify-center gap-2"
                     >
                       {loading

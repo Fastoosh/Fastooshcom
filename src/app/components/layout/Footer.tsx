@@ -162,6 +162,33 @@ export function Footer() {
             </ul>
           </div>
 
+          {/* Legal */}
+          <div>
+            <h4 className="text-white mb-4">{t('footer.legal')}</h4>
+            <ul className="space-y-2 text-sm">
+              <li>
+                <Link to="/terms" className="text-white/60 hover:text-white transition-colors">
+                  {t('footer.terms')}
+                </Link>
+              </li>
+              <li>
+                <Link to="/privacy" className="text-white/60 hover:text-white transition-colors">
+                  {t('footer.privacy')}
+                </Link>
+              </li>
+              <li>
+                <Link to="/refunds" className="text-white/60 hover:text-white transition-colors">
+                  {t('footer.refunds')}
+                </Link>
+              </li>
+              <li>
+                <Link to="/disclaimer" className="text-white/60 hover:text-white transition-colors">
+                  {t('footer.disclaimer')}
+                </Link>
+              </li>
+            </ul>
+          </div>
+
           {/* Contact */}
           <div>
             <h4 className="text-white mb-4">{t('footer.getInTouch')}</h4>

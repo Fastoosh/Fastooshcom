@@ -7330,4 +7330,81 @@ app.delete('/make-server-e07959ec/tools/:id/guide', requireAuth, async (c) => {
   }
 });
 
+// ========== AI LEGAL HTML FORMATTER ==========
+
+app.post("/make-server-e07959ec/admin/format-legal-html", requireAuth, async (c) => {
+  try {
+    const { rawText, pageType = 'legal' } = await c.req.json();
+
+    const apiKey = Deno.env.get('GEMINI_API_KEY');
+    if (!apiKey) return c.json({ success: false, error: 'GEMINI_API_KEY not configured' }, 500);
+    if (!rawText?.trim()) return c.json({ success: false, error: 'rawText is required' }, 400);
+
+    const prompt = `You are an expert web content formatter for Fastoosh, a premium motion design studio.
+
+Your task: Convert the following raw legal text into clean, well-structured HTML.
+
+STRICT RULES:
+- Use ONLY these HTML tags: <h2>, <h3>, <p>, <ul>, <ol>, <li>, <strong>, <em>, <a>
+- Every main section heading must use <h2>
+- Sub-sections (if any) use <h3>
+- All body text must be wrapped in <p> tags
+- Lists must use <ul>/<ol> with <li> items
+- Preserve ALL the original meaning and content — do NOT add, remove, or invent any information
+- Keep numbered section headings as-is (e.g. "1. Acceptance of Terms" → <h2>1. Acceptance of Terms</h2>)
+- Do NOT include <html>, <head>, <body>, <style>, or any wrapper tags
+- Do NOT add any markdown, backticks, or code fences
+- Output ONLY the raw HTML — nothing else before or after
+
+Raw text to format:
+"""
+${rawText.trim()}
+"""
+
+Return ONLY the formatted HTML. No explanations, no markdown fences, no preamble.`;
+
+    console.log(`[format-legal-html] pageType=${pageType} rawText length=${rawText.trim().length}`);
+
+    const geminiRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0.2,
+            maxOutputTokens: 8192,
+          },
+        }),
+      }
+    );
+
+    if (!geminiRes.ok) {
+      const errText = await geminiRes.text();
+      return c.json({ success: false, error: `Gemini API error (${geminiRes.status}): ${errText}` }, 500);
+    }
+
+    const geminiData = await geminiRes.json();
+    const rawResult = geminiData.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+
+    if (!rawResult) {
+      return c.json({ success: false, error: 'Gemini returned an empty response' }, 500);
+    }
+
+    // Strip any accidental markdown code fences
+    const cleaned = rawResult
+      .replace(/^```[\w]*\n?/m, '')
+      .replace(/```$/m, '')
+      .trim();
+
+    console.log(`[format-legal-html] ✅ formatted ${rawText.trim().length} chars → ${cleaned.length} chars HTML`);
+    return c.json({ success: true, data: { html: cleaned } });
+
+  } catch (error) {
+    console.log('Error in format-legal-html:', error);
+    return c.json({ success: false, error: `Legal HTML formatting failed: ${String(error)}` }, 500);
+  }
+});
+
 Deno.serve(app.fetch);

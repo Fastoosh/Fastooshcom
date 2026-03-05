@@ -24,6 +24,7 @@ import { ReferrersTab } from '../components/admin/ReferrersTab';
 import { ResetTab } from '../components/admin/ResetTab';
 import { VimeoPicker } from '../components/admin/VimeoPicker';
 import { GuideTab } from '../components/admin/GuideTab';
+import { LegalTab } from '../components/admin/LegalTab';
 
 import { ScrollingGradientBackground } from '../components/shared/ScrollingGradientBackground';
 
@@ -766,6 +767,7 @@ export function Admin() {
             <TabsTrigger value="seo">SEO</TabsTrigger>
             <TabsTrigger value="traffic">🌐 Traffic</TabsTrigger>
             <TabsTrigger value="translations">🌍 Translations</TabsTrigger>
+            <TabsTrigger value="legal">⚖️ Legal</TabsTrigger>
             <TabsTrigger value="reset" className="text-red-400 data-[state=active]:text-red-300">⚠️ Reset</TabsTrigger>
             <TabsTrigger value="guide">📖 Guide</TabsTrigger>
           </TabsList>
@@ -778,6 +780,11 @@ export function Admin() {
           {/* TRAFFIC TAB */}
           <TabsContent value="traffic">
             <ReferrersTab />
+          </TabsContent>
+
+          {/* LEGAL TAB */}
+          <TabsContent value="legal">
+            <LegalTab />
           </TabsContent>
 
           {/* RESET TAB */}
