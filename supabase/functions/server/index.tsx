@@ -6317,7 +6317,7 @@ app.post('/make-server-e07959ec/setup/brand', async (c) => {
 // ═══════════════════════════════════════════════════════════════════
 
 const VALID_TRANS_LANGS = ['fr', 'ar'] as const;
-const VALID_TRANS_TYPES = ['home', 'projects', 'tools', 'team', 'categories'] as const;
+const VALID_TRANS_TYPES = ['home', 'projects', 'tools', 'team', 'categories', 'legal'] as const;
 
 /** GET /translations/:lang/:type — public */
 app.get('/make-server-e07959ec/translations/:lang/:type', async (c) => {
@@ -6351,6 +6351,80 @@ app.put('/make-server-e07959ec/translations/:lang/:type', requireAuth, async (c)
   } catch (err) {
     console.log('[translations PUT] error:', err);
     return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+/** POST /admin/translate-legal-html — Gemini HTML-aware translation for legal pages.
+ *  Body: { lang, langName, page, htmlContent }
+ *  Returns: { success: true, data: { translatedHtml: string } }
+ */
+app.post('/make-server-e07959ec/admin/translate-legal-html', requireAuth, async (c) => {
+  try {
+    const { lang, langName, page, htmlContent } = await c.req.json() as {
+      lang: string; langName: string; page: string; htmlContent: string;
+    };
+    if (!lang || !langName || !htmlContent) {
+      return c.json({ success: false, error: 'lang, langName, and htmlContent are required' }, 400);
+    }
+    const apiKey = Deno.env.get('GEMINI_API_KEY');
+    if (!apiKey) return c.json({ success: false, error: 'GEMINI_API_KEY not configured' }, 500);
+
+    const arabicNote = lang === 'ar'
+      ? '\n- Use formal Modern Standard Arabic (فصحى) with a professional, premium legal tone.\n- Numbers stay in their original Western form.'
+      : '';
+
+    const prompt = `You are a professional legal translator for Fastoosh, a premium motion design studio.
+
+Translate the following HTML legal document (${page}) from English into ${langName}.
+
+CRITICAL RULES — you MUST follow these exactly:
+- Translate ONLY the visible text content inside HTML tags.
+- Preserve ALL HTML tags, attributes, and structure exactly as they appear (<h2>, <h3>, <p>, <ul>, <ol>, <li>, <strong>, <em>, <a href="...">, etc.).
+- Do NOT add, remove, or modify any HTML tags.
+- Do NOT translate: brand names (Fastoosh, After Effects, Premiere Pro, Lemon Squeezy, Adobe), URLs, email addresses, technical terms.
+- Keep a professional legal tone appropriate for a premium creative studio.
+- Return ONLY the translated HTML — no markdown, no code fences, no explanation.${arabicNote}
+
+HTML to translate:
+${htmlContent}`;
+
+    const geminiRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.2, maxOutputTokens: 32000 },
+        }),
+      }
+    );
+
+    if (!geminiRes.ok) {
+      const errText = await geminiRes.text();
+      const errorMsg = `Gemini API error (${geminiRes.status}): ${errText.substring(0, 400)}`;
+      if (geminiRes.status === 429) {
+        return c.json({ success: false, error: errorMsg, rateLimitExceeded: true }, 429);
+      }
+      return c.json({ success: false, error: errorMsg }, 500);
+    }
+
+    const geminiData = await geminiRes.json();
+    const translatedHtml = geminiData.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!translatedHtml) return c.json({ success: false, error: 'Gemini returned empty response' }, 500);
+
+    // Strip possible code fences that Gemini sometimes adds despite instructions
+    const cleaned = translatedHtml
+      .replace(/^```html\s*/i, '')
+      .replace(/^```\s*/i, '')
+      .replace(/\s*```$/i, '')
+      .trim();
+
+    console.log(`✅ Legal HTML translated (${page}) → ${langName} (${cleaned.length} chars)`);
+    return c.json({ success: true, data: { translatedHtml: cleaned } });
+  } catch (err) {
+    console.log('[translate-legal-html] error:', err);
+    return c.json({ success: false, error: `Translation failed: ${String(err)}` }, 500);
   }
 });
 

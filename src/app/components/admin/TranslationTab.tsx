@@ -4,6 +4,7 @@ import { Button } from '../ui/button';
 import {
   Sparkles, Save, CheckCircle2, AlertCircle, Loader2,
   Globe, RefreshCw, ChevronDown, ChevronRight, Languages,
+  Eye, EyeOff, FileText, Shield, RotateCcw, AlertTriangle,
 } from 'lucide-react';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import { bustTranslationCache } from '../../utils/translations';
@@ -11,7 +12,7 @@ import { bustTranslationCache } from '../../utils/translations';
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-e07959ec`;
 
 type Lang = 'fr' | 'ar';
-type ContentType = 'home' | 'projects' | 'tools' | 'team' | 'categories';
+type ContentType = 'home' | 'projects' | 'tools' | 'team' | 'categories' | 'legal';
 
 const LANG_CONFIG: Record<Lang, { label: string; name: string; flag: string }> = {
   fr: { label: 'FR', name: 'French',  flag: '🇫🇷' },
@@ -24,6 +25,22 @@ const CONTENT_TYPES: { key: ContentType; label: string }[] = [
   { key: 'tools',      label: 'Tools'        },
   { key: 'team',       label: 'Team'         },
   { key: 'categories', label: 'Categories'   },
+  { key: 'legal',      label: '⚖️ Legal Pages' },
+];
+
+// ─── Legal page config ─────────────────────────────────────────────────────
+interface LegalPageDef {
+  key: 'termsContent' | 'privacyContent' | 'refundsContent' | 'disclaimerContent';
+  label: string;
+  icon: React.ReactNode;
+  accent: string;
+}
+
+const LEGAL_PAGES: LegalPageDef[] = [
+  { key: 'termsContent',      label: 'Terms of Service',  icon: <FileText className="w-4 h-4" />,     accent: 'purple' },
+  { key: 'privacyContent',    label: 'Privacy Policy',    icon: <Shield className="w-4 h-4" />,       accent: 'green'  },
+  { key: 'refundsContent',    label: 'Refund Policy',     icon: <RotateCcw className="w-4 h-4" />,    accent: 'blue'   },
+  { key: 'disclaimerContent', label: 'Disclaimer',        icon: <AlertTriangle className="w-4 h-4" />, accent: 'amber'  },
 ];
 
 // ─── Flat row ──────────────────────────────────────────────────────────────
@@ -564,7 +581,7 @@ export function TranslationTab() {
         srcRes = await fetch(`${API_BASE}/projects`, { headers: { Authorization: `Bearer ${publicAnonKey}` } });
       } else if (contentType === 'tools') {
         srcRes = await fetch(`${API_BASE}/tools`, { headers: { Authorization: `Bearer ${publicAnonKey}` } });
-      } else if (contentType === 'categories') {
+      } else if (contentType === 'categories' || contentType === 'legal') {
         srcRes = await fetch(`${API_BASE}/settings`, { headers: { Authorization: `Bearer ${publicAnonKey}` } });
       } else {
         srcRes = await fetch(`${API_BASE}/team`, { headers: { Authorization: `Bearer ${publicAnonKey}` } });
@@ -583,6 +600,15 @@ export function TranslationTab() {
           // toolStatuses is [{label, color}] — extract just the labels
           toolStatuses: (settingsData.toolStatuses || []).map((s: any) => (typeof s === 'string' ? s : s.label)).filter(Boolean),
         };
+      } else if (contentType === 'legal') {
+        // Extract the 4 legal HTML fields from settings
+        const settingsData = srcJson.success ? srcJson.data : {};
+        src = {
+          termsContent:      settingsData.termsContent      || '',
+          privacyContent:    settingsData.privacyContent    || '',
+          refundsContent:    settingsData.refundsContent    || '',
+          disclaimerContent: settingsData.disclaimerContent || '',
+        };
       } else {
         // For projects, tools, team - ensure it's always an array
         const rawData = srcJson.success ? srcJson.data : null;
@@ -596,11 +622,22 @@ export function TranslationTab() {
       const stored    = (transJson.success && transJson.data) ? transJson.data : {};
 
       // 3. Flatten stored into flat state
-      const flat = contentType === 'home'
-        ? flattenStoredHome(stored)
-        : contentType === 'categories'
-          ? flattenStoredCategories(stored)
-          : flattenStoredItems(stored);
+      let flat: Record<string, string>;
+      if (contentType === 'home') {
+        flat = flattenStoredHome(stored);
+      } else if (contentType === 'categories') {
+        flat = flattenStoredCategories(stored);
+      } else if (contentType === 'legal') {
+        // Legal: stored IS the flat map already { termsContent, privacyContent, ... }
+        flat = {
+          termsContent:      typeof stored.termsContent      === 'string' ? stored.termsContent      : '',
+          privacyContent:    typeof stored.privacyContent    === 'string' ? stored.privacyContent    : '',
+          refundsContent:    typeof stored.refundsContent    === 'string' ? stored.refundsContent    : '',
+          disclaimerContent: typeof stored.disclaimerContent === 'string' ? stored.disclaimerContent : '',
+        };
+      } else {
+        flat = flattenStoredItems(stored);
+      }
       setFlatTrans(flat);
     } catch (err) {
       console.error('[TranslationTab] loadData error:', err);
@@ -616,6 +653,7 @@ export function TranslationTab() {
     if (!sourceData) return [];
     if (contentType === 'home')       return flattenHome(sourceData);
     if (contentType === 'categories') return flattenCategories(sourceData);
+    if (contentType === 'legal')      return []; // legal uses bespoke UI
     // Ensure sourceData is an array before passing to flattenItems
     const itemsArray = Array.isArray(sourceData) ? sourceData : [];
     
@@ -635,10 +673,16 @@ export function TranslationTab() {
 
   // ── Coverage ───────────────────────────────────────────────────────────────
   const { translated, total } = useMemo(() => {
+    if (contentType === 'legal') {
+      const keys = LEGAL_PAGES.map(p => p.key);
+      const total      = keys.length;
+      const translated = keys.filter(k => flatTrans[k]?.trim()).length;
+      return { translated, total };
+    }
     const total      = fields.length;
     const translated = fields.filter(f => flatTrans[f.key]?.trim()).length;
     return { translated, total };
-  }, [fields, flatTrans]);
+  }, [fields, flatTrans, contentType]);
 
   const coveragePct = total ? Math.round((translated / total) * 100) : 0;
 
@@ -751,15 +795,26 @@ export function TranslationTab() {
     setIsSaving(true);
     setStatus({ type: null, msg: '' });
     try {
-      const nested = contentType === 'home'
-        ? unflattenHome(flatTrans, sourceData)
-        : contentType === 'categories'
-          ? unflattenCategories(flatTrans)
-          : unflattenItems(flatTrans);
+      let body: any;
+      if (contentType === 'home') {
+        body = unflattenHome(flatTrans, sourceData);
+      } else if (contentType === 'categories') {
+        body = unflattenCategories(flatTrans);
+      } else if (contentType === 'legal') {
+        // Legal: save flat HTML strings directly
+        body = {
+          termsContent:      flatTrans.termsContent      || '',
+          privacyContent:    flatTrans.privacyContent    || '',
+          refundsContent:    flatTrans.refundsContent    || '',
+          disclaimerContent: flatTrans.disclaimerContent || '',
+        };
+      } else {
+        body = unflattenItems(flatTrans);
+      }
       const res  = await fetch(`${API_BASE}/translations/${lang}/${contentType}`, {
         method: 'PUT',
         headers: authHeaders,
-        body: JSON.stringify(nested),
+        body: JSON.stringify(body),
       });
       const json = await res.json();
       if (!json.success) throw new Error(json.error || 'Save failed');
@@ -769,6 +824,37 @@ export function TranslationTab() {
       setStatus({ type: 'error', msg: `Save error: ${String(err)}` });
     }
     setIsSaving(false);
+  };
+
+  // ── Translate a single legal page with HTML-aware endpoint ─────────────────
+  const [legalTranslating, setLegalTranslating] = useState<Record<string, boolean>>({});
+  const [legalPreview,     setLegalPreview]     = useState<Record<string, boolean>>({});
+  const [legalError,       setLegalError]       = useState<Record<string, string>>({});
+
+  const handleTranslateLegalPage = async (pageKey: string) => {
+    if (!sourceData?.[pageKey]) return;
+    setLegalTranslating(prev => ({ ...prev, [pageKey]: true }));
+    setLegalError(prev => ({ ...prev, [pageKey]: '' }));
+    try {
+      const pageDef = LEGAL_PAGES.find(p => p.key === pageKey);
+      const res = await fetch(`${API_BASE}/admin/translate-legal-html`, {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({
+          lang,
+          langName: LANG_CONFIG[lang].name,
+          page: pageDef?.label || pageKey,
+          htmlContent: sourceData[pageKey],
+        }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || 'Translation failed');
+      setFlatTrans(prev => ({ ...prev, [pageKey]: json.data.translatedHtml }));
+      setLegalPreview(prev => ({ ...prev, [pageKey]: true }));
+    } catch (err) {
+      setLegalError(prev => ({ ...prev, [pageKey]: String(err) }));
+    }
+    setLegalTranslating(prev => ({ ...prev, [pageKey]: false }));
   };
 
   const toggleSection = (s: string) =>
@@ -905,12 +991,126 @@ export function TranslationTab() {
         )}
       </GlassCard>
 
-      {/* Translation table */}
+      {/* Translation table / Legal editor */}
       {loading ? (
         <GlassCard className="p-12 text-center text-gray-400">
           <Loader2 className="w-6 h-6 animate-spin mx-auto mb-3 text-purple-400" />
           Loading content...
         </GlassCard>
+      ) : contentType === 'legal' ? (
+
+        /* ── LEGAL PAGES bespoke HTML editor ─────────────────────────────── */
+        <div className="space-y-4">
+          {LEGAL_PAGES.map(page => {
+            const sourceHtml  = sourceData?.[page.key] || '';
+            const transHtml   = flatTrans[page.key]    || '';
+            const isTranslating = !!legalTranslating[page.key];
+            const showPreview   = !!legalPreview[page.key];
+            const err           = legalError[page.key] || '';
+            const hasTrans      = !!transHtml.trim();
+
+            const accentColors: Record<string, { border: string; icon: string; badge: string; btn: string }> = {
+              purple: { border: 'border-purple-500/20', icon: 'text-purple-400', badge: 'bg-purple-500/20 text-purple-300', btn: 'bg-purple-600/20 border-purple-500/40 hover:bg-purple-600/30 text-purple-200' },
+              green:  { border: 'border-green-500/20',  icon: 'text-green-400',  badge: 'bg-green-500/20 text-green-300',   btn: 'bg-green-600/20 border-green-500/40 hover:bg-green-600/30 text-green-200'   },
+              blue:   { border: 'border-blue-500/20',   icon: 'text-blue-400',   badge: 'bg-blue-500/20 text-blue-300',     btn: 'bg-blue-600/20 border-blue-500/40 hover:bg-blue-600/30 text-blue-200'     },
+              amber:  { border: 'border-amber-500/20',  icon: 'text-amber-400',  badge: 'bg-amber-500/20 text-amber-300',   btn: 'bg-amber-600/20 border-amber-500/40 hover:bg-amber-600/30 text-amber-200'  },
+            };
+            const ac = accentColors[page.accent];
+
+            return (
+              <GlassCard key={page.key} className={`overflow-hidden border ${ac.border}`}>
+                {/* Header row */}
+                <div className="flex items-center justify-between px-5 py-4 border-b border-white/5">
+                  <div className="flex items-center gap-3">
+                    <span className={ac.icon}>{page.icon}</span>
+                    <span className="text-white font-semibold text-sm">{page.label}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${hasTrans ? 'bg-green-500/20 text-green-400' : 'bg-white/10 text-white/30'}`}>
+                      {hasTrans ? '✓ Translated' : 'Not translated'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {/* Preview toggle */}
+                    <button
+                      onClick={() => setLegalPreview(prev => ({ ...prev, [page.key]: !showPreview }))}
+                      disabled={!hasTrans}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs border transition-all disabled:opacity-30 ${
+                        showPreview
+                          ? 'bg-white/10 border-white/20 text-white'
+                          : 'bg-white/5 border-white/10 text-white/50 hover:text-white hover:bg-white/10'
+                      }`}
+                    >
+                      {showPreview ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      {showPreview ? 'HTML' : 'Preview'}
+                    </button>
+                    {/* AI Translate button */}
+                    <Button
+                      onClick={() => handleTranslateLegalPage(page.key)}
+                      disabled={isTranslating || !sourceHtml}
+                      className={`text-xs border ${ac.btn}`}
+                      variant="outline"
+                    >
+                      {isTranslating
+                        ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Translating…</>
+                        : <><Sparkles className="w-3.5 h-3.5 mr-1.5" />{hasTrans ? 'Re-translate with AI' : 'Translate with AI'}</>
+                      }
+                    </Button>
+                  </div>
+                </div>
+
+                {/* English source preview (collapsed) */}
+                {sourceHtml && (
+                  <div className="px-5 py-3 border-b border-white/5 bg-white/2">
+                    <p className="text-xs text-white/30 uppercase tracking-wider mb-1.5 font-medium">🇬🇧 English source (first 300 chars)</p>
+                    <p className="text-white/40 text-xs leading-relaxed line-clamp-2 font-mono">
+                      {sourceHtml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300)}…
+                    </p>
+                  </div>
+                )}
+
+                {/* Error */}
+                {err && (
+                  <div className="mx-5 mt-3 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-red-300 text-xs">
+                    <AlertCircle className="inline w-3.5 h-3.5 mr-1.5" />{err}
+                  </div>
+                )}
+
+                {/* Translation area */}
+                <div className="p-5">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs text-white/40 font-medium uppercase tracking-wider">
+                      {LANG_CONFIG[lang].flag} {LANG_CONFIG[lang].name} translation
+                    </p>
+                  </div>
+                  {showPreview ? (
+                    /* Rendered HTML preview */
+                    <div
+                      className="min-h-32 rounded-xl border border-white/10 bg-white/3 p-5
+                        [&_h2]:text-xl [&_h2]:font-bold [&_h2]:mt-6 [&_h2]:mb-3 [&_h2]:text-white
+                        [&_h3]:text-base [&_h3]:font-semibold [&_h3]:text-white/90 [&_h3]:mt-4 [&_h3]:mb-2
+                        [&_p]:text-white/70 [&_p]:leading-relaxed [&_p]:mb-3 [&_p]:text-sm
+                        [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:mb-3 [&_ul]:text-white/70 [&_ul]:text-sm
+                        [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:mb-3 [&_ol]:text-white/70 [&_ol]:text-sm
+                        [&_li]:mb-1 [&_li]:text-white/70 [&_li]:text-sm
+                        [&_strong]:text-white [&_strong]:font-semibold"
+                      dangerouslySetInnerHTML={{ __html: transHtml }}
+                    />
+                  ) : (
+                    /* Raw HTML textarea */
+                    <textarea
+                      value={transHtml}
+                      onChange={e => setFlatTrans(prev => ({ ...prev, [page.key]: e.target.value }))}
+                      rows={10}
+                      placeholder={`Paste or AI-translate ${LANG_CONFIG[lang].name} HTML here…`}
+                      dir={lang === 'ar' ? 'rtl' : 'ltr'}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-white/20 focus:outline-none focus:ring-1 focus:ring-purple-500 resize-y font-mono leading-relaxed"
+                    />
+                  )}
+                </div>
+              </GlassCard>
+            );
+          })}
+        </div>
+
       ) : fields.length === 0 ? (
         <GlassCard className="p-12 text-center text-gray-400">
           No translatable content found. Add some {contentType} first.

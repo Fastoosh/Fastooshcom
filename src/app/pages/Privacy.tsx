@@ -4,24 +4,35 @@ import { GlassCard } from '../components/shared/GlassCard';
 import { SeoHead } from '../components/shared/SeoHead';
 import { Shield } from 'lucide-react';
 import { api } from '../utils/api';
+import { useTranslation } from 'react-i18next';
+import { fetchTranslations } from '../utils/translations';
 
 export function Privacy() {
   const [content, setContent] = useState<string>('');
   const [loading, setLoading] = useState(true);
+  const { i18n } = useTranslation();
+  const lang = i18n.language;
 
   useEffect(() => {
     fetchContent();
-  }, []);
+  }, [lang]);
 
   const fetchContent = async () => {
+    setLoading(true);
     try {
       const res = await api.getSettings();
-      if (res.success && res.data?.privacyContent) {
-        setContent(res.data.privacyContent);
-      } else {
-        // Default content if not set in admin
-        setContent(getDefaultPrivacyContent());
+      const englishHtml = res.success && res.data?.privacyContent
+        ? res.data.privacyContent
+        : getDefaultPrivacyContent();
+
+      if (lang !== 'en') {
+        const translations = await fetchTranslations(lang, 'legal');
+        if (translations?.privacyContent) {
+          setContent(translations.privacyContent);
+          return;
+        }
       }
+      setContent(englishHtml);
     } catch (error) {
       console.error('Error fetching privacy content:', error);
       setContent(getDefaultPrivacyContent());
@@ -122,11 +133,15 @@ export function Privacy() {
           </div>
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-4">
             <span className="bg-gradient-to-r from-green-400 to-emerald-400 bg-clip-text text-transparent">
-              Privacy Policy
+              {{ en: 'Privacy Policy', fr: 'Politique de confidentialité', ar: 'سياسة الخصوصية' }[lang] ?? 'Privacy Policy'}
             </span>
           </h1>
           <p className="text-lg text-white/60">
-            Last updated: {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+            {{ en: 'Last updated', fr: 'Dernière mise à jour', ar: 'آخر تحديث' }[lang] ?? 'Last updated'}:{' '}
+            {new Date().toLocaleDateString(
+              lang === 'fr' ? 'fr-FR' : lang === 'ar' ? 'ar-SA' : 'en-US',
+              { month: 'long', day: 'numeric', year: 'numeric' }
+            )}
           </p>
         </motion.div>
 
