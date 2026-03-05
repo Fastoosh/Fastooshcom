@@ -189,43 +189,43 @@ export function Footer() {
             </ul>
           </div>
 
-          {/* Contact */}
-          <div>
-            <h4 className="text-white mb-4">{t('footer.getInTouch')}</h4>
-            {contactEmail ? (
-              <a
-                href={`mailto:${contactEmail}`}
-                className="text-white/60 hover:text-white transition-colors text-sm inline-flex items-center gap-2 rtl:flex-row-reverse"
-              >
-                <Mail className="w-4 h-4 rtl:order-2" />
-                {contactEmail}
-              </a>
-            ) : (
-              <p className="text-white/40 text-sm">{t('footer.noEmail')}</p>
-            )}
-          </div>
-
-          {/* Social */}
-          <div>
-            <h4 className="text-white mb-4">{t('footer.follow')}</h4>
-            {activeSocialLinks.length > 0 ? (
-              <div className="flex gap-4 flex-wrap justify-start rtl:justify-end rtl:flex-row-reverse">
-                {activeSocialLinks.map((social) => (
-                  <a 
-                    key={social.key}
-                    href={social.url} 
-                    target="_blank" 
-                    rel="noopener noreferrer" 
-                    className="text-white/60 hover:text-white transition-colors" 
-                    aria-label={social.label}
-                  >
-                    <FontAwesomeIcon icon={social.icon} className="w-5 h-5" />
-                  </a>
-                ))}
-              </div>
-            ) : (
-              <p className="text-white/40 text-sm">{t('footer.noSocial')}</p>
-            )}
+          {/* Contact + Social */}
+          <div className="space-y-6">
+            <div>
+              <h4 className="text-white mb-4">{t('footer.getInTouch')}</h4>
+              {contactEmail ? (
+                <a
+                  href={`mailto:${contactEmail}`}
+                  className="text-white/60 hover:text-white transition-colors text-sm inline-flex items-center gap-2 rtl:flex-row-reverse"
+                >
+                  <Mail className="w-4 h-4 rtl:order-2" />
+                  {contactEmail}
+                </a>
+              ) : (
+                <p className="text-white/40 text-sm">{t('footer.noEmail')}</p>
+              )}
+            </div>
+            <div>
+              <h4 className="text-white mb-4">{t('footer.follow')}</h4>
+              {activeSocialLinks.length > 0 ? (
+                <div className="flex gap-4 flex-wrap justify-start rtl:justify-end rtl:flex-row-reverse">
+                  {activeSocialLinks.map((social) => (
+                    <a
+                      key={social.key}
+                      href={social.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-white/60 hover:text-white transition-colors"
+                      aria-label={social.label}
+                    >
+                      <FontAwesomeIcon icon={social.icon} className="w-5 h-5" />
+                    </a>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-white/40 text-sm">{t('footer.noSocial')}</p>
+              )}
+            </div>
           </div>
         </div>
 
