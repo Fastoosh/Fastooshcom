@@ -1,0 +1,71 @@
+code_components_prev…ca0ef3.min.js.br:28 
+ Warning: Encountered two children with the same key, `null`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. Component Stack
+    at 2ca76243-7488-444e-b…view.figma.site/div
+    at 2ca76243-7488-444e-b…e/CategoricalChart2
+    at code_components_prev…min.js.br:290:12506
+    at FGCmp (fginspector:3:55)
+    at 2ca76243-7488-444e-b…view.figma.site/div
+    at code_components_prev…min.js.br:290:12506
+    at FGCmp (fginspector:3:55)
+    at 2ca76243-7488-444e-b…view.figma.site/div
+    at code_components_prev…min.js.br:290:12506
+    at FGCmp (fginspector:3:55)
+    at GlassCard (GlassCard.tsx:14:29)
+    at code_components_prev…min.js.br:290:12506
+    at FGCmp (fginspector:3:55)
+    at 2ca76243-7488-444e-b…view.figma.site/div
+    at code_components_prev…min.js.br:290:12506
+    at FGCmp (fginspector:3:55)
+    at 2ca76243-7488-444e-b…view.figma.site/div
+    at code_components_prev…min.js.br:290:12506
+    at FGCmp (fginspector:3:55)
+    at DashboardTab (DashboardTab.tsx:689:32)
+    at code_components_prev…min.js.br:290:12506
+    at FGCmp (fginspector:3:55)
+    at 2ca76243-7488-444e-b…view.figma.site/div
+    at code_components_prev…min.js.br:290:12506
+    at FGCmp (fginspector:3:55)
+    at TabsContent (tabs.tsx:54:3)
+    at code_components_prev…min.js.br:290:12506
+    at FGCmp (fginspector:3:55)
+    at 2ca76243-7488-444e-b…view.figma.site/div
+    at code_components_prev…min.js.br:290:12506
+    at FGCmp (fginspector:3:55)
+    at Tabs (tabs.tsx:9:3)
+    at code_components_prev…min.js.br:290:12506
+    at FGCmp (fginspector:3:55)
+    at 2ca76243-7488-444e-b…view.figma.site/div
+    at code_components_prev…min.js.br:290:12506
+    at FGCmp (fginspector:3:55)
+    at 2ca76243-7488-444e-b…view.figma.site/div
+    at code_components_prev…min.js.br:290:12506
+    at FGCmp (fginspector:3:55)
+    at Admin (Admin.tsx:136:20)
+    at code_components_prev…min.js.br:290:12506
+    at FGCmp (fginspector:3:55)
+    at TrackingProvider (TrackingProvider.tsx:45:36)
+    at code_components_prev…min.js.br:290:12506
+    at FGCmp (fginspector:3:55)
+    at code_components_prev…min.js.br:290:12506
+    at FGCmp (fginspector:3:55)
+    at LogoProvider (LogoContext.tsx:60:32)
+    at code_components_prev…min.js.br:290:12506
+    at FGCmp (fginspector:3:55)
+    at code_components_prev…min.js.br:290:12506
+    at FGCmp (fginspector:3:55)
+    at StyleProvider (StyleContext.tsx:339:33)
+    at code_components_prev…min.js.br:290:12506
+    at FGCmp (fginspector:3:55)
+    at code_components_prev…min.js.br:290:12506
+    at FGCmp (fginspector:3:55)
+    at 2ca76243-7488-444e-b…view.figma.site/App
+    at o$ (code_components_prev…3.min.js.br:55:4461)
+    at O (code_components_prev…min.js.br:570:13314)
+    at rr (code_components_prev…min.js.br:624:13959)
+    at b7 (code_components_prev…min.js.br:641:10109)
+    at 2ca76243-7488-444e-b…view.figma.site/div
+    at o2 (code_components_prev….min.js.br:55:14021)
+    at T3 (code_components_prev…in.js.br:631:233330)
+    at yk (code_components_prev…in.js.br:631:249134)
+    at ih (code_components_prev…min.js.br:40:136003)
+    at hi (code_components_prev….min.js.br:434:8433)

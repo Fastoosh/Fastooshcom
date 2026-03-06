@@ -1613,9 +1613,7 @@ export function ToolDetail() {
               )}
               {paidVersion && (
                 <NeonButton
-                  href={paidVersion.downloadUrl || '#'}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                  onClick={() => document.getElementById('pricing-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
                   variant="primary"
                 >
                   <HeroPaidCtaIcon className="w-3.5 h-3.5 mr-2 rtl:mr-0 rtl:ml-2" />

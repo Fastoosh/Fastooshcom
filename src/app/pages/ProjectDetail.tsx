@@ -390,6 +390,9 @@ export function ProjectDetail() {
           </div>
 
           <h1 className="text-4xl md:text-5xl tracking-tight mb-6">{project.title}</h1>
+          {project.description && (
+            <p className="text-white/60 text-lg leading-relaxed">{project.description}</p>
+          )}
         </motion.div>
 
         {/* Content Sections */}

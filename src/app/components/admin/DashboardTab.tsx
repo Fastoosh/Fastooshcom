@@ -11,6 +11,7 @@ import {
   Inbox, Calendar, Tag, Clock, ArrowUpRight, Activity,
   Sparkles, Circle, CheckCircle2, ExternalLink, DollarSign, ShoppingCart,
   RotateCcw, BadgeDollarSign, TrendingDown, Play, Globe,
+  Zap, StickyNote, Package,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
@@ -102,6 +103,21 @@ interface Message {
   inquiryType?: string;
   read: boolean;
   createdAt: string;
+}
+
+interface ToolRequest {
+  kvKey:       string;
+  id:          string;
+  name:        string;
+  email:       string;
+  softwares:   string[];
+  workflow:    string;
+  automate:    string;
+  timeline:    string;
+  budget:      string;
+  notes:       string;
+  submittedAt: string;
+  read:        boolean;
 }
 
 interface RevenueItem {
@@ -413,7 +429,7 @@ function MessageCard({ msg, expanded, onExpand, onMarkRead, onDelete, marking }:
                 <p className="text-white/75 text-sm leading-relaxed whitespace-pre-wrap">{msg.message}</p>
               </div>
 
-              {/* Actions */}
+              {/* Actions — Reply · Mark read · Delete always visible */}
               <div className="flex items-center gap-2 flex-wrap">
                 <a
                   href={`mailto:${msg.email}?subject=Re: Your message to Fastoosh`}
@@ -423,19 +439,239 @@ function MessageCard({ msg, expanded, onExpand, onMarkRead, onDelete, marking }:
                   <ExternalLink className="w-2.5 h-2.5 opacity-60" />
                 </a>
 
-                {!msg.read && (
-                  <button
-                    onClick={() => onMarkRead(msg.kvKey)}
-                    disabled={marking}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-500/15 border border-green-500/25 text-green-400 hover:bg-green-500/25 transition-all text-xs font-medium disabled:opacity-50"
-                  >
-                    <CheckCheck className="w-3 h-3" />Mark read
-                  </button>
-                )}
+                <button
+                  onClick={() => { if (!msg.read) onMarkRead(msg.kvKey); }}
+                  disabled={marking || msg.read}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all text-xs font-medium ${
+                    msg.read
+                      ? 'bg-white/4 border-white/10 text-white/25 cursor-default'
+                      : 'bg-green-500/15 border-green-500/25 text-green-400 hover:bg-green-500/25 disabled:opacity-50'
+                  }`}
+                >
+                  <CheckCheck className="w-3 h-3" />
+                  {msg.read ? 'Read' : 'Mark read'}
+                </button>
 
                 <button
                   onClick={() => onDelete(msg.kvKey)}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition-all text-xs font-medium"
+                >
+                  <Trash2 className="w-3 h-3" />Delete
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  );
+}
+
+// ── Tool Request card (inline in messages view) ─────────────────────────────────
+
+function ToolRequestCard({
+  req,
+  expanded,
+  onExpand,
+  onDelete,
+  onMarkRead,
+}: {
+  req:        ToolRequest;
+  expanded:   boolean;
+  onExpand:   () => void;
+  onDelete:   (id: string) => void;
+  onMarkRead: (kvKey: string) => void;
+}) {
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    if (!confirm(`Delete request from ${req.name}?`)) return;
+    setDeleting(true);
+    try {
+      await fetch(`${API_BASE}/admin/tool-requests/${req.id}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+      });
+      onDelete(req.id);
+    } catch (err) {
+      console.error('[DashboardTab] tool-request delete error', err);
+      setDeleting(false);
+    }
+  };
+
+  const handleExpand = () => {
+    onExpand();
+  };
+
+  return (
+    <motion.div
+      layout
+      className={`rounded-2xl border transition-all ${
+        !req.read
+          ? 'border-purple-500/40 bg-purple-500/[0.07]'
+          : 'border-purple-500/20 bg-purple-500/[0.04]'
+      }`}
+    >
+      {/* Header row — expand area + independent mark-read button */}
+      <div className="flex items-start gap-3 p-4">
+        {/* Wrench icon + unread dot */}
+        <div className="mt-1 flex-shrink-0 w-5 h-5 flex items-center justify-center relative">
+          <Wrench className="w-4 h-4 text-purple-400" />
+          {!req.read && (
+            <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-purple-400 ring-1 ring-black" />
+          )}
+        </div>
+
+        {/* Main clickable expand area */}
+        <button
+          onClick={handleExpand}
+          className="flex-1 min-w-0 text-left hover:opacity-80 transition-opacity"
+        >
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className={`text-sm ${!req.read ? 'text-white font-bold' : 'text-white font-semibold'}`}>{req.name}</span>
+            <span className="text-white/35 text-xs">{req.email}</span>
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-purple-500/15 text-purple-400">
+              Tool Request
+            </span>
+            {req.budget && (
+              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400">
+                {req.budget}
+              </span>
+            )}
+            {req.timeline && (
+              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-blue-500/10 text-blue-400">
+                {req.timeline}
+              </span>
+            )}
+          </div>
+          <p className="text-white/50 text-xs mt-0.5 truncate">{req.workflow}</p>
+        </button>
+
+        {/* Right-side controls */}
+        <div className="flex-shrink-0 flex items-center gap-2">
+          {/* Mark read button — only shown while unread */}
+          {!req.read && req.kvKey && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onMarkRead(req.kvKey); }}
+              title="Mark as read"
+              className="flex items-center gap-1 px-2 py-1 rounded-lg bg-green-500/15 border border-green-500/25 text-green-400 hover:bg-green-500/25 transition-all text-[11px] font-medium"
+            >
+              <CheckCheck className="w-3 h-3" />
+              <span className="hidden sm:inline">Mark read</span>
+            </button>
+          )}
+          <button
+            onClick={handleExpand}
+            className="flex items-center gap-1 text-white/25 hover:text-white/50 transition-colors"
+          >
+            <span className="text-xs">{relativeTime(req.submittedAt)}</span>
+            {expanded
+              ? <ChevronUp   className="w-3.5 h-3.5" />
+              : <ChevronDown className="w-3.5 h-3.5" />}
+          </button>
+        </div>
+      </div>
+
+      {/* Expanded body */}
+      <AnimatePresence>
+        {expanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
+          >
+            <div className="px-4 pb-4 space-y-3 border-t border-white/8 pt-3">
+
+              {/* Meta */}
+              <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs">
+                {req.budget && (
+                  <span className="text-white/40">
+                    <DollarSign className="w-3 h-3 inline mr-1" />Budget: <strong className="text-white/60">{req.budget}</strong>
+                  </span>
+                )}
+                {req.timeline && (
+                  <span className="text-white/40">
+                    <Clock className="w-3 h-3 inline mr-1" />Timeline: <strong className="text-white/60">{req.timeline}</strong>
+                  </span>
+                )}
+                <span className="text-white/40">
+                  <Calendar className="w-3 h-3 inline mr-1" />{shortDate(req.submittedAt)}
+                </span>
+              </div>
+
+              {/* Softwares */}
+              {req.softwares?.length > 0 && (
+                <div>
+                  <p className="text-[10px] uppercase tracking-widest text-white/25 font-medium mb-1.5 flex items-center gap-1">
+                    <Package className="w-3 h-3" /> Software
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {req.softwares.map(sw => (
+                      <span key={sw} className="px-2 py-0.5 rounded-md text-[10px] bg-white/5 border border-white/10 text-white/55">{sw}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Workflow */}
+              <div>
+                <p className="text-[10px] uppercase tracking-widest text-white/25 font-medium mb-1.5 flex items-center gap-1">
+                  <MessageSquare className="w-3 h-3" /> Current workflow
+                </p>
+                <div className="p-3 rounded-xl bg-white/4 border-l-2 border-purple-500/40 border border-white/6">
+                  <p className="text-white/75 text-sm leading-relaxed whitespace-pre-wrap">{req.workflow}</p>
+                </div>
+              </div>
+
+              {/* What it should do */}
+              <div>
+                <p className="text-[10px] uppercase tracking-widest text-white/25 font-medium mb-1.5 flex items-center gap-1">
+                  <Zap className="w-3 h-3" /> What the tool should do
+                </p>
+                <div className="p-3 rounded-xl bg-white/4 border-l-2 border-indigo-500/40 border border-white/6">
+                  <p className="text-white/75 text-sm leading-relaxed whitespace-pre-wrap">{req.automate}</p>
+                </div>
+              </div>
+
+              {/* Notes */}
+              {req.notes && (
+                <div>
+                  <p className="text-[10px] uppercase tracking-widest text-white/25 font-medium mb-1.5 flex items-center gap-1">
+                    <StickyNote className="w-3 h-3" /> Additional notes
+                  </p>
+                  <div className="p-3 rounded-xl bg-white/4 border border-white/6">
+                    <p className="text-white/60 text-sm leading-relaxed whitespace-pre-wrap">{req.notes}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Actions — Reply · Mark read · Delete always visible */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <a
+                  href={`mailto:${req.email}?subject=Re: Your custom tool request — Fastoosh`}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-500/15 border border-purple-500/25 text-purple-300 hover:bg-purple-500/25 transition-all text-xs font-medium"
+                >
+                  <Mail className="w-3 h-3" />Reply
+                  <ExternalLink className="w-2.5 h-2.5 opacity-60" />
+                </a>
+                <button
+                  onClick={() => { if (!req.read && req.kvKey) onMarkRead(req.kvKey); }}
+                  disabled={req.read}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all text-xs font-medium ${
+                    req.read
+                      ? 'bg-white/4 border-white/10 text-white/25 cursor-default'
+                      : 'bg-green-500/15 border-green-500/25 text-green-400 hover:bg-green-500/25'
+                  }`}
+                >
+                  <CheckCheck className="w-3 h-3" />
+                  {req.read ? 'Read' : 'Mark read'}
+                </button>
+                <button
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition-all text-xs font-medium disabled:opacity-40"
                 >
                   <Trash2 className="w-3 h-3" />Delete
                 </button>
@@ -453,11 +689,12 @@ function MessageCard({ msg, expanded, onExpand, onMarkRead, onDelete, marking }:
 export function DashboardTab({ onNavigate }: { onNavigate?: (tab: string) => void }) {
   const [data,          setData]          = useState<DashboardData | null>(null);
   const [messages,      setMessages]      = useState<Message[]>([]);
+  const [toolRequests,  setToolRequests]  = useState<ToolRequest[]>([]);
   const [countriesData, setCountriesData] = useState<CountryRow[]>([]);
   const [loading,       setLoading]       = useState(true);
   const [refreshing,    setRefreshing]    = useState(false);
   const [view,        setView]        = useState<'overview' | 'analytics' | 'revenue' | 'behavior' | 'messages' | 'videos'>('overview');
-  const [msgFilter,   setMsgFilter]   = useState<'all' | 'contact' | 'support' | 'unread'>('all');
+  const [msgFilter,   setMsgFilter]   = useState<'all' | 'contact' | 'support' | 'unread' | 'tool-request'>('all');
   const [expandedMsg, setExpandedMsg] = useState<string | null>(null);
   const [marking,     setMarking]     = useState<string | null>(null);
   const [prevUnread,  setPrevUnread]  = useState(0);
@@ -471,16 +708,31 @@ export function DashboardTab({ onNavigate }: { onNavigate?: (tab: string) => voi
   const loadDashboard = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const [dashRes, msgRes, refRes] = await Promise.all([
-        fetch(`${API_BASE}/admin/dashboard`, { headers: getAuthHeaders() }),
-        fetch(`${API_BASE}/admin/messages`,  { headers: getAuthHeaders() }),
-        fetch(`${API_BASE}/admin/referrers`, { headers: getAuthHeaders() }),
+      const [dashRes, msgRes, refRes, trRes] = await Promise.all([
+        fetch(`${API_BASE}/admin/dashboard`,     { headers: getAuthHeaders() }),
+        fetch(`${API_BASE}/admin/messages`,      { headers: getAuthHeaders() }),
+        fetch(`${API_BASE}/admin/referrers`,     { headers: getAuthHeaders() }),
+        fetch(`${API_BASE}/admin/tool-requests`, { headers: getAuthHeaders() }),
       ]);
-      const dashJson = await dashRes.json();
-      const msgJson  = await msgRes.json();
-      const refJson  = await refRes.json();
 
-      if (dashJson.success) {
+      // Parse each response independently so one bad/non-JSON reply never
+      // silences the others (e.g. a gateway HTML error on one endpoint).
+      const safeJson = async (res: Response, label: string) => {
+        try { return await res.json(); }
+        catch (e) {
+          console.error(`[DashboardTab] JSON parse failed for ${label}:`, e);
+          return null;
+        }
+      };
+
+      const [dashJson, msgJson, refJson, trJson] = await Promise.all([
+        safeJson(dashRes, 'dashboard'),
+        safeJson(msgRes,  'messages'),
+        safeJson(refRes,  'referrers'),
+        safeJson(trRes,   'tool-requests'),
+      ]);
+
+      if (dashJson?.success) {
         setData(dashJson.data);
         const unread = dashJson.data.stats.unreadMessages ?? 0;
         setPrevUnread(prev => {
@@ -488,8 +740,13 @@ export function DashboardTab({ onNavigate }: { onNavigate?: (tab: string) => voi
           return unread;
         });
       }
-      if (msgJson.success) setMessages(msgJson.data || []);
-      if (refJson.success && Array.isArray(refJson.data?.byCountry)) {
+      if (msgJson?.success) {
+        setMessages(msgJson.data || []);
+      } else if (msgJson && !msgJson.success) {
+        console.error('[DashboardTab] /admin/messages returned error:', msgJson.error);
+      }
+      if (trJson?.success)  setToolRequests(trJson.data || []);
+      if (refJson?.success && Array.isArray(refJson.data?.byCountry)) {
         setCountriesData(refJson.data.byCountry.filter((r: CountryRow) => r.code !== 'Unknown').slice(0, 5));
       }
     } catch (err) {
@@ -511,39 +768,108 @@ export function DashboardTab({ onNavigate }: { onNavigate?: (tab: string) => voi
   const handleMarkRead = useCallback(async (kvKey: string) => {
     setMarking(kvKey);
     try {
-      await fetch(`${API_BASE}/admin/messages/mark-read`, {
+      const res = await fetch(`${API_BASE}/admin/messages/mark-read`, {
         method: 'PUT',
         headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ kvKey }),
       });
-      setMessages(prev => prev.map(m => m.kvKey === kvKey ? { ...m, read: true } : m));
-      if (data) {
-        setData(prev => prev ? {
-          ...prev,
-          stats: { ...prev.stats, unreadMessages: Math.max(0, (prev.stats.unreadMessages || 0) - 1) },
-        } : prev);
+      
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('[DashboardTab] mark-read failed:', errData);
+        throw new Error(errData.error || 'Failed to mark message as read');
       }
+      
+      setMessages(prev => prev.map(m => m.kvKey === kvKey ? { ...m, read: true } : m));
+      // Also patch the overview preview so it doesn't revert when switching tabs
+      setData(prev => prev ? {
+        ...prev,
+        recentMessages: prev.recentMessages.map(m => m.kvKey === kvKey ? { ...m, read: true } : m),
+        stats: { ...prev.stats, unreadMessages: Math.max(0, (prev.stats.unreadMessages ?? 1) - 1) },
+      } : prev);
       setHasNewMsg(false);
     } catch (err) {
       console.error('[DashboardTab] mark-read error:', err);
+      alert('Failed to mark message as read. Please try again.');
     }
     setMarking(null);
-  }, [data]);
+  }, []);
+
+  const handleMarkToolRequestRead = useCallback(async (kvKey: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/admin/tool-requests/mark-read`, {
+        method: 'PUT',
+        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kvKey }),
+      });
+      
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('[DashboardTab] tool-request mark-read failed:', errData);
+        throw new Error(errData.error || 'Failed to mark request as read');
+      }
+      
+      setToolRequests(prev => prev.map(r => r.kvKey === kvKey ? { ...r, read: true } : r));
+      // Also patch stats unread count
+      setData(prev => prev ? {
+        ...prev,
+        stats: { ...prev.stats, unreadMessages: Math.max(0, (prev.stats.unreadMessages ?? 1) - 1) },
+      } : prev);
+      setHasNewMsg(false);
+    } catch (err) {
+      console.error('[DashboardTab] tool-request mark-read error:', err);
+      alert('Failed to mark request as read. Please try again.');
+    }
+  }, []);
 
   const handleMarkAllRead = useCallback(async () => {
     try {
-      await fetch(`${API_BASE}/admin/messages/mark-read`, {
-        method: 'PUT',
-        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ markAll: true }),
-      });
+      const [msgRes, trRes] = await Promise.all([
+        fetch(`${API_BASE}/admin/messages/mark-read`, {
+          method: 'PUT',
+          headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ markAll: true }),
+        }),
+        fetch(`${API_BASE}/admin/tool-requests/mark-read`, {
+          method: 'PUT',
+          headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ markAll: true }),
+        }),
+      ]);
+      
+      // Check if both requests succeeded
+      if (!msgRes.ok) {
+        const errData = await msgRes.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('[DashboardTab] mark-all-read messages failed:', errData);
+        throw new Error('Failed to mark messages as read');
+      }
+      
+      if (!trRes.ok) {
+        const errData = await trRes.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('[DashboardTab] mark-all-read tool requests failed:', errData);
+        throw new Error('Failed to mark tool requests as read');
+      }
+      
+      // Only update state if both requests succeeded
       setMessages(prev => prev.map(m => ({ ...m, read: true })));
-      if (data) setData(prev => prev ? { ...prev, stats: { ...prev.stats, unreadMessages: 0 } } : prev);
+      setToolRequests(prev => prev.map(r => ({ ...r, read: true })));
+      // Also patch data.recentMessages and stats so the overview preview stays in sync
+      setData(prev => prev ? {
+        ...prev,
+        recentMessages: prev.recentMessages.map(m => ({ ...m, read: true })),
+        stats: { ...prev.stats, unreadMessages: 0 },
+      } : prev);
       setHasNewMsg(false);
     } catch (err) {
       console.error('[DashboardTab] mark-all-read error:', err);
+      alert('Failed to mark all messages as read. Please try again.');
     }
-  }, [data]);
+  }, []);
+
+  const handleDeleteToolRequest = useCallback((id: string) => {
+    setToolRequests(prev => prev.filter(r => r.id !== id));
+    if (expandedMsg === id) setExpandedMsg(null);
+  }, [expandedMsg]);
 
   const handleDelete = useCallback(async (kvKey: string) => {
     try {
@@ -570,7 +896,16 @@ export function DashboardTab({ onNavigate }: { onNavigate?: (tab: string) => voi
 
   // ── Chart data sliced by range ─────────────────────────────────────────────
 
-  const chartSeries = data?.series.slice(-chartRange) ?? [];
+  // Deduplicate by date (guards against DST / timezone edge cases that produce duplicate date strings)
+  const chartSeries = (() => {
+    const raw = data?.series.slice(-chartRange) ?? [];
+    const seen = new Set<string>();
+    return raw.filter(d => {
+      if (seen.has(d.date)) return false;
+      seen.add(d.date);
+      return true;
+    });
+  })();
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   const formatXDate = (dateStr: string) => {
@@ -578,7 +913,9 @@ export function DashboardTab({ onNavigate }: { onNavigate?: (tab: string) => voi
     return `${d.getMonth() + 1}/${d.getDate()}`;
   };
 
-  const unreadCount = data?.stats.unreadMessages ?? 0;
+  // Combine unread from both msg: and custom_tool_request: entries for a live count
+  const unreadCount = messages.filter(m => !m.read).length
+                    + toolRequests.filter(r => !r.read).length;
 
   // ── Loading skeleton ───────────────────────────────────────────────────────
 
@@ -816,7 +1153,7 @@ export function DashboardTab({ onNavigate }: { onNavigate?: (tab: string) => voi
             ) : (
               <div className="space-y-0 max-h-96 overflow-y-auto pr-1 scrollbar-thin">
                 {(data?.activity ?? []).map((item, i) => (
-                  <ActivityRow key={i} item={item} />
+                  <ActivityRow key={`${item.email}-${item.activityType}-${item.downloadedAt || item.createdAt || i}`} item={item} />
                 ))}
               </div>
             )}
@@ -839,7 +1176,7 @@ export function DashboardTab({ onNavigate }: { onNavigate?: (tab: string) => voi
                     const max = data?.topTools[0]?.count ?? 1;
                     const pct = Math.round((tool.count / max) * 100);
                     return (
-                      <div key={i}>
+                      <div key={tool.slug || tool.name || i}>
                         <div className="flex items-center justify-between mb-1">
                           <div className="flex items-center gap-2 min-w-0">
                             <span className="text-white/20 text-xs font-mono w-4 flex-shrink-0">#{i + 1}</span>
@@ -926,7 +1263,7 @@ export function DashboardTab({ onNavigate }: { onNavigate?: (tab: string) => voi
                 <div className="space-y-3">
                   {(data?.recentMessages ?? []).slice(0, 4).map((msg, i) => (
                     <div
-                      key={i}
+                      key={msg.kvKey || msg.id || i}
                       onClick={() => { setView('messages'); setExpandedMsg(msg.kvKey); }}
                       className={`p-3 rounded-xl border cursor-pointer hover:bg-white/5 transition-colors ${
                         msg.read ? 'border-white/8 bg-white/2' : 'border-purple-500/25 bg-purple-500/5'
@@ -986,15 +1323,15 @@ export function DashboardTab({ onNavigate }: { onNavigate?: (tab: string) => voi
               </div>
             ) : (
               <ResponsiveContainer width="100%" height={220}>
-                <AreaChart data={chartSeries} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+                <AreaChart id="chart-downloads-signups" data={chartSeries} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
                   <defs>
                     <linearGradient id="gradDownloads" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%"  stopColor={NEON_PURPLE} stopOpacity={0.3} />
-                      <stop offset="95%" stopColor={NEON_PURPLE} stopOpacity={0} />
+                      <stop key="dl-start" offset="5%"  stopColor={NEON_PURPLE} stopOpacity={0.3} />
+                      <stop key="dl-end" offset="95%" stopColor={NEON_PURPLE} stopOpacity={0} />
                     </linearGradient>
                     <linearGradient id="gradSignups" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%"  stopColor={NEON_BLUE} stopOpacity={0.3} />
-                      <stop offset="95%" stopColor={NEON_BLUE} stopOpacity={0} />
+                      <stop key="su-start" offset="5%"  stopColor={NEON_BLUE} stopOpacity={0.3} />
+                      <stop key="su-end" offset="95%" stopColor={NEON_BLUE} stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#ffffff08" />
@@ -1017,8 +1354,8 @@ export function DashboardTab({ onNavigate }: { onNavigate?: (tab: string) => voi
                     iconSize={8}
                     wrapperStyle={{ fontSize: '11px', color: '#ffffff50' }}
                   />
-                  <Area type="monotone" dataKey="downloads" stroke={NEON_PURPLE} strokeWidth={2} fill="url(#gradDownloads)" name="Downloads" />
-                  <Area type="monotone" dataKey="signups"   stroke={NEON_BLUE}   strokeWidth={2} fill="url(#gradSignups)"   name="Sign-ups"  />
+                  <Area key="downloads" type="monotone" dataKey="downloads" stroke={NEON_PURPLE} strokeWidth={2} fill="url(#gradDownloads)" name="Downloads" />
+                  <Area key="signups"   type="monotone" dataKey="signups"   stroke={NEON_BLUE}   strokeWidth={2} fill="url(#gradSignups)"   name="Sign-ups"  />
                 </AreaChart>
               </ResponsiveContainer>
             )}
@@ -1040,7 +1377,7 @@ export function DashboardTab({ onNavigate }: { onNavigate?: (tab: string) => voi
                 </div>
               ) : (
                 <ResponsiveContainer width="100%" height={220}>
-                  <BarChart data={data?.downloadsByTool ?? []} margin={{ top: 5, right: 10, left: -20, bottom: 30 }}>
+                  <BarChart id="chart-downloads-by-tool" data={data?.downloadsByTool ?? []} margin={{ top: 5, right: 10, left: -20, bottom: 30 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#ffffff08" vertical={false} />
                     <XAxis
                       dataKey="name"
@@ -1059,7 +1396,7 @@ export function DashboardTab({ onNavigate }: { onNavigate?: (tab: string) => voi
                     <Tooltip content={<ChartTooltip />} cursor={{ fill: '#ffffff05' }} />
                     <Bar dataKey="count" name="Downloads" radius={[5, 5, 0, 0]}>
                       {(data?.downloadsByTool ?? []).map((_, i) => (
-                        <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                        <Cell key={`dlt-${i}`} fill={CHART_COLORS[i % CHART_COLORS.length]} />
                       ))}
                     </Bar>
                   </BarChart>
@@ -1081,7 +1418,7 @@ export function DashboardTab({ onNavigate }: { onNavigate?: (tab: string) => voi
               ) : (
                 <div className="flex items-center gap-4">
                   <ResponsiveContainer width="60%" height={200}>
-                    <PieChart>
+                    <PieChart id="chart-lead-sources">
                       <Pie
                         data={data?.leadSources ?? []}
                         cx="50%"
@@ -1092,7 +1429,7 @@ export function DashboardTab({ onNavigate }: { onNavigate?: (tab: string) => voi
                         dataKey="value"
                       >
                         {(data?.leadSources ?? []).map((_, i) => (
-                          <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                          <Cell key={`lead-${i}`} fill={CHART_COLORS[i % CHART_COLORS.length]} />
                         ))}
                       </Pie>
                       <Tooltip content={<ChartTooltip />} />
@@ -1101,7 +1438,7 @@ export function DashboardTab({ onNavigate }: { onNavigate?: (tab: string) => voi
 
                   <div className="flex-1 space-y-3">
                     {(data?.leadSources ?? []).map((src, i) => (
-                      <div key={i} className="flex items-center gap-2">
+                      <div key={src.name || i} className="flex items-center gap-2">
                         <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: CHART_COLORS[i % CHART_COLORS.length] }} />
                         <div className="min-w-0">
                           <p className="text-white/60 text-xs">{src.name}</p>
@@ -1134,18 +1471,18 @@ export function DashboardTab({ onNavigate }: { onNavigate?: (tab: string) => voi
               </div>
             ) : (
               <ResponsiveContainer width="100%" height={160}>
-                <AreaChart data={chartSeries} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+                <AreaChart id="chart-messages" data={chartSeries} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
                   <defs>
                     <linearGradient id="gradMsg" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%"  stopColor={NEON_PINK} stopOpacity={0.3} />
-                      <stop offset="95%" stopColor={NEON_PINK} stopOpacity={0} />
+                      <stop key="msg-start" offset="5%"  stopColor={NEON_PINK} stopOpacity={0.3} />
+                      <stop key="msg-end" offset="95%" stopColor={NEON_PINK} stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#ffffff08" />
                   <XAxis dataKey="date" tickFormatter={formatXDate} tick={{ fill: '#ffffff30', fontSize: 10 }} axisLine={{ stroke: '#ffffff10' }} tickLine={false} />
                   <YAxis tick={{ fill: '#ffffff30', fontSize: 10 }} axisLine={false} tickLine={false} allowDecimals={false} />
                   <Tooltip content={<ChartTooltip />} />
-                  <Area type="monotone" dataKey="messages" stroke={NEON_PINK} strokeWidth={2} fill="url(#gradMsg)" name="Messages" />
+                  <Area key="messages" type="monotone" dataKey="messages" stroke={NEON_PINK} strokeWidth={2} fill="url(#gradMsg)" name="Messages" />
                 </AreaChart>
               </ResponsiveContainer>
             )}
@@ -1173,21 +1510,21 @@ export function DashboardTab({ onNavigate }: { onNavigate?: (tab: string) => voi
               </div>
             ) : (
               <ResponsiveContainer width="100%" height={220}>
-                <AreaChart data={chartSeries} margin={{ top: 5, right: 10, left: 5, bottom: 0 }}>
+                <AreaChart id="chart-revenue-sales" data={chartSeries} margin={{ top: 5, right: 10, left: 5, bottom: 0 }}>
                   <defs>
                     <linearGradient id="gradRevenue" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%"  stopColor={NEON_GOLD} stopOpacity={0.35} />
-                      <stop offset="95%" stopColor={NEON_GOLD} stopOpacity={0} />
+                      <stop key="rev-start" offset="5%"  stopColor={NEON_GOLD} stopOpacity={0.35} />
+                      <stop key="rev-end" offset="95%" stopColor={NEON_GOLD} stopOpacity={0} />
                     </linearGradient>
                     <linearGradient id="gradSalesLine" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%"  stopColor={NEON_GREEN} stopOpacity={0.2} />
-                      <stop offset="95%" stopColor={NEON_GREEN} stopOpacity={0} />
+                      <stop key="sales-start" offset="5%"  stopColor={NEON_GREEN} stopOpacity={0.2} />
+                      <stop key="sales-end" offset="95%" stopColor={NEON_GREEN} stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#ffffff08" />
                   <XAxis dataKey="date" tickFormatter={formatXDate} tick={{ fill: '#ffffff30', fontSize: 10 }} axisLine={{ stroke: '#ffffff10' }} tickLine={false} />
-                  <YAxis yAxisId="rev" tick={{ fill: '#ffffff30', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `$${v}`} />
-                  <YAxis yAxisId="cnt" orientation="right" tick={{ fill: '#ffffff20', fontSize: 9 }} axisLine={false} tickLine={false} allowDecimals={false} />
+                  <YAxis key="yaxis-rev" yAxisId="rev" tick={{ fill: '#ffffff30', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `$${v}`} />
+                  <YAxis key="yaxis-cnt" yAxisId="cnt" orientation="right" tick={{ fill: '#ffffff20', fontSize: 9 }} axisLine={false} tickLine={false} allowDecimals={false} />
                   <Tooltip
                     content={({ active, payload, label }: any) => {
                       if (!active || !payload?.length) return null;
@@ -1206,8 +1543,8 @@ export function DashboardTab({ onNavigate }: { onNavigate?: (tab: string) => voi
                     }}
                   />
                   <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: '11px', color: '#ffffff50' }} />
-                  <Area yAxisId="rev" type="monotone" dataKey="revenue" stroke={NEON_GOLD}  strokeWidth={2.5} fill="url(#gradRevenue)"   name="Revenue" />
-                  <Area yAxisId="cnt" type="monotone" dataKey="sales"   stroke={NEON_GREEN} strokeWidth={1.5} fill="url(#gradSalesLine)" name="Sales"   />
+                  <Area key="revenue" yAxisId="rev" type="monotone" dataKey="revenue" stroke={NEON_GOLD}  strokeWidth={2.5} fill="url(#gradRevenue)"   name="Revenue" />
+                  <Area key="sales"   yAxisId="cnt" type="monotone" dataKey="sales"   stroke={NEON_GREEN} strokeWidth={1.5} fill="url(#gradSalesLine)" name="Sales"   />
                 </AreaChart>
               </ResponsiveContainer>
             )}
@@ -1229,7 +1566,7 @@ export function DashboardTab({ onNavigate }: { onNavigate?: (tab: string) => voi
                 </div>
               ) : (
                 <ResponsiveContainer width="100%" height={220}>
-                  <BarChart data={data?.revenueByProduct ?? []} layout="vertical" margin={{ top: 0, right: 55, left: 0, bottom: 0 }}>
+                  <BarChart id="chart-revenue-by-product" data={data?.revenueByProduct ?? []} layout="vertical" margin={{ top: 0, right: 55, left: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#ffffff08" horizontal={false} />
                     <XAxis type="number" tick={{ fill: '#ffffff30', fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `$${v}`} />
                     <YAxis type="category" dataKey="name" width={90} tick={{ fill: '#ffffff50', fontSize: 9 }} axisLine={false} tickLine={false} />
@@ -1249,7 +1586,7 @@ export function DashboardTab({ onNavigate }: { onNavigate?: (tab: string) => voi
                     />
                     <Bar dataKey="revenue" name="Revenue" radius={[0, 5, 5, 0]}>
                       {(data?.revenueByProduct ?? []).map((_, i) => (
-                        <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                        <Cell key={`rev-${i}`} fill={CHART_COLORS[i % CHART_COLORS.length]} />
                       ))}
                     </Bar>
                   </BarChart>
@@ -1271,10 +1608,10 @@ export function DashboardTab({ onNavigate }: { onNavigate?: (tab: string) => voi
               ) : (
                 <div className="flex items-center gap-6">
                   <ResponsiveContainer width="55%" height={200}>
-                    <PieChart>
+                    <PieChart id="chart-revenue-by-tier">
                       <Pie data={data?.revenueByTier ?? []} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3} dataKey="revenue">
                         {(data?.revenueByTier ?? []).map((_, i) => (
-                          <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                          <Cell key={`tier-${i}`} fill={CHART_COLORS[i % CHART_COLORS.length]} />
                         ))}
                       </Pie>
                       <Tooltip
@@ -1294,7 +1631,7 @@ export function DashboardTab({ onNavigate }: { onNavigate?: (tab: string) => voi
                   </ResponsiveContainer>
                   <div className="flex-1 space-y-3">
                     {(data?.revenueByTier ?? []).map((tier, i) => (
-                      <div key={i}>
+                      <div key={tier.name || i}>
                         <div className="flex items-center justify-between mb-0.5">
                           <div className="flex items-center gap-2">
                             <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: CHART_COLORS[i % CHART_COLORS.length] }} />
@@ -1338,8 +1675,8 @@ export function DashboardTab({ onNavigate }: { onNavigate?: (tab: string) => voi
                     </tr>
                   </thead>
                   <tbody>
-                    {(data?.recentPurchases ?? []).map((p, i) => (
-                      <tr key={i} className="border-b border-white/5 last:border-0 hover:bg-white/3 transition-colors">
+                    {(data?.recentPurchases ?? []).map((p) => (
+                      <tr key={p.id || p.lemon_squeezy_order_id} className="border-b border-white/5 last:border-0 hover:bg-white/3 transition-colors">
                         <td className="py-3 pr-4 text-white/80 font-medium max-w-[160px] truncate">{p.product_name || '—'}</td>
                         <td className="py-3 pr-4">
                           <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
@@ -1395,18 +1732,27 @@ export function DashboardTab({ onNavigate }: { onNavigate?: (tab: string) => voi
 
             <div className="flex items-center gap-2 flex-wrap">
               {/* Filters */}
-              <div className="flex gap-1 p-0.5 rounded-lg bg-white/5 border border-white/8">
-                {(['all', 'contact', 'support', 'unread'] as const).map(f => (
+              <div className="flex gap-1 p-0.5 rounded-lg bg-white/5 border border-white/8 flex-wrap">
+                {([
+                  { key: 'all',          label: 'All' },
+                  { key: 'contact',      label: 'Contact' },
+                  { key: 'support',      label: 'Support' },
+                  { key: 'tool-request', label: 'Tool Requests' },
+                  { key: 'unread',       label: 'Unread' },
+                ] as const).map(f => (
                   <button
-                    key={f}
-                    onClick={() => setMsgFilter(f)}
-                    className={`px-3 py-1 rounded-md text-xs font-medium capitalize transition-all ${
-                      msgFilter === f ? 'bg-purple-500/25 text-white' : 'text-white/30 hover:text-white/60'
+                    key={f.key}
+                    onClick={() => { setMsgFilter(f.key); setExpandedMsg(null); }}
+                    className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
+                      msgFilter === f.key ? 'bg-purple-500/25 text-white' : 'text-white/30 hover:text-white/60'
                     }`}
                   >
-                    {f}
-                    {f === 'unread' && unreadCount > 0 && (
+                    {f.label}
+                    {f.key === 'unread' && unreadCount > 0 && (
                       <span className="ml-1 text-red-400">({unreadCount})</span>
+                    )}
+                    {f.key === 'tool-request' && toolRequests.filter(r => !r.read).length > 0 && (
+                      <span className="ml-1 text-purple-400">({toolRequests.filter(r => !r.read).length})</span>
                     )}
                   </button>
                 ))}
@@ -1424,33 +1770,148 @@ export function DashboardTab({ onNavigate }: { onNavigate?: (tab: string) => voi
           </div>
 
           {/* Message list */}
-          {filteredMessages.length === 0 ? (
-            <div className="py-16 text-center">
-              <Inbox className="w-12 h-12 text-white/10 mx-auto mb-3" />
-              <p className="text-white/40 font-semibold">
-                {msgFilter === 'unread' ? 'All caught up!' : 'No messages yet'}
-              </p>
-              <p className="text-white/20 text-sm mt-1">
-                {msgFilter === 'unread'
-                  ? 'No unread messages in your inbox.'
-                  : 'Messages from your contact and tool-support forms will appear here.'}
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {filteredMessages.map(msg => (
-                <MessageCard
-                  key={msg.kvKey || msg.id}
-                  msg={msg}
-                  expanded={expandedMsg === msg.kvKey}
-                  onExpand={() => setExpandedMsg(expandedMsg === msg.kvKey ? null : msg.kvKey)}
-                  onMarkRead={handleMarkRead}
-                  onDelete={handleDelete}
-                  marking={marking === msg.kvKey}
-                />
-              ))}
-            </div>
-          )}
+          {(() => {
+            // Unread filter: merge unread messages + unread tool requests in one list
+            if (msgFilter === 'unread') {
+              const unreadMsgs = messages.filter(m => !m.read);
+              const unreadTRs  = toolRequests.filter(r => !r.read);
+              const isEmpty    = unreadMsgs.length === 0 && unreadTRs.length === 0;
+              if (isEmpty) return (
+                <div className="py-16 text-center">
+                  <Inbox className="w-12 h-12 text-white/10 mx-auto mb-3" />
+                  <p className="text-white/40 font-semibold">All caught up!</p>
+                  <p className="text-white/20 text-sm mt-1">No unread messages in your inbox.</p>
+                </div>
+              );
+              return (
+                <div className="space-y-2">
+                  {unreadMsgs.map(msg => (
+                    <MessageCard
+                      key={msg.kvKey || msg.id}
+                      msg={msg}
+                      expanded={expandedMsg === msg.kvKey}
+                      onExpand={() => setExpandedMsg(expandedMsg === msg.kvKey ? null : msg.kvKey)}
+                      onMarkRead={handleMarkRead}
+                      onDelete={handleDelete}
+                      marking={marking === msg.kvKey}
+                    />
+                  ))}
+                  {unreadTRs.map(req => (
+                    <ToolRequestCard
+                      key={req.id}
+                      req={req}
+                      expanded={expandedMsg === req.id}
+                      onExpand={() => setExpandedMsg(expandedMsg === req.id ? null : req.id)}
+                      onDelete={handleDeleteToolRequest}
+                      onMarkRead={handleMarkToolRequestRead}
+                    />
+                  ))}
+                </div>
+              );
+            }
+
+            // Tool-request filter
+            if (msgFilter === 'tool-request') {
+              if (toolRequests.length === 0) return (
+                <div className="py-16 text-center">
+                  <Wrench className="w-12 h-12 text-white/10 mx-auto mb-3" />
+                  <p className="text-white/40 font-semibold">No tool requests yet</p>
+                  <p className="text-white/20 text-sm mt-1">
+                    Requests from the "Request Your Custom Tool" form will appear here.
+                  </p>
+                </div>
+              );
+              return (
+                <div className="space-y-2">
+                  {toolRequests.map(req => (
+                    <ToolRequestCard
+                      key={req.id}
+                      req={req}
+                      expanded={expandedMsg === req.id}
+                      onExpand={() => setExpandedMsg(expandedMsg === req.id ? null : req.id)}
+                      onDelete={handleDeleteToolRequest}
+                      onMarkRead={handleMarkToolRequestRead}
+                    />
+                  ))}
+                </div>
+              );
+            }
+
+            // All — merge contact/support messages + tool requests, sorted newest first
+            if (msgFilter === 'all') {
+              type AnyItem =
+                | { _kind: 'msg'; data: Message; date: number }
+                | { _kind: 'tr';  data: ToolRequest; date: number };
+
+              const combined: AnyItem[] = [
+                ...messages.map(m => ({ _kind: 'msg' as const, data: m, date: new Date(m.createdAt).getTime() })),
+                ...toolRequests.map(r => ({ _kind: 'tr' as const, data: r, date: new Date(r.submittedAt).getTime() })),
+              ].sort((a, b) => b.date - a.date);
+
+              if (combined.length === 0) return (
+                <div className="py-16 text-center">
+                  <Inbox className="w-12 h-12 text-white/10 mx-auto mb-3" />
+                  <p className="text-white/40 font-semibold">No messages yet</p>
+                  <p className="text-white/20 text-sm mt-1">
+                    Contact, support, and tool request messages will appear here.
+                  </p>
+                </div>
+              );
+
+              return (
+                <div className="space-y-2">
+                  {combined.map(item =>
+                    item._kind === 'msg' ? (
+                      <MessageCard
+                        key={item.data.kvKey || item.data.id}
+                        msg={item.data}
+                        expanded={expandedMsg === item.data.kvKey}
+                        onExpand={() => setExpandedMsg(expandedMsg === item.data.kvKey ? null : item.data.kvKey)}
+                        onMarkRead={handleMarkRead}
+                        onDelete={handleDelete}
+                        marking={marking === item.data.kvKey}
+                      />
+                    ) : (
+                      <ToolRequestCard
+                        key={item.data.id}
+                        req={item.data}
+                        expanded={expandedMsg === item.data.id}
+                        onExpand={() => setExpandedMsg(expandedMsg === item.data.id ? null : item.data.id)}
+                        onDelete={handleDeleteToolRequest}
+                        onMarkRead={handleMarkToolRequestRead}
+                      />
+                    )
+                  )}
+                </div>
+              );
+            }
+
+            // Contact / Support filters (no tool requests)
+            if (filteredMessages.length === 0) return (
+              <div className="py-16 text-center">
+                <Inbox className="w-12 h-12 text-white/10 mx-auto mb-3" />
+                <p className="text-white/40 font-semibold">No messages yet</p>
+                <p className="text-white/20 text-sm mt-1">
+                  Messages from your contact and support forms will appear here.
+                </p>
+              </div>
+            );
+            return (
+              <div className="space-y-2">
+                {filteredMessages.map(msg => (
+                  <MessageCard
+                    key={msg.kvKey || msg.id}
+                    msg={msg}
+                    expanded={expandedMsg === msg.kvKey}
+                    onExpand={() => setExpandedMsg(expandedMsg === msg.kvKey ? null : msg.kvKey)}
+                    onMarkRead={handleMarkRead}
+                    onDelete={handleDelete}
+                    marking={marking === msg.kvKey}
+                  />
+                ))}
+              </div>
+            );
+          })()}
         </GlassCard>
       )}
     </div>

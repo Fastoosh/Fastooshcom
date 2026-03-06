@@ -1,0 +1,1249 @@
+/* -------- Base -------- */
+
+:root {
+  color-scheme: dark;
+
+  /* AE-like gray palette */
+  --bg: #202020;
+  --bg-elevated: #242424;
+  --bg-card: #242424;
+  --bg-input: #3A3A3A;
+
+  --border: #4A4A4A;
+  --border-soft: #404040;
+
+  /* AE-style accent purple */
+  --accent: #7E57C2;
+  --accent-soft: #5E3E99;
+  --accent-text: #ffffff;
+
+  --text: #E6E6E6;
+  --text-soft: #BDBDBD;
+
+  --danger: #FF5C5C;
+
+  --radius: 6px;
+  --radius-lg: 8px;
+
+  --shadow-soft: 0 4px 10px rgba(0, 0, 0, 0.4);
+
+  --font: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-width: 340px;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* -------- Layout -------- */
+
+.app {
+  min-width: 340px;
+  min-height: 100vh;
+  padding: 10px 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Header */
+
+/* Header container */
+.app-header {
+  display: flex;
+  align-items: flex-end; /* Align the title group downwards */
+  padding: 0px 25px;
+}
+
+/* Title group */
+.app-title-group {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Title row (logo + text aligned at bottom) */
+.app-title {
+  display: flex;
+  align-items: flex-end;   /* 👈 Forces logo + text to share a bottom baseline */
+  gap: 6px;
+}
+
+/* Logo styling */
+.app-logo {
+  height: 24px;            /* Adjust based on your preference */
+  width: auto;
+  object-fit: contain;
+  display: block;
+}
+
+/* Title text */
+.app-title span {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1;          /* Prevents unwanted top/bottom spacing */
+  display: inline-block;
+}
+
+/* Subtitle */
+.app-subtitle {
+  font-size: 10.5px;
+  opacity: 0.75;
+  margin-top: 2px;
+  line-height: 1.2;
+}
+
+/* Cards */
+
+.card {
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  padding: 0px 10px 10px;
+  margin-bottom: 6px;
+  box-shadow: none;
+}
+
+.card-project {
+  margin-top: 2px;
+}
+
+.card-log {
+  margin-top: 2px;
+}
+
+.card-header {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 0px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-bottom-width: 0px;
+}
+
+.card-desc {
+  margin: 2px 0 8px;
+  font-size: 11px;
+  color: var(--text-soft);
+}
+
+/* Tags */
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  font-size: 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-soft);
+  color: var(--text-soft);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* -------- Rows & Fields -------- */
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.row-compact {
+  margin-top: -2px;
+}
+
+.nested-row {
+  padding-left: 12px;
+  border-left: 1px dotted var(--border-soft);
+}
+
+.row label {
+  font-size: 11px;
+  color: var(--text-soft);
+  min-width: 90px;
+}
+
+.row > label input[type="checkbox"] {
+  margin-right: 6px;
+}
+
+.field-group {
+  display: flex;
+  flex: 1;
+  gap: 4px;
+  min-width: 0;
+}
+
+/* Inputs & Textareas */
+select{
+  width: 162px;
+}
+
+input,
+select,
+textarea,
+button {
+  font-family: var(--font);
+  font-size: 12px;
+}
+
+input,
+select,
+textarea {
+  border-radius: var(--radius);
+  border: 1px solid var(--border-soft);
+  background: var(--bg);
+  color: var(--text);
+  padding: 4px 6px;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: 1px solid var(--accent);
+  border-color: var(--accent);
+}
+
+input[readonly],
+textarea[readonly] {
+  opacity: 0.85;
+}
+
+textarea.textarea {
+  width: 100%;
+  min-height: 120px;
+  resize: vertical;
+  font-family: var(--mono);
+  font-size: 11px;
+  margin-left: 8px;
+}
+
+#statusCol{
+  width: 162px;
+}
+#namePrefix{
+  width: 162px;
+  margin-left: 8px;
+}
+#kmHelpToggle{
+    text-align: left;
+    margin-left: 8px;
+
+  
+}
+#outputPath{
+  width: 162px;
+}
+
+
+select.disabled-dropdown {
+    opacity: 0.4;
+    pointer-events: none;
+    background-color: #3a3a3a !important;
+    color: #bbb;
+    cursor: not-allowed;
+}
+/* Buttons */
+
+button {
+  border-radius: var(--radius);
+  border: 1px solid var(--border-soft);
+  background: #3A3A3A;
+  color: var(--text);
+  padding: 4px 8px;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, transform 0.05s ease;
+  white-space: nowrap;
+}
+
+button:hover {
+  background: #444444;
+  border-color: var(--accent-soft);
+}
+
+button:active {
+  transform: translateY(1px);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+#loadData {
+margin-top: 10px;
+}
+
+/* Primary / secondary buttons */
+
+.primary-btn {
+  background: #5E3E99;
+  border-color: #7E57C2;
+  color: var(--accent-text);
+  width: 162px;
+}
+
+
+.primary-btn:hover {
+  background: #7E57C2;
+}
+
+.primary-btn.small {
+  padding: 3px 7px;
+  font-size: 11px;
+}
+
+.secondary-btn {
+  background: #3A3A3A;
+  width: 162px;
+}
+
+/* Icon button */
+
+.icon-btn {
+  width: 40px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  padding-left: 8px;
+  padding-right: 8px;
+  text-align: center;
+}
+.icon-btn-primary{
+  background: #5E3E99;
+  border-color: #7E57C2;
+  color: var(--accent-text);
+
+}
+
+/* -------- Tabs (with icons, scrollable) -------- */
+
+.tabs {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;  /* left tabs + right button */
+  padding: 0 6px;
+  background: var(--panel-bg, #2e2e2e);
+  border-bottom: 1px solid #444;
+  height: 32px;       /* Firefox */
+}
+/* group left buttons */
+.tabs-left {
+  display: flex;
+}
+
+/* right action area */
+.tabs-right {
+  display: flex;
+  align-items: center;
+}
+
+/* collapse toggle button */
+.tabs-right .toggle-collapse {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.tabs-right .toggle-collapse i {
+  font-size: 14px;
+}
+.tabs::-webkit-scrollbar {
+  display: none;               /* Chrome / Edge / WebKit */
+}
+
+.tab-btn {
+  flex: 1;
+  align-items: center;
+  height: 28px;
+  font-size: 11px;
+  color: var(--text-soft);
+  width: 100%;
+  background-color: rgba(0, 0, 0, 0);
+  border-color: rgba(0, 0, 0, 0);
+  border-radius: 0%;
+}
+
+.tab-btn .tab-icon {
+  font-size: 12px;
+}
+
+.tab-btn .tab-label {
+  font-size: 11px;
+}
+
+.tab-btn.active {
+  background: #5E3E99;
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
+/* Tab panels */
+
+#tabs {
+  flex: 1;
+}
+
+.tab-panel {
+  display: none;
+}
+
+.tab-panel.active {
+  display: block;
+}
+
+/* Inline radios */
+
+.inline-radios {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.inline-radios label {
+  font-size: 11px;
+  color: var(--text-soft);
+}
+
+/* Help blocks */
+
+.help {
+  margin-top: 4px;
+  padding: 6px 7px;
+  border-radius: var(--radius);
+  border: 1px dashed var(--border-soft);
+  background: #2E2E2E;
+  font-size: 11px;
+}
+
+.help.hidden {
+  display: none;
+}
+.is-hidden{ 
+  display:none !important; 
+}
+
+.help p {
+  margin: 0 0 4px;
+}
+
+.help .example {
+  font-family: var(--mono);
+  font-size: 10px;
+  background: #252525;
+  padding: 6px 7px;
+  border-radius: 5px;
+  border: 1px solid #3F3F3F;
+  overflow-x: auto;
+}
+
+/* Linklike button */
+
+.linklike {
+  border: none;
+  background: transparent;
+  padding: 0;
+  font-size: 11px;
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+/* Tips icon */
+
+.with-tip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border-soft);
+  font-size: 10px;
+  cursor: default;
+  color: var(--text-soft);
+}
+
+/* Preview & tables */
+
+.preview {
+  max-height: 180px;
+  overflow: auto;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-soft);
+  background: var(--bg);
+  padding: 6px;
+  font-size: 11px;
+  margin-left: 8px;
+  margin-right: 8px;
+}
+
+.preview table.grid {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.preview table.grid th,
+.preview table.grid td {
+  border: 1px solid #3E3E3E;
+  padding: 2px 4px;
+  font-size: 11px;
+}
+
+.preview table.grid th {
+  background: #3A3A3A;
+  font-weight: 500;
+}
+
+/* Actions row */
+
+.actions-row {
+  justify-content: flex-start;
+  gap: 6px;
+  padding-left: 8px;
+}
+
+/* Log */
+
+#log {
+  margin: 0;
+  background: #1F1F1F;
+  border-radius: var(--radius);
+  border: 1px solid #444444;
+  padding: 6px;
+  font-family: var(--mono);
+  font-size: 10px;
+  max-height: 170px;
+  overflow: auto;
+  white-space: pre-wrap;
+  color: #CCCCCC;
+}
+
+/* -------- Responsive / Compact mode -------- */
+
+/* General narrow adjustments */
+@media (max-width: 480px) {
+  .row {
+    align-items: flex-start;
+  }
+
+  .field-group {
+    flex-direction: row;
+    flex-wrap: nowrap;
+  }
+}
+
+
+@media (max-width: 430px) {
+  .app {
+    padding: 6px 6px 10px;
+    gap: 6px;
+  }
+
+  .app-header {
+    padding: 0px 25px;
+    margin-bottom: 2px;
+  }
+
+  .app-title span {
+  font-size: 12px;
+}
+
+
+  .app-subtitle {
+    font-size: 9px;;
+  }
+
+  .card {
+    padding: 6px 7px 6px;
+    margin-bottom: 4px;
+  }
+
+  .card-header {
+    font-size: 11px;
+    margin-bottom: 4px;
+  }
+
+  /* Stack rows vertically */
+  .row {
+    /*flex-direction: column;*/
+    align-items: flex-start;
+    gap: 3px;
+    margin-bottom: 5px;
+  }
+
+  .field-group {
+    width: 100%;
+    flex-direction: row;
+    flex-wrap: nowrap;
+  }
+
+
+  .primary-btn.small {
+    padding: 2px 5px;
+    font-size: 10px;
+    
+  }
+
+  /* Tabs more compact */
+  .tabs {
+    gap: 2px;
+    margin: 2px 0 4px;
+  }
+
+  /* Turn tabs into icon-only in ultra-compact mode */
+  .tab-btn .tab-label {
+    display: none;
+  }
+
+  .tab-btn {
+    width: 40px;
+    padding-top: 4px;
+    padding-bottom: 4px;
+    padding-left: 8px;
+    padding-right: 8px;
+    flex: 0 0 auto;
+    justify-content: center;
+  }
+
+  /* Reduce log / preview height */
+  .preview {
+    max-height: 140px;
+  }
+
+  #log {
+    max-height: 120px;
+  }
+
+}
+/* Extra compact mode for very narrow docks */
+@media (max-width: 280px) {
+    /* Hide subtitle to save vertical space */
+  .app-subtitle {
+    display: none;
+  }
+    .app-title span {
+  font-size: 10px;
+}
+}
+/* Collapsible cards */
+.card-header {
+  justify-content: space-between; /* title left, toggle right */
+  cursor: pointer;                /* whole header clickable */
+}
+
+.card-title {
+  flex: 1 1 auto;
+}
+
+.card-body {
+  margin-top: 4px;
+  padding-top: 0px;
+  padding-bottom: 0px;
+}
+
+.card.collapsed .card-body {
+  display: none;
+
+}
+
+/* Toggle icon */
+.card-toggle {
+  border: none;
+  background: transparent;
+  color: var(--text-soft);
+  padding: 0 2px;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  transform: rotate(0deg);
+  transition: transform 0.15s ease, color 0.15s ease;
+}
+
+.card-toggle:hover {
+  color: var(--accent);
+}
+
+.card.collapsed .card-toggle {
+  transform: rotate(-90deg);
+}
+
+/* Per-tab tools (Collapse / Expand all) */
+.tab-tools {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  margin: 2px 0 4px;
+}
+
+.tiny-btn {
+  border: 1px solid var(--border-soft);
+  background: rgba(0, 0, 0, 0);
+  color: var(--text-soft);
+  padding: 2px 6px;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.tiny-btn:hover {
+  background: #444444;
+  border-color: var(--accent-soft);
+  color: var(--accent-text);
+}
+.disabled {
+    opacity: 0.5;
+    pointer-events: none;
+}
+/* Base tooltip look */
+.tooltip {
+  opacity: 1; /* Let Bootstrap handle fade via .show if you like */
+}
+
+.tooltip.show {
+  opacity: 1;
+}
+
+/* Bubble */
+.tooltip .tooltip-inner {
+  background-color: #7E57C2; /* ← change this */
+  color: #f1f1f1;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 3px;
+  max-width: 240px;
+}
+
+/* Arrow color (top placement) */
+.tooltip.bs-tooltip-top .tooltip-arrow::before {
+  border-top-color: #7E57C2; /* same as background */
+}
+
+/* Arrow color (bottom) */
+.tooltip.bs-tooltip-bottom .tooltip-arrow::before {
+  border-bottom-color: #7E57C2;
+}
+
+/* Arrow color (left) */
+.tooltip.bs-tooltip-start .tooltip-arrow::before {
+  border-left-color: #7E57C2;
+}
+
+/* Arrow color (right) */
+.tooltip.bs-tooltip-end .tooltip-arrow::before {
+  border-right-color: #7E57C2;
+}
+
+/* Nested sections inside a card (KeyMap / Export skeleton) */
+.nested-section {
+  display: block;
+  margin: 10px 0 12px;
+  padding: 10px 12px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(0, 0, 0, 0.18);
+}
+
+/* Thin divider between nested blocks */
+.nested-separator {
+  border: none;
+  border-top: 1px dashed rgba(255, 255, 255, 0.15);
+  margin: 10px 0 8px;
+}
+
+/* Nested header – row with title + small arrow */
+.nested-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.nested-title {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #e7e9f5;
+}
+
+/* Tiny arrow button */
+.nested-toggle {
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 0.8rem;
+  line-height: 1;
+  padding: 0;
+  transform: rotate(0deg);
+  transition: transform 0.18s ease;
+}
+
+/* When collapsed → rotate arrow + hide body */
+.nested-section.collapsed .nested-toggle {
+  transform: rotate(-90deg);
+}
+
+/* Hide everything except the header when collapsed */
+.nested-section.collapsed > :not(.nested-header) {
+  display: none;
+}
+.nested-section.nested-collapsed .nested-body {
+  display: none;
+}
+
+/* -------- Compact header / menu -------- */
+/* License icon states */
+#btnLicense i.lic-locked {
+  color: var(--danger);
+}
+#btnLicense i.lic-licensed {
+  color: #46B885;
+}
+#btnLicense i.lic-checking {
+  color: var(--text-soft);
+}
+/* Make the Log toggle row look like other dropdown-item buttons */
+#menuToggleLogRow{
+  font-size: 11px;
+  margin-left: 2px;
+  line-height: 1.2;
+  padding-top: .25rem;
+  padding-bottom: 1px;
+}
+
+/* Ensure the left label doesn't scale up */
+#menuToggleLogRow span{
+  font-size: 12px;         /* match your menu items */
+  font-weight: 400;
+}
+
+/* Shrink the switch a bit to align visually */
+#menuToggleLogRow .form-check-input{
+  transform: scale(0.9);
+  margin-top: 5px;
+}
+/* Make the Log toggle row look like other dropdown-item buttons */
+#menuToggleTooltipsRow{
+  font-size: 11px;
+  margin-left: 2px;
+  line-height: 1.2;
+  padding-top: .25rem;
+  padding-bottom: 1px;
+}
+
+/* Ensure the left label doesn't scale up */
+#menuToggleTooltipsRow span{
+  font-size: 12px;         /* match your menu items */
+  font-weight: 400;
+}
+
+/* Shrink the switch a bit to align visually */
+#menuToggleTooltipsRow .form-check-input{
+  transform: scale(0.9);
+  margin-top: 5px;
+}
+.dropdown-menu {
+  background: #151515;
+  border: 1px solid var(--border-soft);
+}
+.dropdown-item {
+  color: var(--text);
+}
+.dropdown-item:hover, .dropdown-item:focus {
+  background: #2a2a2a;
+  color: var(--text);
+}
+.dropdown-divider {
+  border-top: 1px solid var(--border-soft);
+}
+.about-title {
+  font-weight: 700;
+  font-size: 14px;
+  margin-bottom: 6px;
+}
+
+/* -------- Bootstrap modals (match panel theme) -------- */
+.modal-backdrop.show {
+  opacity: 0.72;
+}
+
+.modal .modal-content {
+  background: var(--bg-card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-soft);
+}
+
+.modal .modal-header,
+.modal .modal-footer {
+  background: var(--bg-elevated);
+  border-color: var(--border-soft);
+}
+
+.modal .modal-title {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.modal .btn-close {
+  filter: invert(1) grayscale(100%);
+  opacity: 0.75;
+}
+
+.modal .btn-close:hover {
+  opacity: 1;
+}
+
+.modal .text-muted {
+  color: var(--text-soft) !important;
+}
+
+.modal .form-label {
+  color: var(--text-soft);
+}
+
+.modal .form-control,
+.modal input.form-control,
+.modal textarea.form-control {
+  background: var(--bg-input);
+  color: var(--text);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+}
+
+.modal .form-control:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(126, 87, 194, 0.22);
+}
+
+.modal .btn {
+  border-radius: var(--radius);
+}
+
+.modal .btn-primary {
+  background: var(--accent);
+  border-color: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.modal .btn-primary:hover {
+  background: #8a63d1;
+  border-color: #6b46ad;
+}
+
+.modal .btn-outline-secondary {
+  color: var(--text);
+  border-color: var(--border-soft);
+  background: transparent;
+}
+
+.modal .btn-outline-secondary:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.modal .btn:disabled,
+.modal .btn.disabled {
+  opacity: 0.55;
+}
+/* ---------- KeyMap Builder responsiveness ---------- */
+.km-table-wrap{
+  width: 100%;
+  overflow: hidden;          /* we want shrink, not scroll */
+}
+
+/* Make the table fit the panel width */
+.km-table-wrap table.grid{
+  width: 100%;
+  min-width: 0 !important;   /* overrides inline min-width */
+  table-layout: fixed;       /* enables proper shrink behavior */
+  border-collapse: collapse;
+}
+
+/* Default: tidy 1-line with ellipsis */
+.km-table-wrap th,
+.km-table-wrap td{
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Override the global select width ONLY for builder dropdowns */
+select.km-select{
+  width: 100% !important;     /* take the cell width */
+  max-width: 162px;           /* but never exceed 162px */
+  min-width: 28px;            /* can shrink down */
+  box-sizing: border-box;
+
+  /* ensure native arrow renders in CEP/Chromium */
+  -webkit-appearance: menulist;
+  appearance: menulist;
+}
+
+/* ---------- KeyMap Builder: badges ---------- */
+.km-table-wrap .badge{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 16px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  line-height: 1;
+}
+
+/* ---------- AE target column: always full wrap (no ellipsis) ---------- */
+.km-table-wrap tbody td:first-child,
+.km-table-wrap tbody td:first-child .km-target-text{
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  line-height: 1.25;
+}
+
+/* ---------- Other columns: compact with ellipsis ---------- */
+.km-table-wrap tbody td:not(:first-child){
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* AE target cell layout */
+.km-target-wrap{
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.km-target-toggle{
+  border: 1px solid var(--border-soft);
+  background: rgba(0,0,0,0.15);
+  color: var(--text-soft);
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.km-target-toggle:hover{
+  color: var(--text);
+  border-color: var(--accent-soft);
+}
+
+.km-target-toggle i{
+  font-size: 9px;
+  line-height: 1;
+}
+.km-th-wrap{
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* smaller version for header */
+.km-target-toggle--sm{
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+}
+
+.km-target-toggle--sm i{
+  font-size: 11px;
+}
+/* KeyMap table header styling */
+.km-table-wrap table.grid thead th{
+  background: #3A3A3A;                 /* header bg */
+  border-bottom: 1px solid #4A4A4A;    /* separator line */
+}
+
+/* Optional: also add a subtle row divider */
+.km-table-wrap table.grid tbody td{
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.km-target-delete{
+  border: 1px solid var(--border-soft);
+  background: rgba(0,0,0,0.15);
+  color: var(--danger);
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.km-target-delete:hover{
+  color: #fff;
+  border-color: #FF5C5C;
+}
+.km-target-delete i{
+  font-size: 11px;
+  line-height: 1;
+}
+
+
+/* ---------- Narrow panel tweaks ---------- */
+@media (max-width: 400px){
+  .km-table-wrap tbody td:first-child{
+    font-size: 11px;
+  }
+  /* Headers smaller + wrap */
+  .km-table-wrap th{
+    font-size: 10px;
+    padding: 3px 4px;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+
+  /* Optional: slightly tighter cell padding */
+  .km-table-wrap td{
+    padding: 3px 4px;
+  }
+
+  /* Dropdown stays usable in narrow panels */
+  select.km-select{
+    width: 100% !important;
+    max-width: 162px;
+    min-width: 80px;
+    box-sizing: border-box;
+    -webkit-appearance: menulist;
+    appearance: menulist;
+  }
+
+  /* Badge becomes colored square */
+  .km-table-wrap .badge{
+    width: 15px;
+    height: 15px;
+    padding: 0;
+    border-radius: 10px;
+    font-size: 0;
+  }
+}
+
+
+/* --- Free tier: Pro-feature tooltip styling --- */
+.tooltip.pro-tooltip .tooltip-inner{background-color:#B02A37;}
+.tooltip.pro-tooltip.bs-tooltip-top .tooltip-arrow::before{border-top-color:#B02A37;}
+.tooltip.pro-tooltip.bs-tooltip-bottom .tooltip-arrow::before{border-bottom-color:#B02A37;}
+.tooltip.pro-tooltip.bs-tooltip-start .tooltip-arrow::before{border-left-color:#B02A37;}
+.tooltip.pro-tooltip.bs-tooltip-end .tooltip-arrow::before{border-right-color:#B02A37;}
+/* Popper-based placements */
+.tooltip.pro-tooltip[data-popper-placement^='top'] .tooltip-arrow::before{border-top-color:#B02A37;}
+.tooltip.pro-tooltip[data-popper-placement^='bottom'] .tooltip-arrow::before{border-bottom-color:#B02A37;}
+.tooltip.pro-tooltip[data-popper-placement^='left'] .tooltip-arrow::before{border-left-color:#B02A37;}
+.tooltip.pro-tooltip[data-popper-placement^='right'] .tooltip-arrow::before{border-right-color:#B02A37;}
+
+
+
+
+/* Locked Pro-only button styling (keeps hover for tooltips) */
+.pro-locked-btn{opacity:.55; cursor:not-allowed;}
+
+
+/* -------- Licensing -------- */
+.license-details {
+  padding: 10px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  background: rgba(255,255,255,0.03);
+  display: grid;
+  gap: 3px;
+}
+
+.license-modal-footer {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+
+.fastoosh-purple-link {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.fastoosh-purple-link:hover,
+.fastoosh-purple-link:focus {
+  color: var(--accent-2);
+  text-decoration: underline;
+}
+
+/* -------- Toast notifications -------- */
+#fdaToast.fda-toast {
+  background: #1e1e1e !important;
+  color: var(--text) !important;
+  border: 1px solid var(--border) !important;
+  border-left-width: 3px !important;
+  border-radius: var(--radius);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.55);
+  min-width: 220px;
+  max-width: 320px;
+  font-size: 12px;
+}
+
+#fdaToast.fda-toast .toast-body {
+  color: var(--text) !important;
+}
+
+#fdaToast.fda-toast .btn-close {
+  filter: invert(1) grayscale(100%);
+  opacity: 0.5;
+}
+#fdaToast.fda-toast .btn-close:hover {
+  opacity: 0.85;
+}
+
+/* Variants — only the left accent stripe changes */
+#fdaToast.fda-toast-success {
+  border-left-color: #46B885 !important;
+}
+#fdaToast.fda-toast-danger {
+  border-left-color: var(--danger) !important;
+}
+#fdaToast.fda-toast-warning {
+  border-left-color: #E8A838 !important;
+}
+#fdaToast.fda-toast-info {
+  border-left-color: var(--accent) !important;
+}

@@ -384,7 +384,7 @@ export function LSRevenuePanel() {
         ) : (
           <ResponsiveContainer width="100%" height={230}>
             <AreaChart data={chartSeries} margin={{ top: 5, right: 10, left: 5, bottom: 0 }}>
-              <defs>
+              <defs key="defs-ls-rev">
                 <linearGradient id="lsGradRevenue" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%"  stopColor={NEON_GOLD}  stopOpacity={0.4} />
                   <stop offset="95%" stopColor={NEON_GOLD}  stopOpacity={0} />
@@ -404,9 +404,9 @@ export function LSRevenuePanel() {
               <YAxis yAxisId="cnt" orientation="right" tick={{ fill: '#ffffff20', fontSize: 9 }} axisLine={false} tickLine={false} allowDecimals={false} />
               <Tooltip content={<ChartTip />} />
               <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: '11px', color: '#ffffff50' }} />
-              <Area yAxisId="rev" type="monotone" dataKey="revenue" stroke={NEON_GOLD}  strokeWidth={2.5} fill="url(#lsGradRevenue)" name="Revenue" />
-              <Area yAxisId="cnt" type="monotone" dataKey="sales"   stroke={NEON_GREEN} strokeWidth={1.5} fill="url(#lsGradSales)"   name="Sales"   />
-              <Area yAxisId="cnt" type="monotone" dataKey="refunds" stroke={NEON_RED}   strokeWidth={1.5} fill="url(#lsGradRefunds)" name="Refunds"  />
+              <Area key="revenue" yAxisId="rev" type="monotone" dataKey="revenue" stroke={NEON_GOLD}  strokeWidth={2.5} fill="url(#lsGradRevenue)" name="Revenue" />
+              <Area key="sales"   yAxisId="cnt" type="monotone" dataKey="sales"   stroke={NEON_GREEN} strokeWidth={1.5} fill="url(#lsGradSales)"   name="Sales"   />
+              <Area key="refunds" yAxisId="cnt" type="monotone" dataKey="refunds" stroke={NEON_RED}   strokeWidth={1.5} fill="url(#lsGradRefunds)" name="Refunds"  />
             </AreaChart>
           </ResponsiveContainer>
         )}
@@ -479,7 +479,7 @@ export function LSRevenuePanel() {
                     dataKey="revenue"
                   >
                     {byVariant.map((_, i) => (
-                      <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                      <Cell key={`var-${i}`} fill={CHART_COLORS[i % CHART_COLORS.length]} />
                     ))}
                   </Pie>
                   <Tooltip

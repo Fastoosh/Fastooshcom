@@ -169,6 +169,9 @@
     "ctaHeading": "Build faster, animate better",
     "ctaSubtitle": "All tools come with a 30-day money-back guarantee and lifetime updates.",
     "ctaBtn": "Browse all tools",
+    "customCtaHeading": "Need a tool built for your workflow?",
+    "customCtaSubtitle": "We build custom scripts, plugins, and automation tools tailored to your exact production pipeline — whatever software you use.",
+    "customCtaBtn": "Request Your Custom Tool",
     "detail": {
       "backToTools": "Back to tools",
       "loadingTool": "Loading tool...",

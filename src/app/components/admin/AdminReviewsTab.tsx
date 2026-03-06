@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { GlassCard } from '../shared/GlassCard';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
 import { AdminSelect } from './AdminSelect';
-import { Plus, Pencil, Trash2, Save, X, Star, MessageSquare, User, Calendar, Wrench, BadgeCheck, AlertCircle } from 'lucide-react';
+import { Plus, Pencil, Trash2, Save, X, Star, MessageSquare, User, Calendar, Wrench, BadgeCheck, AlertCircle, Sparkles, ChevronDown, ChevronUp, CheckCircle2, Loader2 } from 'lucide-react';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-e07959ec`;
@@ -26,6 +26,8 @@ interface Tool {
   name: string;
   slug?: string;
   imageUrl?: string;
+  description?: string;
+  createdAt?: string;
 }
 
 function StarPicker({ value, onChange }: { value: number; onChange: (n: number) => void }) {
@@ -78,6 +80,14 @@ export function AdminReviewsTab() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ type: 'ok' | 'err'; msg: string } | null>(null);
   const [filterToolId, setFilterToolId] = useState('');
+
+  // AI generation state
+  const [showAiPanel, setShowAiPanel] = useState(false);
+  const [aiCount, setAiCount] = useState(3);
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const [aiResult, setAiResult] = useState<{ count: number; names: string[] } | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const aiPanelRef = useRef<HTMLDivElement>(null);
 
   const adminToken = localStorage.getItem('admin_token') || '';
   const adminHeaders = {
@@ -151,6 +161,9 @@ export function AdminReviewsTab() {
     setShowForm(false);
     setForm(EMPTY_FORM);
     setFeedback(null);
+    setShowAiPanel(false);
+    setAiResult(null);
+    setAiError(null);
   };
 
   /* ── save ──────────────────────────────────────────────────────────────── */
@@ -190,6 +203,34 @@ export function AdminReviewsTab() {
       setFeedback({ type: 'err', msg: `Network error: ${err}` });
     }
     setSaving(false);
+  };
+
+  /* ── AI generation ─────────────────────────────────────────────────────── */
+  const handleAiGenerate = async () => {
+    if (!form.toolId) {
+      setAiError('Please select a tool first.');
+      return;
+    }
+    setAiGenerating(true);
+    setAiResult(null);
+    setAiError(null);
+    try {
+      const res = await fetch(`${API_BASE}/admin/generate-fake-reviews`, {
+        method: 'POST',
+        headers: adminHeaders,
+        body: JSON.stringify({ toolId: form.toolId, count: aiCount }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setAiResult({ count: data.count, names: data.data.map((r: any) => r.userName) });
+        await fetchReviews();
+      } else {
+        setAiError(data.error || 'AI generation failed.');
+      }
+    } catch (err) {
+      setAiError(`Network error: ${err}`);
+    }
+    setAiGenerating(false);
   };
 
   /* ── delete ────────────────────────────────────────────────────────────── */
@@ -346,6 +387,107 @@ export function AdminReviewsTab() {
               </div>
             )}
 
+            {/* ── AI Review Generator ── */}
+            <div className="rounded-xl border border-violet-500/25 bg-violet-500/5 overflow-hidden">
+              {/* Header / toggle */}
+              <button
+                type="button"
+                onClick={() => { setShowAiPanel(p => !p); setAiResult(null); setAiError(null); }}
+                className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-violet-500/10 transition-colors cursor-pointer"
+              >
+                <span className="flex items-center gap-2 text-violet-300 font-medium text-sm">
+                  <Sparkles className="w-4 h-4 text-violet-400" />
+                  Generate with AI
+                  <span className="text-violet-500/60 font-normal text-xs">— bulk-create realistic 5★ reviews</span>
+                </span>
+                {showAiPanel
+                  ? <ChevronUp className="w-4 h-4 text-violet-400/60" />
+                  : <ChevronDown className="w-4 h-4 text-violet-400/60" />}
+              </button>
+
+              {showAiPanel && (
+                <div ref={aiPanelRef} className="px-4 pb-4 space-y-3 border-t border-violet-500/15">
+                  {/* Tool info banner */}
+                  {!form.toolId && (
+                    <p className="mt-3 text-xs text-amber-400/70 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+                      ⚠ Select a tool above first.
+                    </p>
+                  )}
+                  {form.toolId && tools.find(t => t.id === form.toolId) && (
+                    <div className="mt-3 flex items-start gap-2 text-xs text-violet-300/70 bg-violet-500/10 border border-violet-500/20 rounded-lg px-3 py-2">
+                      <Wrench className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-violet-400" />
+                      <span>
+                        Gemini will read <strong className="text-violet-200">{tools.find(t => t.id === form.toolId)!.name}</strong>'s description and generate reviews with dates after{' '}
+                        <strong className="text-violet-200">
+                          {tools.find(t => t.id === form.toolId)!.createdAt
+                            ? new Date(tools.find(t => t.id === form.toolId)!.createdAt!).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                            : 'its release'}
+                        </strong>.
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Count picker */}
+                  <div className="flex items-center gap-3">
+                    <span className="text-white/50 text-xs whitespace-nowrap">Number of reviews:</span>
+                    <div className="flex items-center gap-1">
+                      {[1,2,3,4,5,7,10].map(n => (
+                        <button
+                          key={n}
+                          type="button"
+                          onClick={() => setAiCount(n)}
+                          className={`w-8 h-8 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                            aiCount === n
+                              ? 'bg-violet-600 text-white shadow-lg shadow-violet-900/40'
+                              : 'bg-white/5 text-white/50 hover:bg-white/10 hover:text-white/80'
+                          }`}
+                        >
+                          {n}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Generate button */}
+                  <Button
+                    type="button"
+                    onClick={handleAiGenerate}
+                    disabled={aiGenerating || !form.toolId}
+                    className="cursor-pointer bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white disabled:opacity-50 disabled:cursor-not-allowed w-full justify-center"
+                  >
+                    {aiGenerating
+                      ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Generating {aiCount} review{aiCount > 1 ? 's' : ''}…</>
+                      : <><Sparkles className="w-4 h-4 mr-2" />Generate & Save {aiCount} Review{aiCount > 1 ? 's' : ''}</>}
+                  </Button>
+
+                  {/* Error */}
+                  {aiError && (
+                    <div className="flex items-start gap-2 text-xs px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400">
+                      <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                      {aiError}
+                    </div>
+                  )}
+
+                  {/* Success */}
+                  {aiResult && (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-xs px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                        <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
+                        <span>✅ {aiResult.count} review{aiResult.count > 1 ? 's' : ''} saved successfully!</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 px-1">
+                        {aiResult.names.map((name, i) => (
+                          <span key={i} className="text-[11px] px-2 py-0.5 rounded-full bg-violet-500/12 border border-violet-500/20 text-violet-300/80">
+                            {name}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             {/* Actions */}
             <div className="flex gap-3 pt-1">
               <Button
@@ -356,7 +498,7 @@ export function AdminReviewsTab() {
                 <Save className="w-4 h-4 mr-2" />
                 {saving ? 'Saving…' : 'Save Review'}
               </Button>
-              <Button variant="outline" onClick={closeForm} className="cursor-pointer border-border hover:bg-accent hover:border-border/50 dark:border-white/30 dark:text-white dark:hover:bg-white/10 dark:hover:border-white/50">
+              <Button variant="outline" onClick={closeForm} className="bg-black text-white hover:bg-white hover:text-black dark:bg-white dark:text-black dark:hover:bg-black dark:hover:text-white border-transparent cursor-pointer">
                 <X className="w-4 h-4 mr-2" />Cancel
               </Button>
             </div>

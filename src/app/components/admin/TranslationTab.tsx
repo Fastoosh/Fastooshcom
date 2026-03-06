@@ -322,7 +322,6 @@ function flattenItems(
 }
 
 const PROJECT_FIELDS = [
-  { key: 'title',        label: 'Title'        },
   { key: 'description',  label: 'Description',  multiline: true },
   { key: 'category',     label: 'Category'     },
   { key: 'client',       label: 'Client'       },

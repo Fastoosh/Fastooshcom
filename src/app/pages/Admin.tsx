@@ -25,6 +25,8 @@ import { ResetTab } from '../components/admin/ResetTab';
 import { VimeoPicker } from '../components/admin/VimeoPicker';
 import { GuideTab } from '../components/admin/GuideTab';
 import { LegalTab } from '../components/admin/LegalTab';
+import { VideoThumbnailCapture } from '../components/admin/VideoThumbnailCapture';
+import { ToolRequestsTab } from '../components/admin/ToolRequestsTab';
 
 import { ScrollingGradientBackground } from '../components/shared/ScrollingGradientBackground';
 
@@ -768,6 +770,7 @@ export function Admin() {
             <TabsTrigger value="traffic">🌐 Traffic</TabsTrigger>
             <TabsTrigger value="translations">🌍 Translations</TabsTrigger>
             <TabsTrigger value="legal">⚖️ Legal</TabsTrigger>
+            <TabsTrigger value="messages">🔧 Messages</TabsTrigger>
             <TabsTrigger value="reset" className="text-red-400 data-[state=active]:text-red-300">⚠️ Reset</TabsTrigger>
             <TabsTrigger value="guide">📖 Guide</TabsTrigger>
           </TabsList>
@@ -1452,6 +1455,11 @@ export function Admin() {
           {/* LEADS TAB */}
           <TabsContent value="leads">
             <LeadsTab />
+          </TabsContent>
+
+          {/* TOOL REQUESTS / MESSAGES TAB */}
+          <TabsContent value="messages">
+            <ToolRequestsTab />
           </TabsContent>
 
           {/* HOME TAB */}
@@ -2190,287 +2198,20 @@ function ProjectForm({
 
         {/* Video Thumbnail Capture Tool */}
         {showVideoCapture && (
-          <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-black/95 border border-white/20 rounded-lg p-6 max-w-6xl w-full max-h-[90vh] overflow-y-auto">
-              <div className="flex justify-between items-center mb-6">
-                <div>
-                  <h3 className="text-xl font-bold text-white">Capture Video Thumbnails</h3>
-                  <p className="text-sm text-gray-400 mt-1">Play the video and click "Capture Frame" at your desired moments</p>
-                </div>
-                <button
-                  onClick={() => {
-                    setShowVideoCapture(false);
-                  }}
-                  className="text-white/60 hover:text-white transition-colors"
-                >
-                  <X className="w-6 h-6" />
-                </button>
-              </div>
-              
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Video Player Section */}
-                <div>
-                  <div className="bg-black rounded-lg overflow-hidden mb-4" style={{ height: '400px' }}>
-                    {(() => {
-                      const url = formData.videoUrl;
-                      
-                      // Check if it's a direct video file URL (.mp4, .webm, etc.)
-                      if (url && (url.endsWith('.mp4') || url.endsWith('.webm') || url.endsWith('.mov') || url.endsWith('.avi') || url.includes('.mp4?') || url.includes('.webm?'))) {
-                        return (
-                          <video
-                            id="captureVideo"
-                            src={url}
-                            controls
-                            crossOrigin="anonymous"
-                            className="w-full h-full"
-                          />
-                        );
-                      }
-                      
-                      // Check if it's YouTube
-                      if (url && (url.includes('youtube.com') || url.includes('youtu.be'))) {
-                        const videoId = url.includes('youtu.be') 
-                          ? url.split('youtu.be/')[1]?.split('?')[0]
-                          : url.split('v=')[1]?.split('&')[0];
-                        
-                        if (videoId) {
-                          return (
-                            <iframe
-                              id="videoFrame"
-                              src={`https://www.youtube.com/embed/${videoId}`}
-                              className="w-full h-full"
-                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                              allowFullScreen
-                            />
-                          );
-                        }
-                      }
-                      
-                      // Check if it's Vimeo
-                      if (url && url.includes('vimeo.com')) {
-                        const videoId = url.split('vimeo.com/')[1]?.split('?')[0]?.split('/').pop();
-                        
-                        if (videoId) {
-                          return (
-                            <iframe
-                              id="videoFrame"
-                              src={`https://player.vimeo.com/video/${videoId}`}
-                              className="w-full h-full"
-                              allow="autoplay; fullscreen; picture-in-picture"
-                              allowFullScreen
-                            />
-                          );
-                        }
-                      }
-                      
-                      // Default: show placeholder
-                      return (
-                        <div className="flex items-center justify-center h-full text-gray-400">
-                          <div className="text-center">
-                            <p>Video preview</p>
-                            <p className="text-sm mt-2">Enter a video URL above</p>
-                          </div>
-                        </div>
-                      );
-                    })()}
-                  </div>
-                  
-                  {/* Capture Button */}
-                  <Button
-                    type="button"
-                    disabled={capturedFrames.length >= 10}
-                    onClick={async () => {
-                      const url = formData.videoUrl;
-                      
-                      // Check if it's YouTube - fetch auto-generated thumbnails
-                      if (url && (url.includes('youtube.com') || url.includes('youtu.be'))) {
-                        const videoId = url.includes('youtu.be') 
-                          ? url.split('youtu.be/')[1]?.split('?')[0]
-                          : url.split('v=')[1]?.split('&')[0];
-                        
-                        if (videoId) {
-                          // YouTube provides multiple auto-generated thumbnails
-                          const thumbnails = [
-                            `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
-                            `https://img.youtube.com/vi/${videoId}/sddefault.jpg`,
-                            `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
-                            `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
-                            `https://img.youtube.com/vi/${videoId}/0.jpg`,
-                            `https://img.youtube.com/vi/${videoId}/1.jpg`,
-                            `https://img.youtube.com/vi/${videoId}/2.jpg`,
-                            `https://img.youtube.com/vi/${videoId}/3.jpg`,
-                          ];
-                          
-                          // Load all thumbnails
-                          setCapturedFrames(thumbnails);
-                          return;
-                        }
-                      }
-                      
-                      // Check if it's Vimeo - use Vimeo API
-                      if (url && url.includes('vimeo.com')) {
-                        const videoId = url.split('vimeo.com/')[1]?.split('?')[0]?.split('/').pop();
-                        
-                        if (videoId) {
-                          try {
-                            const response = await fetch(`https://vimeo.com/api/v2/video/${videoId}.json`);
-                            const data = await response.json();
-                            
-                            if (data && data[0]) {
-                              const thumbnails = [
-                                data[0].thumbnail_large,
-                                data[0].thumbnail_medium,
-                                data[0].thumbnail_small,
-                              ].filter(Boolean);
-                              
-                              setCapturedFrames(thumbnails);
-                              return;
-                            }
-                          } catch (error) {
-                            alert('Failed to load Vimeo thumbnails. The video might be private.');
-                            return;
-                          }
-                        }
-                      }
-                      
-                      // Try to capture from video element (for direct video URLs)
-                      const video = document.getElementById('captureVideo') as HTMLVideoElement;
-                      if (!video) {
-                        alert('Video not loaded. Please enter a direct video file URL (.mp4, .webm, .mov, .avi)');
-                        return;
-                      }
-                      
-                      // Create canvas
-                      const canvas = document.createElement('canvas');
-                      canvas.width = video.videoWidth || 1280;
-                      canvas.height = video.videoHeight || 720;
-                      
-                      const ctx = canvas.getContext('2d');
-                      if (!ctx) {
-                        alert('Failed to create canvas context');
-                        return;
-                      }
-                      
-                      // Draw current frame
-                      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                      
-                      // Convert to data URL
-                      const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
-                      
-                      // Add to captured frames
-                      setCapturedFrames(prev => [...prev, dataUrl]);
-                    }}
-                    className="w-full cursor-pointer bg-gradient-to-r from-purple-600 to-blue-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {formData.videoUrl && (formData.videoUrl.includes('youtube.com') || formData.videoUrl.includes('youtu.be'))
-                      ? '📥 Load YouTube Thumbnails'
-                      : formData.videoUrl && formData.videoUrl.includes('vimeo.com')
-                      ? '📥 Load Vimeo Thumbnails'
-                      : `📸 Capture Current Frame (${capturedFrames.length}/10)`}
-                  </Button>
-                  
-                  <p className="text-xs text-gray-400 mt-2 text-center">
-                    {formData.videoUrl && (formData.videoUrl.includes('youtube.com') || formData.videoUrl.includes('youtu.be'))
-                      ? 'Click to load YouTube\'s auto-generated thumbnail options'
-                      : formData.videoUrl && formData.videoUrl.includes('vimeo.com')
-                      ? 'Click to load Vimeo\'s generated thumbnails'
-                      : 'Play the video and pause at desired moments to capture frames'}
-                  </p>
-                </div>
-                
-                {/* Captured Thumbnails Section */}
-                <div>
-                  <div className="flex justify-between items-center mb-3">
-                    <h4 className="text-white font-semibold">Captured Thumbnails ({capturedFrames.length})</h4>
-                    {capturedFrames.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (confirm('Clear all captured thumbnails?')) {
-                            setCapturedFrames([]);
-                            setSelectedThumbnailIndex(null);
-                          }
-                        }}
-                        className="text-xs text-red-400 hover:text-red-300 transition-colors"
-                      >
-                        Clear All
-                      </button>
-                    )}
-                  </div>
-                  {capturedFrames.length === 0 ? (
-                    <div className="text-center py-12 text-gray-400">
-                      <p>No frames captured yet</p>
-                      <p className="text-sm mt-2">Load thumbnails or capture frames from your video</p>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-2 gap-3 max-h-[400px] overflow-y-auto">
-                      {capturedFrames.map((frame, index) => {
-                        const isSelected = selectedThumbnailIndex === index;
-                        console.log(`Frame ${index}: isSelected=${isSelected}, selectedThumbnailIndex=${selectedThumbnailIndex}`);
-                        return (
-                          <div
-                            key={index}
-                            className={`relative group border-2 rounded-lg overflow-hidden transition-all ${
-                              isSelected 
-                                ? 'border-purple-500 shadow-lg shadow-purple-500/50' 
-                                : 'border-white/10 hover:border-purple-500'
-                            }`}
-                          >
-                            <img
-                              src={frame}
-                              alt={`Captured frame ${index + 1}`}
-                              className="w-full cursor-pointer"
-                              onClick={() => {
-                                console.log('Thumbnail clicked! Index:', index, 'Frame URL:', frame);
-                                console.log('Current formData.imageUrl:', formData.imageUrl);
-                                console.log('Current selectedThumbnailIndex:', selectedThumbnailIndex);
-                                
-                                setFormData({ ...formData, imageUrl: frame });
-                                setErrors(prev => ({ ...prev, imageUrl: '' }));
-                                setSelectedThumbnailIndex(index);
-                                
-                                console.log('After update - selectedThumbnailIndex should be:', index);
-                              }}
-                            />
-                            {/* Selected Badge */}
-                            {isSelected && (
-                              <div className="absolute top-2 left-2 bg-purple-500 text-white text-xs font-bold px-2 py-1 rounded-full shadow-lg z-10">
-                                ✓ Selected
-                              </div>
-                            )}
-                            {/* Delete button - always visible on mobile, hover on desktop */}
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setCapturedFrames(prev => prev.filter((_, i) => i !== index));
-                                // Reset selected index if we delete the selected thumbnail
-                                if (selectedThumbnailIndex === index) {
-                                  setSelectedThumbnailIndex(null);
-                                } else if (selectedThumbnailIndex !== null && selectedThumbnailIndex > index) {
-                                  // Adjust selected index if we delete a thumbnail before the selected one
-                                  setSelectedThumbnailIndex(selectedThumbnailIndex - 1);
-                                }
-                              }}
-                              className="absolute top-2 right-2 bg-red-500 hover:bg-red-600 text-white rounded-full p-1.5 shadow-lg z-10 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
-                            >
-                              <X className="w-4 h-4" />
-                            </button>
-                            {/* Overlay with "Click to Select" text */}
-                            {!isSelected && (
-                              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center pb-3 pointer-events-none">
-                                <span className="text-white text-sm font-semibold">Click to Select</span>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
+          <VideoThumbnailCapture
+            videoUrl={formData.videoUrl}
+            initialFrames={capturedFrames}
+            onApply={(frames, selectedIdx) => {
+              setCapturedFrames(frames);
+              setSelectedThumbnailIndex(selectedIdx);
+              if (selectedIdx !== null && frames[selectedIdx]) {
+                setFormData(prev => ({ ...prev, imageUrl: frames[selectedIdx] }));
+                setErrors(prev => ({ ...prev, imageUrl: '' }));
+                setFormMessage({ type: 'success', text: '✅ Thumbnail applied as project image.' });
+              }
+            }}
+            onClose={() => setShowVideoCapture(false)}
+          />
         )}
         
         <div>

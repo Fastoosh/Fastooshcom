@@ -96,6 +96,9 @@ export function Projects() {
             : {}),
         }));
         setProjects(merged);
+      } else {
+        // API unavailable or table empty — show fallback projects
+        setProjects(fallbackProjects);
       }
 
       if (lang !== 'en' && Object.keys(categoryTrans).length > 0) {
@@ -186,18 +189,18 @@ export function Projects() {
                 transition={{ duration: 0.5, delay: index * 0.1 }}
                 layout
               >
-                <GlassCard hover neonBorder className="overflow-hidden group h-full">
-                  <div className="aspect-video overflow-hidden">
-                    <img 
-                      src={project.imageUrl} 
-                      alt={project.title}
-                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                    />
-                  </div>
-                  <div className="p-6">
-                    <div className="text-xs text-purple-400 mb-2">{categoryTranslations[project.category] || project.category}</div>
-                    <h3 className="text-xl mb-2">{project.title}</h3>
-                    <p className="text-white/60 text-sm">{project.description}</p>
+                <GlassCard hover neonBorder className="overflow-hidden group aspect-square">
+                  {/* Full-bleed image */}
+                  <img
+                    src={project.imageUrl}
+                    alt={project.title}
+                    className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                  />
+                  {/* Title-only hover overlay */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-6" style={{ zIndex: 5 }}>
+                    <h3 className="text-white text-xl font-semibold leading-snug drop-shadow-lg">
+                      {project.title}
+                    </h3>
                   </div>
                 </GlassCard>
               </motion.a>

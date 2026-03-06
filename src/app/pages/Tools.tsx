@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { motion } from 'motion/react';
 import { GlassCard } from "../components/shared/GlassCard";
 import { NeonButton } from "../components/shared/NeonButton";
 import { SeoHead } from "../components/shared/SeoHead";
+import { CustomToolRequestModal } from "../components/shared/CustomToolRequestModal";
 import { Zap, Star, Crown } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { fetchTranslations, deepMergeTranslations } from "../utils/translations";
@@ -96,17 +97,13 @@ export function Tools() {
   const navigate = useNavigate();
   const [tools, setTools] = useState(fallbackTools);
   const [loading, setLoading] = useState(true);
+  const [showCustomModal, setShowCustomModal] = useState(false);
   const [statuses, setStatuses] = useState<{ label: string; color: string }[]>(DEFAULT_STATUSES);
   const [ratings, setRatings] = useState<Record<string, { avg: number; count: number }>>({});
-  // CMS category translations: toolStatuses sub-map { "New": "Nouveau", ... }
   const [cmsStatusTrans, setCmsStatusTrans] = useState<Record<string, string>>({});
 
-  // Ratings only need fetching once — they're language-independent
   useEffect(() => { fetchRatings(); }, []);
 
-  // Load tools whenever language changes (also covers initial mount).
-  // loadTools fetches tool data + translations in one Promise.all so the
-  // grid always renders translated content on the first paint — no English flash.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadTools(i18n.language); }, [i18n.language]);
 
@@ -124,8 +121,6 @@ export function Tools() {
 
   const loadTools = async (lang = i18n.language) => {
     try {
-      // Fetch tool data, settings, AND translations in one go so we can render
-      // translated content immediately — no English flash on non-EN languages.
       const [toolsResponse, settingsResponse, trans, categoryTrans] = await Promise.all([
         api.getTools(),
         api.getSettings(),
@@ -137,7 +132,6 @@ export function Tools() {
         setStatuses(settingsResponse.data.toolStatuses);
       }
 
-      // CMS status-badge translations
       if (lang !== 'en' && (categoryTrans as any)?.toolStatuses) {
         setCmsStatusTrans((categoryTrans as any).toolStatuses as Record<string, string>);
       } else {
@@ -169,7 +163,6 @@ export function Tools() {
             category: tool.category || 'Tools',
           };
 
-          // Merge translations immediately — component never sees English
           const toolTrans = (trans as Record<string, any>)[tool.id];
           return toolTrans
             ? { ...transformed, ...deepMergeTranslations(transformed, toolTrans) }
@@ -179,7 +172,6 @@ export function Tools() {
       }
     } catch (error) {
       console.error('Error loading tools:', error);
-      // Keep fallback tools on error
     }
     setLoading(false);
   };
@@ -245,17 +237,16 @@ export function Tools() {
                       <div className="w-full h-full bg-gradient-to-br from-purple-900/40 to-blue-900/40" />
                     )}
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-                    {/* Category badge overlaid on image */}
+                    {/* Category badge */}
                     <div className="absolute top-3 left-3 rtl:left-auto rtl:right-3 flex items-center gap-1.5 rtl:flex-row-reverse">
                       <div className={`inline-flex items-center gap-1 rtl:flex-row-reverse px-3 py-1 rounded-full bg-gradient-to-r ${getBadgeStyle(tool.category, statuses)} text-white text-xs`}>
-                        {tool.category === "Pro" && <Crown className="w-3 h-3" />}
-                        {tool.category === "Popular" && <Star className="w-3 h-3" />}
-                        {tool.category === "New" && <Zap className="w-3 h-3" />}
+                        {tool.category === "Pro"     && <Crown className="w-3 h-3" />}
+                        {tool.category === "Popular" && <Star  className="w-3 h-3" />}
+                        {tool.category === "New"     && <Zap   className="w-3 h-3" />}
                         {cmsStatusTrans[tool.category] || t(`tools.statuses.${tool.category}`, { defaultValue: tool.category })}
                       </div>
-
                     </div>
-                    {/* Price overlaid bottom-right */}
+                    {/* Price */}
                     <div className="absolute bottom-3 right-3 rtl:right-auto rtl:left-3 flex items-baseline gap-1.5">
                       {tool.oldPrice && (
                         <span className="text-xs text-white/40 line-through">{tool.oldPrice}</span>
@@ -282,8 +273,6 @@ export function Tools() {
                       )}
                     </div>
                     <p className="text-white/60 mb-6 flex-grow text-sm leading-relaxed">{tool.description}</p>
-
-                    {/* CTA */}
                     <NeonButton className="w-full justify-center">
                       {t('tools.getIt')}
                     </NeonButton>
@@ -294,7 +283,7 @@ export function Tools() {
           </div>
         )}
 
-        {/* Support CTA */}
+        {/* Custom Tool CTA */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -302,13 +291,21 @@ export function Tools() {
           className="text-center"
         >
           <GlassCard className="p-12 w-full">
-            <h3 className="text-2xl mb-4">{t('tools.ctaHeading')}</h3>
+            <h3 className="text-2xl mb-4">{t('tools.customCtaHeading')}</h3>
             <p className="text-white/60 mb-6">
-              {t('tools.ctaSubtitle')}
+              {t('tools.customCtaSubtitle')}
             </p>
-            <NeonButton href="/work-with-us">{t('common.workWithUs')}</NeonButton>
+            <button
+              onClick={() => setShowCustomModal(true)}
+              className="inline-flex items-center gap-2 px-8 py-3.5 rounded-xl font-semibold text-sm text-white transition-all hover:opacity-90 hover:scale-[1.02] active:scale-[0.98]"
+              style={{ background: "linear-gradient(135deg, #7c3aed, #4f46e5)" }}
+            >
+              {t('tools.customCtaBtn')}
+            </button>
           </GlassCard>
         </motion.div>
+
+        <CustomToolRequestModal open={showCustomModal} onClose={() => setShowCustomModal(false)} />
       </div>
     </div>
   );

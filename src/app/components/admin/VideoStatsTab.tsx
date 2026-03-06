@@ -289,7 +289,7 @@ export function VideoStatsTab() {
               <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
               <Bar dataKey={chartMetric} name={chartLabel} radius={[6, 6, 0, 0]}>
                 {chartData.map((_, i) => (
-                  <Cell key={i} fill={PALETTE[i % PALETTE.length]} fillOpacity={0.85} />
+                  <Cell key={`vs-${i}`} fill={PALETTE[i % PALETTE.length]} fillOpacity={0.85} />
                 ))}
               </Bar>
             </BarChart>

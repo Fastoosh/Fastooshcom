@@ -721,7 +721,7 @@ export function BehaviorTab() {
             ) : (
               <ResponsiveContainer width="100%" height={200}>
                 <AreaChart data={data.dailySeries} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
-                  <defs>
+                  <defs key="defs-behavior">
                     {['sessions','toolViews','buyClicks'].map((k, i) => (
                       <linearGradient key={k} id={`bg${k}`} x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%"  stopColor={CHART_PALETTE[i]} stopOpacity={0.3} />
@@ -733,9 +733,9 @@ export function BehaviorTab() {
                   <XAxis dataKey="date" tickFormatter={shortDate} tick={{ fill: '#ffffff25', fontSize: 9 }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fill: '#ffffff20', fontSize: 9 }} axisLine={false} tickLine={false} allowDecimals={false} />
                   <Tooltip content={<ChartTip />} />
-                  <Area type="monotone" dataKey="sessions"  stroke={C.blue}   strokeWidth={2} fill="url(#bgsessions)"  name="Sessions"   />
-                  <Area type="monotone" dataKey="toolViews" stroke={C.purple} strokeWidth={1.5} fill="url(#bgtoolViews)" name="Tool Views" />
-                  <Area type="monotone" dataKey="buyClicks" stroke={C.amber}  strokeWidth={1.5} fill="url(#bgbuyClicks)" name="Buy Clicks" />
+                  <Area key="sessions"  type="monotone" dataKey="sessions"  stroke={C.blue}   strokeWidth={2}   fill="url(#bgsessions)"  name="Sessions"   />
+                  <Area key="toolViews" type="monotone" dataKey="toolViews" stroke={C.purple} strokeWidth={1.5} fill="url(#bgtoolViews)" name="Tool Views" />
+                  <Area key="buyClicks" type="monotone" dataKey="buyClicks" stroke={C.amber}  strokeWidth={1.5} fill="url(#bgbuyClicks)" name="Buy Clicks" />
                 </AreaChart>
               </ResponsiveContainer>
             )}
@@ -794,7 +794,7 @@ export function BehaviorTab() {
                       <Pie data={data.deviceBreakdown} cx="50%" cy="50%" innerRadius={35} outerRadius={58}
                         paddingAngle={3} dataKey="count" nameKey="device">
                         {data.deviceBreakdown.map((_, i) => (
-                          <Cell key={i} fill={CHART_PALETTE[i % CHART_PALETTE.length]} />
+                          <Cell key={`dev-${i}`} fill={CHART_PALETTE[i % CHART_PALETTE.length]} />
                         ))}
                       </Pie>
                       <Tooltip content={({ active, payload }: any) => {

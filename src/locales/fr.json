@@ -169,6 +169,9 @@
     "ctaHeading": "Créez plus vite, animez mieux",
     "ctaSubtitle": "Tous les outils sont accompagnés d'une garantie de remboursement de 30 jours et de mises à jour à vie.",
     "ctaBtn": "Tous les outils",
+    "customCtaHeading": "Besoin d'un outil conçu pour votre workflow ?",
+    "customCtaSubtitle": "Nous développons des scripts, plugins et outils d'automatisation sur mesure, adaptés à votre pipeline de production — quel que soit votre logiciel.",
+    "customCtaBtn": "Demandez votre outil personnalisé",
     "detail": {
       "backToTools": "Retour aux outils",
       "loadingTool": "Chargement de l'outil...",

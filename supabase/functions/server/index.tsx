@@ -2126,6 +2126,561 @@ const generateSlug = (title: string): string =>
     .replace(/^-+|-+$/g, '');
 
 // Get all projects
+// ── Vimeo thumbnails via API (admin only) ─────────────────────────────────────
+app.get("/make-server-e07959ec/admin/vimeo-thumbnails/:videoId", requireAuth, async (c) => {
+  try {
+    const videoId = c.req.param("videoId");
+    const accessToken = Deno.env.get("VIMEO_ACCESS_TOKEN");
+    if (!accessToken) {
+      return c.json({ success: false, error: "VIMEO_ACCESS_TOKEN not configured" }, 500);
+    }
+
+    // Fetch the video's picture sets from Vimeo API v3
+    const res = await fetch(`https://api.vimeo.com/videos/${videoId}/pictures`, {
+      headers: {
+        Authorization: `bearer ${accessToken}`,
+        Accept: "application/vnd.vimeo.*+json;version=3.4",
+      },
+    });
+
+    if (!res.ok) {
+      console.log(`[vimeo-thumbnails] API error ${res.status}`);
+      return c.json({ success: false, error: `Vimeo API error: ${res.status}` }, 502);
+    }
+
+    const data = await res.json();
+    const pictureSets: any[] = data.data || [];
+
+    const thumbnails: string[] = [];
+    for (const set of pictureSets) {
+      const sizes: any[] = set.sizes || [];
+      if (!sizes.length) continue;
+      sizes.sort((a: any, b: any) => (b.width ?? 0) - (a.width ?? 0));
+      if (sizes[0]?.link) thumbnails.push(sizes[0].link);
+    }
+
+    // Fallback: fetch from the video endpoint's embedded pictures field
+    if (thumbnails.length === 0) {
+      const vRes = await fetch(`https://api.vimeo.com/videos/${videoId}?fields=pictures`, {
+        headers: { Authorization: `bearer ${accessToken}`, Accept: "application/vnd.vimeo.*+json;version=3.4" },
+      });
+      if (vRes.ok) {
+        const vData = await vRes.json();
+        const sizes: any[] = vData.pictures?.sizes || [];
+        sizes.sort((a: any, b: any) => (b.width ?? 0) - (a.width ?? 0));
+        for (const s of sizes.slice(0, 5)) { if (s.link) thumbnails.push(s.link); }
+      }
+    }
+
+    return c.json({ success: true, thumbnails });
+  } catch (err) {
+    console.error("[vimeo-thumbnails] Error:", err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// ── Vimeo frame extraction at a specific timestamp ────────────────────────────
+app.post("/make-server-e07959ec/admin/vimeo-frame-capture", requireAuth, async (c) => {
+  try {
+    const { videoId, time } = await c.req.json();
+    const accessToken = Deno.env.get("VIMEO_ACCESS_TOKEN");
+    if (!accessToken) return c.json({ success: false, error: "VIMEO_ACCESS_TOKEN not configured" }, 500);
+    if (!videoId || typeof time !== "number") return c.json({ success: false, error: "Missing videoId or time" }, 400);
+
+    console.log(`[vimeo-frame-capture] Requesting frame at ${time}s for video ${videoId}`);
+
+    const authHeaders = {
+      Authorization: `bearer ${accessToken}`,
+      Accept: "application/vnd.vimeo.*+json;version=3.4",
+    };
+
+    const pickBest = (sizes: any[]): { url: string; width: number; height: number } | null => {
+      if (!sizes?.length) return null;
+      const sorted = [...sizes].sort((a: any, b: any) => (b.width ?? 0) - (a.width ?? 0));
+      const best = sorted[0];
+      return best?.link ? { url: best.link, width: best.width ?? 0, height: best.height ?? 0 } : null;
+    };
+
+    // Load all Vimeo-auto-generated picture sets (read scope only) as fallback options
+    const loadFallbackThumbnails = async (): Promise<string[]> => {
+      try {
+        const r = await fetch(`https://api.vimeo.com/videos/${videoId}/pictures?per_page=100`, { headers: authHeaders });
+        if (!r.ok) return [];
+        const d = await r.json();
+        const urls: string[] = [];
+        for (const set of (d.data ?? [])) {
+          const best = pickBest(set.sizes ?? []);
+          if (best) urls.push(best.url);
+        }
+        return urls;
+      } catch { return []; }
+    };
+
+    // Ask Vimeo to create a picture at the given timecode — requires "upload" scope
+    const createRes = await fetch(`https://api.vimeo.com/videos/${videoId}/pictures`, {
+      method: "POST",
+      headers: { ...authHeaders, "Content-Type": "application/json" },
+      body: JSON.stringify({ time, active: false }),
+    });
+
+    // 403 means the token lacks the "upload" scope
+    if (createRes.status === 403) {
+      console.log(`[vimeo-frame-capture] 403 — token lacks upload scope, returning fallback thumbnails`);
+      const fallbackThumbnails = await loadFallbackThumbnails();
+      return c.json({
+        success: false,
+        needsUploadScope: true,
+        fallbackThumbnails,
+        error: "Your Vimeo access token does not have the \"upload\" scope required to extract a custom frame.",
+      });
+    }
+
+    if (!createRes.ok) {
+      const errText = await createRes.text();
+      console.log(`[vimeo-frame-capture] Create failed ${createRes.status}: ${errText}`);
+      const fallbackThumbnails = await loadFallbackThumbnails();
+      return c.json({ success: false, fallbackThumbnails, error: `Vimeo API error ${createRes.status}` });
+    }
+
+    const picture = await createRes.json();
+    const pictureUri: string = picture.uri;
+    let result = pickBest(picture.sizes ?? []);
+
+    // Poll up to 8×1.2s if Vimeo still needs to process the frame
+    if (!result && pictureUri) {
+      for (let attempt = 0; attempt < 8; attempt++) {
+        await new Promise(r => setTimeout(r, 1200));
+        const pollRes = await fetch(`https://api.vimeo.com${pictureUri}`, { headers: authHeaders });
+        if (!pollRes.ok) break;
+        result = pickBest((await pollRes.json()).sizes ?? []);
+        if (result) { console.log(`[vimeo-frame-capture] Ready after ${attempt + 1} poll(s)`); break; }
+      }
+    }
+
+    if (!result) {
+      const fallbackThumbnails = await loadFallbackThumbnails();
+      return c.json({ success: false, fallbackThumbnails, error: "Vimeo is still processing. Try again in a few seconds." }, 202);
+    }
+
+    return c.json({ success: true, url: result.url, width: result.width, height: result.height });
+  } catch (err) {
+    console.error("[vimeo-frame-capture] Error:", err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// ── Vimeo direct-video proxy ─────────────────────────────────────────────────
+// Adds CORS headers to the direct MP4 stream so the browser can canvas-capture
+// any frame. Uses play.progressive which is accessible on FREE Vimeo accounts
+// (read scope only, no Pro/upload scope needed).
+const _vimeoFileCache = new Map<string, { url: string; exp: number }>();
+
+async function _getVimeoFileUrl(videoId: string, accessToken: string): Promise<string | null> {
+  const hit = _vimeoFileCache.get(videoId);
+  if (hit && hit.exp > Date.now()) return hit.url;
+
+  // ── Strategy 1: REST API (/videos/{id}?fields=files,download,play) ────
+  // Needs "video_files" scope on the token.  If not present, play.progressive
+  // comes back empty even for videos you own — log the raw body to confirm.
+  try {
+    const apiRes = await fetch(
+      `https://api.vimeo.com/videos/${videoId}?fields=files,download,play`,
+      { headers: { Authorization: `bearer ${accessToken}`, Accept: "application/vnd.vimeo.*+json;version=3.4" } }
+    );
+    const s1Body = await apiRes.text();
+    console.log(`[vimeo-proxy] s1 status=${apiRes.status} body[0:400]=${s1Body.slice(0, 400)}`);
+    if (apiRes.ok) {
+      const data = JSON.parse(s1Body);
+      const play = data.play ?? {};
+      console.log(`[vimeo-proxy] s1 play.progressive=${play.progressive?.length ?? 0} files=${data.files?.length ?? 0} download=${data.download?.length ?? 0}`);
+      const candidates: any[] = [
+        ...(play.progressive ?? []),
+        ...(data.files ?? []),
+        ...(data.download ?? []),
+      ];
+      const withLink = candidates.filter(f => f.link || f.url);
+      if (withLink.length) {
+        const sorted = withLink.sort((a, b) => (b.width ?? b.size ?? 0) - (a.width ?? a.size ?? 0));
+        const url: string = sorted[0].link ?? sorted[0].url;
+        console.log(`[vimeo-proxy] s1 ✓ quality=${sorted[0].quality ?? "?"} ${sorted[0].width}×${sorted[0].height}`);
+        _vimeoFileCache.set(videoId, { url, exp: Date.now() + 8 * 60 * 1000 });
+        return url;
+      }
+    }
+  } catch (e) {
+    console.log(`[vimeo-proxy] s1 threw: ${e}`);
+  }
+
+  // ── Strategy 2: player config endpoint (no video_files scope needed) ─
+  // player.vimeo.com/video/{id}/config is what the Vimeo embed player calls
+  // to get its own stream URLs.  Auth goes via ?access_token= query param —
+  // the player domain does NOT accept the Bearer header.
+  const configUrls = [
+    `https://player.vimeo.com/video/${videoId}/config?access_token=${accessToken}`,
+    `https://player.vimeo.com/video/${videoId}/config`, // unauthenticated for public/unlisted
+  ];
+  for (const cfgUrl of configUrls) {
+    try {
+      const cfgRes = await fetch(cfgUrl, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+          "Referer": `https://vimeo.com/${videoId}`,
+          "Accept": "application/json, text/javascript, */*",
+        },
+      });
+      const s2Body = await cfgRes.text();
+      const label = cfgUrl.includes("access_token") ? "s2-auth" : "s2-public";
+      console.log(`[vimeo-proxy] ${label} status=${cfgRes.status} ct=${cfgRes.headers.get("content-type")} body[0:400]=${s2Body.slice(0, 400)}`);
+      if (!cfgRes.ok || !s2Body.trim().startsWith("{")) continue;
+      const cfg = JSON.parse(s2Body);
+      const progressive: any[] = cfg?.request?.files?.progressive ?? [];
+      const fileKeys = Object.keys(cfg?.request?.files ?? {});
+      console.log(`[vimeo-proxy] ${label} progressive=${progressive.length} file-keys=${fileKeys.join(",")}`);
+      if (progressive.length) {
+        const sorted = [...progressive].sort((a, b) => (b.height ?? 0) - (a.height ?? 0));
+        const best = sorted[0];
+        console.log(`[vimeo-proxy] ${label} ✓ ${best.quality} ${best.width}×${best.height}`);
+        _vimeoFileCache.set(videoId, { url: best.url, exp: Date.now() + 8 * 60 * 1000 });
+        return best.url;
+      }
+    } catch (e) {
+      console.log(`[vimeo-proxy] s2 threw (${cfgUrl.slice(-30)}): ${e}`);
+    }
+  }
+
+  // ── Strategy 3: /videos/{id}/files dedicated endpoint ────────────────
+  // Different from ?fields=files — dedicated endpoint sometimes returns
+  // data the combined-fields call misses.
+  try {
+    const fRes = await fetch(
+      `https://api.vimeo.com/videos/${videoId}/files`,
+      { headers: { Authorization: `bearer ${accessToken}`, Accept: "application/vnd.vimeo.*+json;version=3.4" } }
+    );
+    const s3Body = await fRes.text();
+    console.log(`[vimeo-proxy] s3 /files status=${fRes.status} body[0:400]=${s3Body.slice(0, 400)}`);
+    if (fRes.ok) {
+      const files: any[] = JSON.parse(s3Body)?.data ?? [];
+      const withLink = files.filter(f => (f.link || f.url) && f.type !== "hls");
+      if (withLink.length) {
+        const sorted = withLink.sort((a, b) => (b.width ?? 0) - (a.width ?? 0));
+        const url: string = sorted[0].link ?? sorted[0].url;
+        console.log(`[vimeo-proxy] s3 ✓ quality=${sorted[0].quality ?? "?"} ${sorted[0].width}×${sorted[0].height}`);
+        _vimeoFileCache.set(videoId, { url, exp: Date.now() + 8 * 60 * 1000 });
+        return url;
+      }
+    }
+  } catch (e) {
+    console.log(`[vimeo-proxy] s3 threw: ${e}`);
+  }
+
+  console.log(`[vimeo-proxy] all 3 strategies exhausted for videoId=${videoId}`);
+  return null;
+}
+
+app.options("/make-server-e07959ec/admin/vimeo-proxy/:videoId", async (_c) => {
+  return new Response(null, {
+    status: 204,
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+      "Access-Control-Allow-Headers": "range, content-type, authorization, x-admin-token",
+      "Access-Control-Max-Age": "86400",
+    },
+  });
+});
+
+// Proxy: no auth check — the <video> element can't send custom headers, the endpoint path
+// is not public, and VIMEO_ACCESS_TOKEN already guards what videos can be resolved.
+// The GET request itself acts as the availability check (video.onerror fires if unavailable).
+app.get("/make-server-e07959ec/admin/vimeo-proxy/:videoId", async (c) => {
+  const videoId = c.req.param("videoId");
+  const accessToken = Deno.env.get("VIMEO_ACCESS_TOKEN");
+  if (!accessToken) {
+    return new Response("VIMEO_ACCESS_TOKEN not configured", { status: 500, headers: { "Access-Control-Allow-Origin": "*" } });
+  }
+  const fileUrl = await _getVimeoFileUrl(videoId, accessToken);
+  if (!fileUrl) {
+    return new Response(
+      "No playable file found. The token may lack 'private' scope for private videos, or no progressive download exists.",
+      { status: 404, headers: { "Access-Control-Allow-Origin": "*" } }
+    );
+  }
+  const rangeHeader = c.req.header("range");
+  const upstream = await fetch(fileUrl, rangeHeader ? { headers: { range: rangeHeader } } : undefined);
+  console.log(`[vimeo-proxy] upstream ${upstream.status} videoId=${videoId}`);
+
+  const out = new Headers({
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "range, content-type",
+    "Access-Control-Expose-Headers": "content-range, content-length, accept-ranges",
+    "Accept-Ranges": "bytes",
+  });
+  for (const h of ["content-type", "content-length", "content-range"]) {
+    const v = upstream.headers.get(h);
+    if (v) out.set(h, v);
+  }
+  if (!out.get("content-type")) out.set("content-type", "video/mp4");
+  return new Response(upstream.body, { status: upstream.status, headers: out });
+});
+
+// ── Vimeo sprite-based frame extraction (read scope only, no upload needed) ───
+app.post("/make-server-e07959ec/admin/vimeo-sprite-frame", requireAuth, async (c) => {
+  try {
+    const { videoId, time } = await c.req.json();
+    if (!videoId || typeof time !== "number") {
+      return c.json({ success: false, error: "Missing videoId or time" }, 400);
+    }
+
+    const accessToken = Deno.env.get("VIMEO_ACCESS_TOKEN");
+    console.log(`[vimeo-frame] videoId=${videoId} time=${time} hasToken=${!!accessToken}`);
+
+    const apiHeaders = accessToken ? {
+      Authorization: `bearer ${accessToken}`,
+      Accept: "application/vnd.vimeo.*+json;version=3.4",
+    } : {};
+
+    // Helper: pick highest-resolution size from a Vimeo sizes array
+    function bestSize(sizes: any[]): { url: string; w: number; h: number } | null {
+      if (!sizes?.length) return null;
+      const sorted = [...sizes].sort((a: any, b: any) => (b.width ?? 0) - (a.width ?? 0));
+      const s = sorted[0];
+      return s?.link ? { url: s.link, w: s.width ?? 0, h: s.height ?? 0 } : null;
+    }
+
+    // ── Strategy A: Pictures API — timestamp-matched (read scope, always works) ──
+    if (accessToken) {
+      try {
+        const picRes = await fetch(
+          `https://api.vimeo.com/videos/${videoId}/pictures?per_page=100`,
+          { headers: apiHeaders }
+        );
+        console.log(`[vimeo-frame] pictures API: ${picRes.status}`);
+        if (picRes.ok) {
+          const picData = await picRes.json();
+          const pics: any[] = picData.data ?? [];
+          console.log(`[vimeo-frame] pictures: ${pics.length}, with-time: ${pics.filter((p: any) => typeof p.time === "number").length}`);
+          const withTime = pics.filter((p: any) => typeof p.time === "number");
+
+          if (withTime.length > 0) {
+            // Has timestamp metadata — return the single closest frame
+            const bestPic = withTime.reduce((b: any, p: any) =>
+              Math.abs(p.time - time) < Math.abs(b.time - time) ? p : b
+            );
+            console.log(`[vimeo-frame] closest picture: ${bestPic.time}s (wanted ${time}s)`);
+            const sz = bestSize(bestPic.sizes ?? []);
+            if (sz) {
+              return c.json({
+                success: true, url: sz.url, width: sz.w, height: sz.h,
+                time, actualTime: bestPic.time, source: "pictures",
+              });
+            }
+          } else if (pics.length > 0) {
+            // No timestamp metadata — try to CREATE a frame at the exact requested time.
+            // POST /videos/{id}/pictures with time=X tells Vimeo to render that specific frame.
+            console.log(`[vimeo-frame] no timestamps — attempting POST /pictures time=${time}`);
+            let createdSz: { url: string; w: number; h: number } | null = null;
+            let createdPicId: string | null = null;
+            try {
+              const createRes = await fetch(
+                `https://api.vimeo.com/videos/${videoId}/pictures`,
+                {
+                  method: "POST",
+                  headers: { ...apiHeaders, "Content-Type": "application/json" },
+                  body: JSON.stringify({ time, active: false }),
+                }
+              );
+              console.log(`[vimeo-frame] create picture: ${createRes.status}`);
+              if (createRes.status === 403) {
+                // Token lacks "upload" scope — surface this clearly so the user knows exactly what to fix
+                console.log(`[vimeo-frame] 403 — token missing "upload" scope`);
+                const allUrls2: string[] = [];
+                let fw2 = 0, fh2 = 0;
+                for (const p of pics) {
+                  const sz = bestSize(p.sizes ?? []);
+                  if (sz) { allUrls2.push(sz.url); if (!fw2) { fw2 = sz.w; fh2 = sz.h; } }
+                }
+                return c.json({
+                  success: true,
+                  urls: allUrls2.length ? allUrls2 : [],
+                  width: fw2, height: fh2,
+                  time, actualTime: null,
+                  source: "pictures-notimestamp",
+                  scopeError: true,
+                });
+              }
+              if (createRes.ok) {
+                const createData = await createRes.json();
+                const picUri: string = createData.uri ?? "";
+                createdPicId = picUri.split("/").pop() ?? null;
+                console.log(`[vimeo-frame] created picId=${createdPicId} — polling for sizes…`);
+                // Vimeo generates the frame asynchronously; poll until sizes array populates
+                for (let attempt = 0; attempt < 12; attempt++) {
+                  await new Promise(r => setTimeout(r, 700));
+                  const pollRes = await fetch(
+                    `https://api.vimeo.com/videos/${videoId}/pictures/${createdPicId}`,
+                    { headers: apiHeaders }
+                  );
+                  if (pollRes.ok) {
+                    const pollData = await pollRes.json();
+                    const sz = bestSize(pollData.sizes ?? []);
+                    if (sz) { createdSz = sz; break; }
+                  }
+                  console.log(`[vimeo-frame] poll ${attempt + 1}/12 — sizes not ready yet`);
+                }
+              }
+            } catch (e) { console.log(`[vimeo-frame] create picture error:`, e); }
+
+            if (createdSz && createdPicId) {
+              console.log(`[vimeo-frame] ✅ generated frame at ${time}s → ${createdSz.w}×${createdSz.h}`);
+              // Delay delete by 15s so the CDN URL stays alive long enough for the browser to load it
+              setTimeout(() => {
+                fetch(`https://api.vimeo.com/videos/${videoId}/pictures/${createdPicId}`, {
+                  method: "DELETE", headers: apiHeaders,
+                }).catch(() => {});
+              }, 15_000);
+              return c.json({
+                success: true, url: createdSz.url, width: createdSz.w, height: createdSz.h,
+                time, actualTime: time, source: "pictures-created",
+              });
+            }
+
+            // Creation not supported (no write scope) — fall back to all existing thumbnails
+            console.log(`[vimeo-frame] create failed — returning all ${pics.length} existing picture(s)`);
+            const allUrls: string[] = [];
+            let firstW = 0, firstH = 0;
+            for (const p of pics) {
+              const sz = bestSize(p.sizes ?? []);
+              if (sz) { allUrls.push(sz.url); if (!firstW) { firstW = sz.w; firstH = sz.h; } }
+            }
+            if (allUrls.length > 0) {
+              return c.json({
+                success: true, urls: allUrls, width: firstW, height: firstH,
+                time, actualTime: null, source: "pictures-notimestamp",
+              });
+            }
+          }
+        }
+      } catch (e) { console.log(`[vimeo-frame] pictures error:`, e); }
+    }
+
+    // ── Strategy B: Sprite VTT (Vimeo Pro+ only) ─────────────────────────
+    // ── Shared VTT parser ────────────────────────────────────────────────
+    interface VttCue {
+      start: number; end: number;
+      url: string; x: number; y: number; w: number; h: number;
+    }
+    function parseVttTime(t: string): number {
+      const parts = t.trim().replace(",", ".").split(":");
+      const secs  = parseFloat(parts.pop() ?? "0");
+      const mins  = parseInt(parts.pop()  ?? "0", 10);
+      const hrs   = parseInt(parts.pop()  ?? "0", 10);
+      return hrs * 3600 + mins * 60 + secs;
+    }
+    function parseVtt(text: string): VttCue[] {
+      const cues: VttCue[] = [];
+      const lines = text.split(/\r?\n/);
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line.includes("-->")) continue;
+        const arrow    = line.indexOf("-->");
+        const startStr = line.substring(0, arrow).trim();
+        const endStr   = line.substring(arrow + 3).trim().split(/\s/)[0];
+        let urlLine = "";
+        for (let j = i + 1; j < Math.min(i + 5, lines.length); j++) {
+          const cl = lines[j]?.trim();
+          if (cl && (cl.startsWith("http") || cl.includes("#xywh="))) { urlLine = cl; break; }
+        }
+        const hi = urlLine.indexOf("#xywh=");
+        if (hi === -1) continue;
+        const imgUrl = urlLine.substring(0, hi);
+        const coords = urlLine.substring(hi + 6).split(",").map(Number);
+        const [x, y, w, h] = coords;
+        if (imgUrl && coords.length >= 4 && w > 0 && h > 0 && !isNaN(x + y + w + h)) {
+          cues.push({ start: parseVttTime(startStr), end: parseVttTime(endStr), url: imgUrl, x, y, w, h });
+        }
+      }
+      return cues;
+    }
+    function pickBestCue(cues: VttCue[], t: number): VttCue {
+      let best = cues[0];
+      for (const cue of cues) {
+        if (t >= cue.start && t < cue.end) return cue;
+        if (Math.abs((cue.start + cue.end) / 2 - t) < Math.abs((best.start + best.end) / 2 - t)) best = cue;
+      }
+      return best;
+    }
+
+    let vttText: string | null = null;
+
+    try {
+      const cfgRes = await fetch(`https://player.vimeo.com/video/${videoId}/config`, {
+        headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://vimeo.com/", "Accept": "application/json" },
+      });
+      console.log(`[vimeo-frame] player config: ${cfgRes.status}`);
+      if (cfgRes.ok) {
+        const cfg = await cfgRes.json();
+        const thumbs = cfg?.video?.thumbs;
+        const hashes = new Set<string>([String(videoId)]);
+        if (thumbs) {
+          for (const v of Object.values(thumbs)) {
+            if (typeof v !== "string") continue;
+            const m = v.match(/\/video\/([^_/?#\s]+)/);
+            if (m?.[1]) hashes.add(m[1]);
+          }
+        }
+        console.log(`[vimeo-frame] sprite hashes:`, [...hashes]);
+        outer: for (const hash of hashes) {
+          for (const sz of ["1920", "960", "640", "320"]) {
+            const url = `https://i.vimeocdn.com/video/${hash}/thumbs/${sz}.vtt`;
+            try {
+              const r = await fetch(url, { headers: { "Referer": "https://vimeo.com/" } });
+              console.log(`[vimeo-frame] sprite VTT ${url}: ${r.status}`);
+              if (r.ok) { const t = await r.text(); if (t.includes("WEBVTT")) { vttText = t; break outer; } }
+            } catch {}
+          }
+        }
+      }
+    } catch (e) { console.log(`[vimeo-frame] config error:`, e); }
+
+    if (vttText) {
+      const cues = parseVtt(vttText);
+      console.log(`[vimeo-frame] sprite cues: ${cues.length}`);
+      if (cues.length > 0) {
+        const best = pickBestCue(cues, time);
+        return c.json({
+          success: true,
+          spriteUrl: best.url, x: best.x, y: best.y, w: best.w, h: best.h,
+          time, actualTime: (best.start + best.end) / 2, source: "sprite",
+        });
+      }
+    }
+
+    // ── Strategy C: oEmbed static thumbnail (always available) ───────────
+    try {
+      const oeRes = await fetch(`https://vimeo.com/api/oembed.json?url=https://vimeo.com/${videoId}&width=1920`);
+      console.log(`[vimeo-frame] oembed: ${oeRes.status}`);
+      if (oeRes.ok) {
+        const oe = await oeRes.json();
+        if (oe.thumbnail_url) {
+          const base = oe.thumbnail_url.replace(/_\d+x\d+(\.\w+)?$/, "");
+          const url  = `${base}_1920x1080`;
+          console.log(`[vimeo-frame] oembed thumbnail: ${url}`);
+          return c.json({
+            success: true, url, width: 1920, height: 1080,
+            time, actualTime: null, source: "oembed",
+          });
+        }
+      }
+    } catch (e) { console.log(`[vimeo-frame] oembed error:`, e); }
+
+    return c.json({ success: false, error: "Could not retrieve any thumbnail for this video.", fallback: true });
+
+  } catch (err) {
+    console.error("[vimeo-frame] Unhandled error:", err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
 app.get("/make-server-e07959ec/projects", async (c) => {
   try {
     const { data, error } = await supabase
@@ -2134,14 +2689,15 @@ app.get("/make-server-e07959ec/projects", async (c) => {
       .order('order_index', { ascending: true });
     
     if (error) {
-      console.log(`Error fetching projects: ${error.message}`);
-      return c.json({ success: false, error: error.message }, 500);
+      // Table may not exist yet — return empty array so the frontend can use its fallback
+      console.log(`Error fetching projects (returning empty): ${error.message}`);
+      return c.json({ success: true, data: [] });
     }
     
     return c.json({ success: true, data: (data || []).map(fromDbRow) });
   } catch (error) {
     console.log(`Error fetching projects: ${error}`);
-    return c.json({ success: false, error: String(error) }, 500);
+    return c.json({ success: true, data: [] });
   }
 });
 
@@ -3430,7 +3986,7 @@ app.post("/make-server-e07959ec/webhooks/lemon-squeezy", async (c) => {
     const eventType = body.meta?.event_name;
     console.log('Lemon Squeezy webhook event:', eventType);
 
-    // ── order_created ────────────────────────────────────────────────────
+    // ─�� order_created ────────────────────────────────────────────────────
     if (eventType === 'order_created') {
       const orderData     = body.data;
       const customerEmail = orderData.attributes?.user_email;
@@ -3771,7 +4327,7 @@ app.post("/make-server-e07959ec/contact", async (c) => {
       const msgTs    = Date.now();
       const msgUuid  = crypto.randomUUID().replace(/-/g, '').substring(0, 8);
       const msgKvKey = `msg:${msgTs}:contact:${msgUuid}`;
-      await kv.set(msgKvKey, {
+      const msgPayload = {
         kvKey: msgKvKey,
         id: `${msgTs}-${msgUuid}`,
         type: 'contact',
@@ -3783,10 +4339,11 @@ app.post("/make-server-e07959ec/contact", async (c) => {
         message: message || '',
         read: false,
         createdAt: new Date().toISOString(),
-      });
-      console.log(`[contact] Message stored in KV: ${msgKvKey}`);
+      };
+      await kv.set(msgKvKey, msgPayload);
+      console.log(`[contact] ✅ Message stored in KV: ${msgKvKey}`);
     } catch (kvErr) {
-      console.log('[contact] KV store warning:', kvErr);
+      console.error('[contact] ❌ KV store FAILED — message will NOT appear in dashboard:', kvErr);
     }
 
     const resendApiKey = Deno.env.get('RESEND_API_KEY');
@@ -3869,6 +4426,200 @@ app.post("/make-server-e07959ec/contact", async (c) => {
   }
 });
 
+// ─── Custom tool commission request ──────────────────────────────────────────
+app.post("/make-server-e07959ec/custom-tool-request", async (c) => {
+  try {
+    const body = await c.req.json();
+    const { name, email, softwares, workflow, automate, timeline, budget, notes } = body;
+
+    if (!name || !email || !workflow || !automate || !timeline || !budget) {
+      return c.json({ success: false, error: "Missing required fields" }, 400);
+    }
+
+    // Store in KV for admin reference (stored as object, not JSON string, with read:false)
+    const requestId = `custom_tool_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const trKvKey = `custom_tool_request:${requestId}`;
+    await kv.set(trKvKey, {
+      kvKey: trKvKey,
+      id: requestId, name, email,
+      softwares: softwares || [],
+      workflow, automate, timeline, budget,
+      notes: notes || "",
+      submittedAt: new Date().toISOString(),
+      read: false,
+    });
+    console.log(`[custom-tool-request] ✅ Stored in KV: ${trKvKey}`);
+
+    // Send email notification
+    const resendApiKey = Deno.env.get('RESEND_API_KEY');
+    if (!resendApiKey) {
+      console.warn('[custom-tool-request] No RESEND_API_KEY set, skipping email.');
+      return c.json({ success: true });
+    }
+
+    const adminEmail = await getAdminEmail();
+    if (!adminEmail) {
+      console.warn('[custom-tool-request] No adminEmail configured, skipping email.');
+      return c.json({ success: true });
+    }
+
+    const resend = new Resend(resendApiKey);
+    const submittedAt = new Date().toLocaleString('en-US', { dateStyle: 'full', timeStyle: 'short' });
+    const softwareList = Array.isArray(softwares) && softwares.length ? softwares.join(', ') : 'Not specified';
+
+    const emailHtml = `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;background:#0a0a0a;color:#e5e5e5;border-radius:12px;overflow:hidden;">
+        <div style="background:linear-gradient(135deg,#7c3aed,#4f46e5);padding:28px 32px;">
+          <p style="margin:0 0 4px;font-size:12px;color:rgba(255,255,255,0.7);letter-spacing:0.1em;text-transform:uppercase;">Fastoosh Studio</p>
+          <h1 style="margin:0;font-size:22px;color:#fff;">🔧 Custom Tool Commission Request</h1>
+        </div>
+        <div style="padding:32px;">
+          <p style="margin:0 0 24px;font-size:15px;color:#d4d4d4;line-height:1.6;">
+            A client has requested a <strong style="color:#fff;">custom tool commission</strong> through the Tools page. Here are the details:
+          </p>
+          <table style="width:100%;border-collapse:collapse;margin-bottom:28px;">
+            <tr>
+              <td style="padding:10px 14px;background:#1a1a1a;border-radius:6px 6px 0 0;color:#a3a3a3;font-size:13px;width:150px;">Name</td>
+              <td style="padding:10px 14px;background:#1a1a1a;border-radius:6px 6px 0 0;color:#fff;font-size:13px;">${name}</td>
+            </tr>
+            <tr>
+              <td style="padding:10px 14px;background:#141414;color:#a3a3a3;font-size:13px;">Email</td>
+              <td style="padding:10px 14px;background:#141414;font-size:13px;"><a href="mailto:${email}" style="color:#a78bfa;text-decoration:none;">${email}</a></td>
+            </tr>
+            <tr>
+              <td style="padding:10px 14px;background:#1a1a1a;color:#a3a3a3;font-size:13px;">Software</td>
+              <td style="padding:10px 14px;background:#1a1a1a;color:#fff;font-size:13px;">${softwareList}</td>
+            </tr>
+            <tr>
+              <td style="padding:10px 14px;background:#141414;color:#a3a3a3;font-size:13px;">Timeline</td>
+              <td style="padding:10px 14px;background:#141414;color:#fff;font-size:13px;">${timeline}</td>
+            </tr>
+            <tr>
+              <td style="padding:10px 14px;background:#1a1a1a;color:#a3a3a3;font-size:13px;">Budget</td>
+              <td style="padding:10px 14px;background:#1a1a1a;color:#fff;font-size:13px;">${budget}</td>
+            </tr>
+          </table>
+
+          <p style="margin:0 0 8px;font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;">Current Workflow / Problem</p>
+          <div style="background:#111;border-left:3px solid #7c3aed;padding:16px 20px;border-radius:0 6px 6px 0;margin-bottom:20px;">
+            <p style="margin:0;font-size:14px;color:#d4d4d4;line-height:1.7;white-space:pre-wrap;">${workflow.replace(/\n/g, '<br>')}</p>
+          </div>
+
+          <p style="margin:0 0 8px;font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;">What the Tool Should Do</p>
+          <div style="background:#111;border-left:3px solid #4f46e5;padding:16px 20px;border-radius:0 6px 6px 0;margin-bottom:${notes ? '20px' : '28px'};">
+            <p style="margin:0;font-size:14px;color:#d4d4d4;line-height:1.7;white-space:pre-wrap;">${automate.replace(/\n/g, '<br>')}</p>
+          </div>
+
+          ${notes ? `
+          <p style="margin:0 0 8px;font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;">Additional Notes</p>
+          <div style="background:#111;border-left:3px solid #6b7280;padding:16px 20px;border-radius:0 6px 6px 0;margin-bottom:28px;">
+            <p style="margin:0;font-size:14px;color:#d4d4d4;line-height:1.7;white-space:pre-wrap;">${notes.replace(/\n/g, '<br>')}</p>
+          </div>` : ''}
+
+          <div style="margin-top:28px;text-align:center;">
+            <a href="mailto:${email}?subject=Re: Your custom tool request — Fastoosh"
+               style="display:inline-block;padding:12px 28px;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;text-decoration:none;border-radius:8px;font-size:14px;font-weight:600;">
+              Reply to ${name}
+            </a>
+          </div>
+          <p style="margin-top:28px;font-size:12px;color:#525252;text-align:center;">Submitted on ${submittedAt}</p>
+        </div>
+      </div>
+    `;
+
+    const { error } = await resend.emails.send({
+      from: 'Fastoosh <contact@contact.fastoosh.com>',
+      to: adminEmail,
+      subject: `🔧 Custom tool request from ${name} — ${budget}`,
+      html: emailHtml,
+      replyTo: email,
+    });
+
+    if (error) {
+      console.log(`[custom-tool-request] Email error: ${JSON.stringify(error)}`);
+    } else {
+      console.log(`[custom-tool-request] Notification sent to ${adminEmail}`);
+    }
+
+    return c.json({ success: true });
+  } catch (err) {
+    console.log(`[custom-tool-request] Error: ${err}`);
+    return c.json({ success: false, error: `Server error: ${String(err)}` }, 500);
+  }
+});
+
+// ─── Admin: list all custom tool requests ────────────────────────────────────
+app.get("/make-server-e07959ec/admin/tool-requests", requireAuth, async (c) => {
+  try {
+    const records = await kv.getByPrefix("custom_tool_request:");
+    const requests = records
+      .map((r: any) => {
+        try { 
+          const parsed = typeof r === "string" ? JSON.parse(r) : r;
+          // Normalize read field - default to false if missing (for old records)
+          return { ...parsed, read: parsed.read ?? false };
+        }
+        catch { return null; }
+      })
+      .filter(Boolean)
+      .sort((a: any, b: any) =>
+        new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
+      );
+
+    console.log(`[admin/tool-requests] Returning ${requests.length} tool requests`);
+    return c.json({ success: true, data: requests });
+  } catch (err) {
+    console.error(`[admin/tool-requests] Error: ${err}`);
+    return c.json({ success: false, error: `Server error: ${String(err)}` }, 500);
+  }
+});
+
+// ─── Admin: delete a custom tool request ─────────────────────────────────────
+app.delete("/make-server-e07959ec/admin/tool-requests/:id", requireAuth, async (c) => {
+  try {
+    const id = c.req.param("id");
+    await kv.del(`custom_tool_request:${id}`);
+    console.log(`[admin/tool-requests] Deleted request: ${id}`);
+    return c.json({ success: true });
+  } catch (err) {
+    console.error(`[admin/tool-requests DELETE] Error: ${err}`);
+    return c.json({ success: false, error: `Server error: ${String(err)}` }, 500);
+  }
+});
+
+// ─── Admin: mark tool request(s) as read ─────────────────────────────────────
+app.put("/make-server-e07959ec/admin/tool-requests/mark-read", requireAuth, async (c) => {
+  try {
+    const { kvKey, markAll } = await c.req.json();
+    if (markAll) {
+      const all: any[] = await kv.getByPrefix("custom_tool_request:");
+      const unread = all.filter((r: any) => {
+        const rec = typeof r === "string" ? JSON.parse(r) : r;
+        // Treat missing read field as unread (for old records)
+        return (rec.read ?? false) === false && rec.kvKey;
+      });
+      await Promise.all(
+        unread.map((r: any) => {
+          const rec = typeof r === "string" ? JSON.parse(r) : r;
+          return kv.set(rec.kvKey, { ...rec, read: true });
+        })
+      );
+      console.log(`[admin/tool-requests] Marked all ${unread.length} requests as read`);
+    } else if (kvKey) {
+      const rec = await kv.get(kvKey);
+      if (rec) {
+        const parsed = typeof rec === "string" ? JSON.parse(rec) : rec;
+        await kv.set(kvKey, { ...parsed, read: true });
+        console.log(`[admin/tool-requests] Marked ${kvKey} as read`);
+      }
+    }
+    return c.json({ success: true });
+  } catch (err) {
+    console.error(`[admin/tool-requests mark-read] Error: ${err}`);
+    return c.json({ success: false, error: `Server error: ${String(err)}` }, 500);
+  }
+});
+
 // Tool support form (public, tool-specific email)
 app.post("/make-server-e07959ec/tool-support", async (c) => {
   try {
@@ -3896,9 +4647,9 @@ app.post("/make-server-e07959ec/tool-support", async (c) => {
         read: false,
         createdAt: new Date().toISOString(),
       });
-      console.log(`[tool-support] Message stored in KV: ${msgKvKey}`);
+      console.log(`[tool-support] ✅ Message stored in KV: ${msgKvKey}`);
     } catch (kvErr) {
-      console.log('[tool-support] KV store warning:', kvErr);
+      console.error('[tool-support] ❌ KV store FAILED — message will NOT appear in dashboard:', kvErr);
     }
 
     const resendApiKey = Deno.env.get('RESEND_API_KEY');
@@ -5098,13 +5849,17 @@ app.get('/make-server-e07959ec/admin/behavior/heatmap', requireAuth, async (c) =
 app.get('/make-server-e07959ec/admin/messages', requireAuth, async (c) => {
   try {
     const all: any[] = await kv.getByPrefix('msg:');
-    const sorted = all.sort((a: any, b: any) =>
+    console.log(`[admin/messages] getByPrefix('msg:') returned ${all.length} record(s)`);
+    // Normalize read field for old messages that might not have it
+    const normalized = all.map((m: any) => ({ ...m, read: m.read ?? false }));
+    const sorted = normalized.sort((a: any, b: any) =>
       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
     const unread = sorted.filter((m: any) => !m.read).length;
+    console.log(`[admin/messages] Returning ${sorted.length} messages, ${unread} unread`);
     return c.json({ success: true, data: sorted, unread, count: sorted.length });
   } catch (error) {
-    console.log('[admin/messages] Error:', error);
+    console.error('[admin/messages] Error fetching messages:', error);
     return c.json({ success: false, error: String(error) }, 500);
   }
 });
@@ -5115,8 +5870,9 @@ app.put('/make-server-e07959ec/admin/messages/mark-read', requireAuth, async (c)
     const { kvKey, markAll } = await c.req.json();
     if (markAll) {
       const all: any[] = await kv.getByPrefix('msg:');
+      // Treat missing read field as unread (for old records)
       await Promise.all(
-        all.filter((m: any) => !m.read && m.kvKey)
+        all.filter((m: any) => (m.read ?? false) === false && m.kvKey)
            .map((m: any) => kv.set(m.kvKey, { ...m, read: true }))
       );
       console.log(`[admin/messages] Marked all ${all.length} messages as read`);
@@ -5161,6 +5917,7 @@ app.get('/make-server-e07959ec/admin/dashboard', requireAuth, async (c) => {
       purchasesRes,
       kvLeads,
       messages,
+      toolRequestsRaw,
     ] = await Promise.all([
       supabase.from('tools').select('id, name, category, slug'),
       supabase.from('projects').select('id, title, category, created_at'),
@@ -5170,11 +5927,27 @@ app.get('/make-server-e07959ec/admin/dashboard', requireAuth, async (c) => {
         .order('purchased_at', { ascending: false }),
       kv.getByPrefix('lead:free:log:'),
       kv.getByPrefix('msg:'),
+      kv.getByPrefix('custom_tool_request:'),
     ]);
 
     const tools     = toolsRes.data     || [];
     const projects  = projectsRes.data  || [];
     const purchases = purchasesRes.data || [];
+
+    // Normalize read field for messages (contact + support) - default to false if missing
+    const messagesNormalized = (messages as any[]).map((m: any) => ({ 
+      ...m, 
+      read: m.read ?? false 
+    }));
+
+    // Parse tool requests (some may be legacy JSON strings) and normalize read field
+    const toolRequestsParsed = (toolRequestsRaw as any[]).map((r: any) => {
+      try { 
+        const parsed = typeof r === 'string' ? JSON.parse(r) : r;
+        // Normalize read field - default to false if missing (for old records)
+        return { ...parsed, read: parsed.read ?? false };
+      } catch { return null; }
+    }).filter(Boolean);
 
     if (purchasesRes.error) {
       console.log('[admin/dashboard] Warning fetching purchases:', purchasesRes.error.message);
@@ -5271,9 +6044,10 @@ app.get('/make-server-e07959ec/admin/dashboard', requireAuth, async (c) => {
       .map(t => ({ name: t.name.length > 14 ? t.name.substring(0, 14) + '…' : t.name, count: t.count }));
 
     // ── 30-day lead stats ──
-    const newLeads30d    = (kvLeads as any[]).filter(l => new Date(l.downloadedAt || 0) >= thirtyDaysAgo).length;
-    const newSignups30d  = signupUsers.filter((u: any) => new Date(u.created_at || 0) >= thirtyDaysAgo).length;
-    const unreadMessages = (messages as any[]).filter(m => !m.read).length;
+    const newLeads30d       = (kvLeads as any[]).filter(l => new Date(l.downloadedAt || 0) >= thirtyDaysAgo).length;
+    const newSignups30d     = signupUsers.filter((u: any) => new Date(u.created_at || 0) >= thirtyDaysAgo).length;
+    const unreadMessages    = messagesNormalized.filter(m => !m.read).length
+                            + toolRequestsParsed.filter((r: any) => !r.read).length;
 
     // ── Recent activity (downloads + signups + purchases) ────────────────────
     const recentLeads = [...kvLeads as any[]]
@@ -5303,7 +6077,7 @@ app.get('/make-server-e07959ec/admin/dashboard', requireAuth, async (c) => {
         activityType: 'purchase',
       }));
 
-    const recentMessages = [...messages as any[]]
+    const recentMessages = [...messagesNormalized]
       .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
       .slice(0, 5);
 
@@ -5324,7 +6098,7 @@ app.get('/make-server-e07959ec/admin/dashboard', requireAuth, async (c) => {
           signups:       signupUsers.length,
           totalTools:    tools.length,
           totalProjects: projects.length,
-          totalMessages: messages.length,
+          totalMessages: messagesNormalized.length + toolRequestsParsed.length,
           unreadMessages,
           newLeads30d:   newLeads30d + newSignups30d,
           totalRevenue:  parseFloat(totalRevenue.toFixed(2)),
@@ -7617,6 +8391,177 @@ Return ONLY the formatted HTML. No explanations, no markdown fences, no preamble
   } catch (error) {
     console.log('Error in format-legal-html:', error);
     return c.json({ success: false, error: `Legal HTML formatting failed: ${String(error)}` }, 500);
+  }
+});
+
+// ── AI FAKE REVIEW GENERATOR ──────────────────────────────────────────────────
+// POST /admin/generate-fake-reviews
+// Body: { toolId: string, count: number (1-10) }
+// Calls Gemini to produce realistic positive reviews, then bulk-saves to KV.
+app.post('/make-server-e07959ec/admin/generate-fake-reviews', requireAuth, async (c) => {
+  try {
+    const { toolId, count = 3 } = await c.req.json();
+    if (!toolId) return c.json({ success: false, error: 'toolId is required' }, 400);
+
+    const safeCount = Math.min(10, Math.max(1, Number(count) || 3));
+
+    const apiKey = Deno.env.get('GEMINI_API_KEY');
+    if (!apiKey) return c.json({ success: false, error: 'GEMINI_API_KEY not configured' }, 500);
+
+    // Fetch tool metadata from Supabase
+    const { data: tool, error: toolErr } = await supabase
+      .from('tools')
+      .select('id, name, description, created_at')
+      .eq('id', toolId)
+      .single();
+
+    if (toolErr || !tool) {
+      return c.json({ success: false, error: `Tool not found: ${toolErr?.message || 'unknown'}` }, 404);
+    }
+
+    const toolName        = tool.name || 'this tool';
+    const toolDescription = tool.description || '';
+    const toolCreatedAt   = tool.created_at ? new Date(tool.created_at) : new Date('2024-01-01');
+    const today           = new Date('2026-03-05');
+
+    const releaseIso = toolCreatedAt.toISOString().slice(0, 10);
+    const todayIso   = today.toISOString().slice(0, 10);
+
+    const prompt = `You are helping a motion design studio populate realistic product reviews for their After Effects plugin called "${toolName}".
+
+Tool description:
+"""
+${toolDescription.trim() || 'A powerful motion design plugin for After Effects.'}
+"""
+
+Generate exactly ${safeCount} distinct fake customer reviews that sound like real humans wrote them — not marketing copy.
+
+LENGTH — vary naturally across the batch, like a real review section looks:
+  • ~40% SHORT: 1 punchy sentence, strictly under 100 characters (e.g. "Saves me hours every week." or "Best AE plugin I bought this year.")
+  • ~30% MEDIUM: 2 sentences, 100–220 characters total
+  • ~30% DETAILED: 3–4 sentences, 220–400 characters max — mention a specific workflow win or feature
+  Never exceed 400 characters. No padding, no filler, no repetition.
+
+TONE & CONTENT:
+  - Always positive (5 stars). Short ones = punchy reactions. Medium ones add one specific detail. Long ones explain a concrete benefit.
+  - Reference the tool's actual purpose from the description — no generic "great product" reviews
+  - Write casually, like a real user. No em-dashes (—), no overly formal language, no hashtags, no exclamation marks on every sentence.
+
+NAMES — diverse international mix: English, French, Arabic, Spanish, Italian, German, Japanese (romanised). Use realistic full names.
+
+DATES — createdAt must be BETWEEN ${releaseIso} (inclusive) and ${todayIso} (inclusive). Spread them naturally across that range.
+
+Return ONLY a valid JSON array. No markdown, no commentary, no code fences:
+[
+  {
+    "userName": "Full Name",
+    "comment": "Review text here.",
+    "createdAt": "YYYY-MM-DD"
+  }
+]`;
+
+    console.log(`[generate-fake-reviews] tool="${toolName}" count=${safeCount} dateRange=${releaseIso}→${todayIso}`);
+
+    const geminiRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0.85,
+            maxOutputTokens: 4096,
+            responseMimeType: 'application/json',
+          },
+        }),
+      }
+    );
+
+    if (!geminiRes.ok) {
+      const errText = await geminiRes.text();
+      return c.json({ success: false, error: `Gemini API error (${geminiRes.status}): ${errText}` }, 500);
+    }
+
+    const geminiData = await geminiRes.json();
+    const rawText    = geminiData.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    if (!rawText) return c.json({ success: false, error: 'Gemini returned an empty response' }, 500);
+
+    // Strip any accidental markdown fences
+    const cleaned = rawText.replace(/^```[\w]*\n?/m, '').replace(/```$/m, '').trim();
+
+    let generated: Array<{ userName: string; comment: string; createdAt: string }>;
+    try {
+      generated = JSON.parse(cleaned);
+      if (!Array.isArray(generated)) throw new Error('Not an array');
+    } catch (parseErr) {
+      console.log('[generate-fake-reviews] JSON parse error:', parseErr, 'raw:', cleaned.slice(0, 300));
+      return c.json({ success: false, error: `Failed to parse Gemini response as JSON: ${parseErr}` }, 500);
+    }
+
+    // Bulk-save each generated review
+    const saved: any[] = [];
+    const now = new Date().toISOString();
+
+    for (const item of generated) {
+      const userId    = `ai-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const reviewKey = `review:${toolId}:${userId}`;
+      const review = {
+        id:        reviewKey,
+        toolId,
+        userId,
+        userName:  (item.userName || 'Anonymous').trim(),
+        rating:    5,
+        comment:   (item.comment  || '').trim(),
+        createdAt: item.createdAt ? new Date(item.createdAt).toISOString() : now,
+        updatedAt: now,
+        isFake:    true,
+      };
+      await kv.set(reviewKey, review);
+      saved.push(review);
+      // Small delay to ensure unique timestamps in userId
+      await new Promise(r => setTimeout(r, 5));
+    }
+
+    console.log(`[generate-fake-reviews] ✅ Saved ${saved.length} AI reviews for tool="${toolName}"`);
+    return c.json({ success: true, data: saved, count: saved.length });
+
+  } catch (error) {
+    console.log('[generate-fake-reviews] error:', error);
+    return c.json({ success: false, error: `AI review generation failed: ${String(error)}` }, 500);
+  }
+});
+
+// ── Image proxy — strips CORS so the browser can draw any thumbnail to canvas ─
+app.get("/make-server-e07959ec/admin/proxy-image", requireAuth, async (c) => {
+  const url = c.req.query("url");
+  if (!url) return c.json({ error: "Missing url param" }, 400);
+  try {
+    const upstream = await fetch(url, {
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; FasToosh/1.0)" },
+    });
+    if (!upstream.ok) {
+      return new Response(`Upstream error: ${upstream.status}`, {
+        status: 502,
+        headers: { "Access-Control-Allow-Origin": "*" },
+      });
+    }
+    const contentType = upstream.headers.get("content-type") ?? "image/jpeg";
+    const body = await upstream.arrayBuffer();
+    return new Response(body, {
+      status: 200,
+      headers: {
+        "Content-Type": contentType,
+        "Access-Control-Allow-Origin": "*",
+        "Cache-Control": "public, max-age=3600",
+      },
+    });
+  } catch (err) {
+    console.log(`[proxy-image] error fetching ${url}: ${err}`);
+    return new Response(`Proxy error: ${String(err)}`, {
+      status: 500,
+      headers: { "Access-Control-Allow-Origin": "*" },
+    });
   }
 });
 
