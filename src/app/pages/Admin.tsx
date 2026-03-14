@@ -1971,24 +1971,19 @@ function ProjectForm({
         <div>
           <div className="flex items-center justify-between mb-2">
             <label className="block text-sm font-medium text-gray-300">Short Description *</label>
-            <button type="button" onClick={() => openProjectAiModal('description', 'Description', formData.description || '', (v) => setFormData(prev => ({ ...prev, description: v.slice(0, 250) })))} className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-purple-300 hover:text-white bg-purple-500/10 hover:bg-purple-500/20 border border-purple-400/15 transition-all duration-150"><Sparkles className="w-3 h-3" />Improve</button>
+            <button type="button" onClick={() => openProjectAiModal('description', 'Description', formData.description || '', (v) => setFormData(prev => ({ ...prev, description: v })))} className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-purple-300 hover:text-white bg-purple-500/10 hover:bg-purple-500/20 border border-purple-400/15 transition-all duration-150"><Sparkles className="w-3 h-3" />Improve</button>
           </div>
           <div className="relative">
             <Textarea
               placeholder="Brief description shown on project cards"
               value={formData.description || ''}
               onChange={(e) => {
-                if (e.target.value.length <= 250) {
-                  setFormData({ ...formData, description: e.target.value });
-                  setErrors(prev => ({ ...prev, description: '' }));
-                }
+                setFormData({ ...formData, description: e.target.value });
+                setErrors(prev => ({ ...prev, description: '' }));
               }}
               className={`bg-black/50 border-white/20 text-white transition-all duration-700 ${errors.description ? 'border-red-500' : ''} ${hlClass('description')}`}
               rows={3}
             />
-            <span className={`absolute bottom-2 right-3 text-xs tabular-nums pointer-events-none transition-colors ${(formData.description?.length ?? 0) >= 230 ? 'text-amber-400' : 'text-white/25'}`}>
-              {formData.description?.length ?? 0}/250
-            </span>
           </div>
           {errors.description && (
             <p className="text-red-400 text-sm mt-1">{errors.description}</p>

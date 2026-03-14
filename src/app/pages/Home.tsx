@@ -353,13 +353,18 @@ export function Home() {
           }`}>
             {featuredProjects.map((project, index) => (
               <motion.a key={project.id} href={`/projects/${project.slug || project.id}`} initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.5, delay: index * 0.1 }}>
-                <GlassCard hover neonBorder className="overflow-hidden group h-full flex flex-col">
-                  <div className="aspect-video overflow-hidden">
-                    <img src={project.thumbnail} alt={project.title} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
-                  </div>
-                  <div className="p-6 flex-1">
-                    <h3 className="text-xl mb-2">{project.title}</h3>
-                    <p className="text-white/60 text-sm">{project.outcome}</p>
+                <GlassCard hover neonBorder className="overflow-hidden group aspect-square">
+                  {/* Full-bleed image */}
+                  <img
+                    src={project.thumbnail}
+                    alt={project.title}
+                    className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                  />
+                  {/* Title-only hover overlay */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-6" style={{ zIndex: 5 }}>
+                    <h3 className="text-white text-xl font-semibold leading-snug drop-shadow-lg">
+                      {project.title}
+                    </h3>
                   </div>
                 </GlassCard>
               </motion.a>

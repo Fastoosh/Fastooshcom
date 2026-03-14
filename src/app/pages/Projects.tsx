@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion } from "motion/react";
+import { Link } from "react-router";
 import { GlassCard } from "../components/shared/GlassCard";
 import { NeonButton } from "../components/shared/NeonButton";
 import { SeoHead } from "../components/shared/SeoHead";
@@ -181,29 +182,30 @@ export function Projects() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {filteredProjects.map((project, index) => (
-              <motion.a
+              <motion.div
                 key={project.id}
-                href={`/projects/${project.slug || project.id}`}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5, delay: index * 0.1 }}
                 layout
               >
-                <GlassCard hover neonBorder className="overflow-hidden group aspect-square">
-                  {/* Full-bleed image */}
-                  <img
-                    src={project.imageUrl}
-                    alt={project.title}
-                    className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                  />
-                  {/* Title-only hover overlay */}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-6" style={{ zIndex: 5 }}>
-                    <h3 className="text-white text-xl font-semibold leading-snug drop-shadow-lg">
-                      {project.title}
-                    </h3>
-                  </div>
-                </GlassCard>
-              </motion.a>
+                <Link to={`/projects/${project.slug || project.id}`}>
+                  <GlassCard hover neonBorder className="overflow-hidden group aspect-square">
+                    {/* Full-bleed image */}
+                    <img
+                      src={project.imageUrl}
+                      alt={project.title}
+                      className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    />
+                    {/* Title-only hover overlay */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-6" style={{ zIndex: 5 }}>
+                      <h3 className="text-white text-xl font-semibold leading-snug drop-shadow-lg">
+                        {project.title}
+                      </h3>
+                    </div>
+                  </GlassCard>
+                </Link>
+              </motion.div>
             ))}
           </div>
         )}

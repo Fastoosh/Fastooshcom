@@ -125,13 +125,32 @@ async function initializeStorage() {
   console.log('[storage] Bucket initialization complete.');
 }
 
-// Initialize storage on startup
-initializeStorage();
+// Initialize storage on startup (non-blocking with error handling)
+initializeStorage().catch(err => {
+  console.error('[storage] Initialization error (non-fatal, buckets may already exist):', err);
+});
 
 const app = new Hono();
 
 // Enable logger
 app.use('*', logger(console.log));
+
+// Add timeout middleware to prevent hanging requests
+app.use('*', async (c, next) => {
+  const timeoutPromise = new Promise((_, reject) => 
+    setTimeout(() => reject(new Error('Request timeout')), 55000) // 55 second timeout
+  );
+  
+  try {
+    await Promise.race([next(), timeoutPromise]);
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Request timeout') {
+      console.error('[TIMEOUT]', c.req.url);
+      return c.json({ success: false, error: 'Request timeout' }, 504);
+    }
+    throw error; // Re-throw to be caught by error handler
+  }
+});
 
 // Enable CORS for all routes and methods
 app.use(
@@ -1321,8 +1340,8 @@ app.post("/make-server-e07959ec/admin/improve-field", requireAuth, async (c) => 
     type FieldRule = { label: string; rule: string; format: string };
     const fieldRules: Record<string, FieldRule> = {
       description: {
-        label: 'Short Description',
-        rule: 'Professional, benefit-focused, concrete. HARD LIMIT: 250 characters maximum (count carefully). No buzzword fluff.',
+        label: 'Description',
+        rule: 'Professional, benefit-focused, concrete. Be clear and compelling. No buzzword fluff.',
         format: 'Return plain text only (no JSON, no quotes around the result).',
       },
       tagline: {
@@ -1543,7 +1562,7 @@ Return ONLY the improved text — no labels, no explanations, no markdown fences
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
             temperature: isAlternative ? 0.95 : 0.72,
-            maxOutputTokens: 1024,
+            maxOutputTokens: 2048,
           },
         }),
       }
@@ -8565,4 +8584,53 @@ app.get("/make-server-e07959ec/admin/proxy-image", requireAuth, async (c) => {
   }
 });
 
-Deno.serve(app.fetch);
+// Global error handler - catches all unhandled errors
+app.onError((err, c) => {
+  console.error('[SERVER ERROR]', err);
+  return c.json({ 
+    success: false, 
+    error: err.message || 'Internal server error' 
+  }, 500);
+});
+
+// 404 handler - ensures all requests get a response
+app.notFound((c) => {
+  console.log('[404] Not found:', c.req.url);
+  return c.json({ 
+    success: false, 
+    error: 'Not found' 
+  }, 404);
+});
+
+// Start server with error handling
+Deno.serve({
+  onError: (error) => {
+    console.error('[DENO SERVER ERROR]', error);
+    return new Response(
+      JSON.stringify({ success: false, error: 'Internal server error' }),
+      { 
+        status: 500,
+        headers: { 
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        }
+      }
+    );
+  }
+}, async (req) => {
+  try {
+    return await app.fetch(req);
+  } catch (error) {
+    console.error('[APP FETCH ERROR]', error);
+    return new Response(
+      JSON.stringify({ success: false, error: 'Server error' }),
+      { 
+        status: 500,
+        headers: { 
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        }
+      }
+    );
+  }
+});

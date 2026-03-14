@@ -78,7 +78,7 @@ export function ProjectDetail() {
   const [project, setProject] = useState<any>(fallbackProject);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showVideo, setShowVideo] = useState(false);
+  const [showVideo, setShowVideo] = useState(true); // Changed to true for autoplay
 
   // ── Video analytics tracking ───────────────────────────────────────────────
   const idRef           = useRef<string | undefined>(slug);
@@ -88,6 +88,18 @@ export function ProjectDetail() {
   const iframeRef       = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => { idRef.current = slug; }, [slug]);
+
+  // ── Record view on page load (autoplay) ────────────────────────────────────
+  useEffect(() => {
+    if (!viewRecordedRef.current && slug) {
+      viewRecordedRef.current = true;
+      fetch(`${API_BASE}/projects/${slug}/video-view`, {
+        method:  'POST',
+        headers: { 'Authorization': `Bearer ${publicAnonKey}`, 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ addView: true, watchSeconds: 0 }),
+      }).catch(err => console.warn('[VideoTrack] view record failed:', err));
+    }
+  }, [slug]);
 
   /** Fire-and-forget: POST seconds watched to the server. */
   const postWatchSeconds = useCallback((secs: number) => {
