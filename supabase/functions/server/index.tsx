@@ -135,6 +135,25 @@ const app = new Hono();
 // Enable logger
 app.use('*', logger(console.log));
 
+// Add detailed request/response logging
+app.use('*', async (c, next) => {
+  const start = Date.now();
+  const path = c.req.path;
+  const method = c.req.method;
+  
+  console.log(`[REQUEST START] ${method} ${path}`);
+  
+  try {
+    await next();
+    const duration = Date.now() - start;
+    console.log(`[REQUEST END] ${method} ${path} - ${c.res.status} (${duration}ms)`);
+  } catch (error) {
+    const duration = Date.now() - start;
+    console.error(`[REQUEST FAILED] ${method} ${path} - Error after ${duration}ms:`, error);
+    throw error;
+  }
+});
+
 // Add timeout middleware to prevent hanging requests
 app.use('*', async (c, next) => {
   const timeoutPromise = new Promise((_, reject) => 
@@ -2768,6 +2787,18 @@ app.post("/make-server-e07959ec/projects", requireAuth, async (c) => {
     const { id: _tempId, ...rest } = body;
     // Always derive slug from title (override any client-supplied slug so it stays in sync)
     rest.slug = rest.slug?.trim() || (rest.title ? generateSlug(rest.title) : undefined);
+    
+    // Set order_index to be last (max + 1) if not provided
+    if (rest.orderIndex === undefined) {
+      const { data: maxProject } = await supabase
+        .from('projects')
+        .select('order_index')
+        .order('order_index', { ascending: false })
+        .limit(1)
+        .single();
+      rest.orderIndex = maxProject?.order_index !== undefined ? maxProject.order_index + 1 : 0;
+    }
+    
     const dbRow = toDbRow(rest);
     
     const { data, error } = await supabase
@@ -2837,6 +2868,90 @@ app.delete("/make-server-e07959ec/projects/:id", requireAuth, async (c) => {
     return c.json({ success: true });
   } catch (error) {
     console.log(`Error deleting project: ${error}`);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
+// Reorder projects (protected)
+app.post("/make-server-e07959ec/projects/reorder", requireAuth, async (c) => {
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    const { projectIds } = body;
+    
+    if (!Array.isArray(projectIds)) {
+      console.log('Reorder error: projectIds must be an array');
+      return c.json({ success: false, error: 'projectIds must be an array' }, 400);
+    }
+
+    if (projectIds.length === 0) {
+      console.log('Reorder: empty array, nothing to do');
+      return c.json({ success: true });
+    }
+
+    console.log(`Reordering ${projectIds.length} projects...`);
+
+    // Update each project's order_index based on its position in the array
+    const updatePromises = projectIds.map(async (id, index) => {
+      const { error } = await supabase
+        .from('projects')
+        .update({ order_index: index })
+        .eq('id', id);
+      
+      if (error) {
+        console.error(`Error updating order for project ${id}:`, error.message);
+        throw new Error(`Failed to update project ${id}: ${error.message}`);
+      }
+      return true;
+    });
+
+    await Promise.all(updatePromises);
+    
+    console.log('✅ Successfully reordered all projects');
+    return c.json({ success: true });
+  } catch (error) {
+    console.error(`Error reordering projects: ${error}`);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
+// Reorder tools (protected)
+app.post("/make-server-e07959ec/tools/reorder", requireAuth, async (c) => {
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    const { toolIds } = body;
+    
+    if (!Array.isArray(toolIds)) {
+      console.log('Reorder error: toolIds must be an array');
+      return c.json({ success: false, error: 'toolIds must be an array' }, 400);
+    }
+
+    if (toolIds.length === 0) {
+      console.log('Reorder: empty array, nothing to do');
+      return c.json({ success: true });
+    }
+
+    console.log(`Reordering ${toolIds.length} tools...`);
+
+    // Update each tool's order_index based on its position in the array
+    const updatePromises = toolIds.map(async (id, index) => {
+      const { error } = await supabase
+        .from('tools')
+        .update({ order_index: index })
+        .eq('id', id);
+      
+      if (error) {
+        console.error(`Error updating order for tool ${id}:`, error.message);
+        throw new Error(`Failed to update tool ${id}: ${error.message}`);
+      }
+      return true;
+    });
+
+    await Promise.all(updatePromises);
+    
+    console.log('✅ Successfully reordered all tools');
+    return c.json({ success: true });
+  } catch (error) {
+    console.error(`Error reordering tools: ${error}`);
     return c.json({ success: false, error: String(error) }, 500);
   }
 });
@@ -6313,7 +6428,7 @@ app.post("/make-server-e07959ec/init", requireAuth, async (c) => {
         },
         updated_at: new Date().toISOString(),
       },
-      // ── Legal pages (EN) ──────────────────────────────────────────────────
+      // ── Legal pages (EN) ─��────────────────────────────────────────────────
       {
         key: 'termsContent',
         value: `<h2>1. Acceptance of Terms</h2>\n<p>By accessing and using this website, you accept and agree to be bound by the terms and provision of this agreement.</p>\n\n<h2>2. Use License</h2>\n<p>Permission is granted to temporarily download one copy of the materials on our website for personal, non-commercial transitory viewing only.</p>\n\n<h2>3. Disclaimer</h2>\n<p>The materials on our website are provided on an 'as is' basis. We make no warranties, expressed or implied, and hereby disclaim and negate all other warranties including, without limitation, implied warranties or conditions of merchantability, fitness for a particular purpose, or non-infringement of intellectual property or other violation of rights.</p>\n\n<h2>4. Limitations</h2>\n<p>In no event shall Fastoosh or its suppliers be liable for any damages (including, without limitation, damages for loss of data or profit, or due to business interruption) arising out of the use or inability to use the materials on our website.</p>\n\n<h2>5. Contact Information</h2>\n<p>If you have any questions about these Terms, please contact us through our website.</p>`,
@@ -7877,7 +7992,7 @@ app.post('/make-server-e07959ec/admin/reset', requireAuth, async (c) => {
     const adminUserId = authData.user.id;
     const report: Record<string, { deleted: number; error?: string }> = {};
 
-    // ── Traffic & Sessions ────────────────────────────────────────────────────
+    // ── Traffic & Sessions ───���────────────────────────────────────────────────
     if (categories?.traffic) {
       try {
         const { data, error } = await supabase
@@ -8586,11 +8701,26 @@ app.get("/make-server-e07959ec/admin/proxy-image", requireAuth, async (c) => {
 
 // Global error handler - catches all unhandled errors
 app.onError((err, c) => {
-  console.error('[SERVER ERROR]', err);
-  return c.json({ 
-    success: false, 
-    error: err.message || 'Internal server error' 
-  }, 500);
+  console.error('[SERVER ERROR]', {
+    url: c.req.url,
+    method: c.req.method,
+    error: err.message,
+    stack: err.stack
+  });
+  
+  // Always return a proper JSON response
+  try {
+    return c.json({ 
+      success: false, 
+      error: err.message || 'Internal server error' 
+    }, 500);
+  } catch (e) {
+    console.error('[ERROR HANDLER FAILED]', e);
+    return new Response(JSON.stringify({ success: false, error: 'Internal server error' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
 });
 
 // 404 handler - ensures all requests get a response
@@ -8618,10 +8748,32 @@ Deno.serve({
     );
   }
 }, async (req) => {
+  const url = new URL(req.url);
+  const method = req.method;
+  console.log(`[DENO SERVE] ${method} ${url.pathname}`);
+  
   try {
-    return await app.fetch(req);
+    const response = await app.fetch(req);
+    
+    // Ensure we have a valid response
+    if (!response) {
+      console.error(`[DENO SERVE] No response returned for ${method} ${url.pathname}`);
+      return new Response(
+        JSON.stringify({ success: false, error: 'No response generated' }),
+        { 
+          status: 500,
+          headers: { 
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          }
+        }
+      );
+    }
+    
+    console.log(`[DENO SERVE] ${method} ${url.pathname} -> ${response.status}`);
+    return response;
   } catch (error) {
-    console.error('[APP FETCH ERROR]', error);
+    console.error(`[APP FETCH ERROR] ${method} ${url.pathname}:`, error);
     return new Response(
       JSON.stringify({ success: false, error: 'Server error' }),
       { 

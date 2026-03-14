@@ -1,6 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import React from 'react';
 import { useNavigate } from 'react-router';
+import { DndProvider } from 'react-dnd';
+import { HTML5Backend } from 'react-dnd-html5-backend';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { GlassCard } from '../components/shared/GlassCard';
 import { Button } from '../components/ui/button';
@@ -27,6 +29,8 @@ import { GuideTab } from '../components/admin/GuideTab';
 import { LegalTab } from '../components/admin/LegalTab';
 import { VideoThumbnailCapture } from '../components/admin/VideoThumbnailCapture';
 import { ToolRequestsTab } from '../components/admin/ToolRequestsTab';
+import { DraggableProjectCard } from '../components/admin/DraggableProjectCard';
+import { DraggableToolCard } from '../components/admin/DraggableToolCard';
 
 import { ScrollingGradientBackground } from '../components/shared/ScrollingGradientBackground';
 
@@ -446,6 +450,53 @@ export function Admin() {
     }
   };
 
+  const moveProject = useCallback((dragIndex: number, hoverIndex: number) => {
+    setProjects((prevProjects) => {
+      const newProjects = [...prevProjects];
+      const [removed] = newProjects.splice(dragIndex, 1);
+      newProjects.splice(hoverIndex, 0, removed);
+      return newProjects;
+    });
+  }, []);
+
+  const reorderProjects = async () => {
+    try {
+      const token = localStorage.getItem('admin_token');
+      const projectIds = projects.map(p => p.id);
+      
+      console.log('💾 Saving new project order:', projectIds);
+      
+      const response = await fetch(`${API_BASE}/projects/reorder`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${publicAnonKey}`,
+          'X-Admin-Token': token || '',
+        },
+        body: JSON.stringify({ projectIds }),
+      });
+
+      if (!response.ok) {
+        console.error('❌ Reorder response not OK:', response.status, response.statusText);
+        const text = await response.text();
+        console.error('Response body:', text);
+        return;
+      }
+
+      const result = await response.json();
+      if (result.success) {
+        console.log('✅ Projects reordered successfully');
+        bustApiCache('projects');
+      } else {
+        console.error('❌ Error reordering projects:', result.error);
+        alert(`Failed to save order: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('❌ Error reordering projects:', error);
+      alert(`Failed to save order: ${error}`);
+    }
+  };
+
   // ========== TOOL HANDLERS ==========
 
   const saveTool = async (tool: Tool): Promise<{ success: boolean; message: string }> => {
@@ -520,6 +571,51 @@ export function Admin() {
       }
     } catch (error) {
       console.error('Error deleting tool:', error);
+    }
+  };
+
+  const moveTool = useCallback((dragIndex: number, hoverIndex: number) => {
+    setTools((prevTools) => {
+      const newTools = [...prevTools];
+      const [removed] = newTools.splice(dragIndex, 1);
+      newTools.splice(hoverIndex, 0, removed);
+      return newTools;
+    });
+  }, []);
+
+  const reorderTools = async () => {
+    try {
+      const token = localStorage.getItem('admin_token');
+      const toolIds = tools.map(t => t.id);
+      
+      console.log('💾 Saving new tool order:', toolIds);
+      
+      const response = await fetch(`${API_BASE}/tools/reorder`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${publicAnonKey}`,
+          'X-Admin-Token': token || '',
+        },
+        body: JSON.stringify({ toolIds }),
+      });
+
+      if (!response.ok) {
+        console.error('❌ Reorder response not OK:', response.status, response.statusText);
+        const text = await response.text();
+        console.error('Response body:', text);
+        return;
+      }
+
+      const result = await response.json();
+      if (result.success) {
+        console.log('✅ Tool order saved successfully');
+        bustApiCache('tools');
+      } else {
+        console.error('❌ Reorder failed:', result.error);
+      }
+    } catch (error) {
+      console.error('❌ Error reordering tools:', error);
     }
   };
 
@@ -841,39 +937,27 @@ export function Admin() {
                 />
               )}
 
-              <div className="space-y-4">
-                {projects.map((project) => (
-                  <div
-                    key={project.id}
-                    className="flex justify-between items-center p-4 bg-white/5 rounded-lg border border-white/10"
-                  >
-                    <div>
-                      <h3 className="text-white font-semibold">{project.title}</h3>
-                      <p className="text-gray-400 text-sm">
-                        {project.category} • {project.year}
-                      </p>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setEditingProject(project)}
-                        className="bg-black text-white hover:bg-white hover:text-black dark:bg-white dark:text-black dark:hover:bg-black dark:hover:text-white border-transparent group cursor-pointer"
-                      >
-                        <Pencil className="w-4 h-4 group-hover:text-purple-400 transition-colors" />
-                      </Button>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => deleteProject(project.id)}
-                        className="cursor-pointer hover:bg-red-600/20 group text-white"
-                      >
-                        <Trash2 className="w-4 h-4 group-hover:text-red-400 transition-colors" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              {projects.length > 0 && (
+                <p className="text-sm text-white/50 mb-4">
+                  💡 Drag and drop to reorder projects. Changes are saved automatically.
+                </p>
+              )}
+
+              <DndProvider backend={HTML5Backend}>
+                <div className="space-y-3">
+                  {projects.map((project, index) => (
+                    <DraggableProjectCard
+                      key={project.id}
+                      project={project}
+                      index={index}
+                      moveProject={moveProject}
+                      onEdit={() => setEditingProject(project)}
+                      onDelete={() => deleteProject(project.id)}
+                      onDragEnd={reorderProjects}
+                    />
+                  ))}
+                </div>
+              </DndProvider>
             </GlassCard>
 
             {/* PROJECT CATEGORIES */}
@@ -965,39 +1049,27 @@ export function Admin() {
                 />
               )}
 
-              <div className="space-y-4">
-                {tools.map((tool) => (
-                  <div
-                    key={tool.id}
-                    className="flex justify-between items-center p-4 bg-white/5 rounded-lg border border-white/10"
-                  >
-                    <div>
-                      <h3 className="text-white font-semibold">{tool.name}</h3>
-                      <p className="text-gray-400 text-sm">
-                        {tool.category} • {tool.versions?.length || 0} version(s)
-                      </p>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setEditingTool(tool)}
-                        className="bg-black text-white hover:bg-white hover:text-black dark:bg-white dark:text-black dark:hover:bg-black dark:hover:text-white border-transparent group cursor-pointer"
-                      >
-                        <Pencil className="w-4 h-4 group-hover:text-purple-400 transition-colors" />
-                      </Button>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => deleteTool(tool.id)}
-                        className="cursor-pointer hover:bg-red-600/20 group text-white"
-                      >
-                        <Trash2 className="w-4 h-4 group-hover:text-red-400 transition-colors" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              {tools.length > 0 && (
+                <p className="text-sm text-white/50 mb-4">
+                  💡 Drag and drop to reorder tools. Changes are saved automatically.
+                </p>
+              )}
+
+              <DndProvider backend={HTML5Backend}>
+                <div className="space-y-3">
+                  {tools.map((tool, index) => (
+                    <DraggableToolCard
+                      key={tool.id}
+                      tool={tool}
+                      index={index}
+                      moveTool={moveTool}
+                      onEdit={() => setEditingTool(tool)}
+                      onDelete={() => deleteTool(tool.id)}
+                      onDragEnd={reorderTools}
+                    />
+                  ))}
+                </div>
+              </DndProvider>
             </GlassCard>
 
             {/* TOOL CATEGORIES */}
