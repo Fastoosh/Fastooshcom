@@ -5,7 +5,6 @@ import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
 import { AdminSelect } from './AdminSelect';
 import { AIImproveModal } from './AIImproveModal';
-import { VimeoPicker } from './VimeoPicker';
 import {
   Save, Sparkles, ChevronDown, ChevronRight, Loader2, Plus, Trash2,
   X, CheckCircle2, AlertCircle, Wand2, RotateCcw,
@@ -408,7 +407,6 @@ function HeroSection({ content, setContent }: { content: HomeContent; setContent
   const [uploading, setUploading] = useState(false);
   const [videoInputMode, setVideoInputMode] = useState<'url' | 'upload'>('url');
   const [activeImprove, setActiveImprove] = useState<ImproveState>(null);
-  const [showVimeoPicker, setShowVimeoPicker] = useState(false);
   const ai = (fieldKey: string, fieldLabel: string, currentValue: string, onApply: (v: string) => void) =>
     setActiveImprove({ fieldKey, fieldLabel, currentValue, onApply });
 
@@ -485,27 +483,14 @@ function HeroSection({ content, setContent }: { content: HomeContent; setContent
           </button>
         </div>
         {videoInputMode === 'url' ? (
-          <div className="space-y-2">
-            <div className="flex gap-2">
-              <Input
-                value={content.showreelUrl || ''}
-                onChange={e => set('showreelUrl', e.target.value)}
-                placeholder="https://player.vimeo.com/video/123456789 or YouTube URL"
-                className="bg-black/40 border-white/10 text-white text-sm flex-1"
-              />
-              {/* Browse Vimeo library */}
-              <Button
-                type="button"
-                onClick={() => setShowVimeoPicker(true)}
-                className="cursor-pointer bg-[#1ab7ea]/20 hover:bg-[#1ab7ea]/30 border border-[#1ab7ea]/40 text-[#1ab7ea] whitespace-nowrap"
-              >
-                <svg className="w-4 h-4 mr-1.5" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M22.875 8.396c-.097 2.114-1.577 5.01-4.437 8.688C15.476 20.83 12.958 22.667 10.884 22.667c-1.253 0-2.31-1.156-3.173-3.467l-1.728-6.34C5.25 10.549 4.567 9.393 3.834 9.393c-.155 0-.7.327-1.63.977L1 9.016a354.35 354.35 0 0 0 2.609-2.329C5.15 5.3 6.296 4.59 7.076 4.514c1.988-.19 3.21 1.168 3.666 4.073.494 3.126.838 5.071 1.03 5.836.572 2.597 1.2 3.895 1.884 3.895.532 0 1.33-.842 2.394-2.525 1.063-1.683 1.63-2.963 1.7-3.84.152-1.452-.419-2.178-1.7-2.178a4.74 4.74 0 0 0-1.884.42c1.25-4.09 3.637-6.077 7.16-5.96 2.612.077 3.843 1.77 3.693 5.08l-.144.08z"/>
-                </svg>
-                Browse Vimeo
-              </Button>
-            </div>
-            <p className="text-white/30 text-xs">Accepts Vimeo, YouTube, or any direct embed URL.</p>
+          <div>
+            <Input
+              value={content.showreelUrl || ''}
+              onChange={e => set('showreelUrl', e.target.value)}
+              placeholder="https://player.vimeo.com/video/123456789 or YouTube URL"
+              className="bg-black/40 border-white/10 text-white text-sm"
+            />
+            <p className="text-white/30 text-xs mt-1">Accepts Vimeo, YouTube, or any direct embed URL.</p>
           </div>
         ) : (
           <div>
@@ -537,17 +522,6 @@ function HeroSection({ content, setContent }: { content: HomeContent; setContent
           context={HOME_CONTEXT}
           onApply={activeImprove.onApply}
           onClose={() => setActiveImprove(null)}
-        />
-      )}
-
-      {/* Vimeo Video Picker for showreel */}
-      {showVimeoPicker && (
-        <VimeoPicker
-          onSelect={(url, title) => {
-            set('showreelUrl', url);
-            setShowVimeoPicker(false);
-          }}
-          onClose={() => setShowVimeoPicker(false)}
         />
       )}
 

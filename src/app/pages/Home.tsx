@@ -171,6 +171,10 @@ export function Home() {
 
   const c = homeContent;
   const embedUrl = getEmbedUrl(c.showreelUrl);
+  
+  // DEBUG: Check what URL we have
+  console.log('🎬 Showreel URL:', c.showreelUrl);
+  console.log('🎬 Embed URL:', embedUrl);
 
   // ── Showreel video tracking ────────────────────────────────────────────────
   const showreelIframeRef  = useRef<HTMLIFrameElement>(null);
