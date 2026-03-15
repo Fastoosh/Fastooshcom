@@ -2,7 +2,7 @@ import { useRef } from 'react';
 import { useDrag, useDrop } from 'react-dnd';
 import type { Identifier, XYCoord } from 'dnd-core';
 import { Button } from '../ui/button';
-import { Pencil, Trash2, GripVertical } from 'lucide-react';
+import { Pencil, Trash2, GripVertical, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface DraggableProjectCardProps {
   project: {
@@ -17,6 +17,8 @@ interface DraggableProjectCardProps {
   onEdit: () => void;
   onDelete: () => void;
   onDragEnd?: () => void;
+  isExpanded?: boolean;
+  expandedContent?: React.ReactNode;
 }
 
 interface DragItem {
@@ -32,6 +34,8 @@ export function DraggableProjectCard({
   onEdit,
   onDelete,
   onDragEnd,
+  isExpanded = false,
+  expandedContent,
 }: DraggableProjectCardProps) {
   const ref = useRef<HTMLDivElement>(null);
 
@@ -114,59 +118,79 @@ export function DraggableProjectCard({
     <div
       ref={ref}
       data-handler-id={handlerId}
-      className="flex items-center gap-4 p-4 bg-white/5 rounded-lg border border-white/10 transition-opacity"
+      className="bg-white/5 rounded-lg border border-white/10 transition-all"
       style={{ opacity }}
     >
-      {/* Drag Handle */}
-      <div
-        ref={drag}
-        className="cursor-grab active:cursor-grabbing text-white/40 hover:text-white/70 transition-colors flex-shrink-0"
-      >
-        <GripVertical className="w-5 h-5" />
+      {/* Collapsed Card */}
+      <div className={`flex items-center gap-4 p-4 transition-opacity ${isExpanded ? 'opacity-60' : ''}`}>
+        {/* Drag Handle */}
+        <div
+          ref={drag}
+          className="cursor-grab active:cursor-grabbing text-white/40 hover:text-white/70 transition-colors flex-shrink-0"
+        >
+          <GripVertical className="w-5 h-5" />
+        </div>
+
+        {/* Thumbnail */}
+        {project.imageUrl ? (
+          <div className="w-16 h-16 rounded-lg overflow-hidden bg-white/5 border border-white/10 flex-shrink-0">
+            <img
+              src={project.imageUrl}
+              alt={project.title}
+              className="w-full h-full object-cover"
+            />
+          </div>
+        ) : (
+          <div className="w-16 h-16 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center flex-shrink-0">
+            <span className="text-white/30 text-xs">No image</span>
+          </div>
+        )}
+
+        {/* Project Info */}
+        <div className="flex-1 min-w-0">
+          <h3 className="text-white font-semibold truncate">{project.title}</h3>
+          <p className="text-gray-400 text-sm">
+            {project.category} • {project.year}
+          </p>
+        </div>
+
+        {/* Expansion Indicator */}
+        {isExpanded && (
+          <div className="flex items-center gap-2 text-purple-400 text-sm flex-shrink-0">
+            <span className="hidden sm:inline">Editing</span>
+            <ChevronUp className="w-4 h-4" />
+          </div>
+        )}
+
+        {/* Actions */}
+        {!isExpanded && (
+          <div className="flex gap-2 flex-shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onEdit}
+              className="bg-black text-white hover:bg-white hover:text-black dark:bg-white dark:text-black dark:hover:bg-black dark:hover:text-white border-transparent group cursor-pointer"
+            >
+              <Pencil className="w-4 h-4 group-hover:text-purple-400 transition-colors" />
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={onDelete}
+              className="cursor-pointer hover:bg-red-600/20 group text-white"
+            >
+              <Trash2 className="w-4 h-4 group-hover:text-red-400 transition-colors" />
+            </Button>
+          </div>
+        )}
       </div>
 
-      {/* Thumbnail */}
-      {project.imageUrl ? (
-        <div className="w-16 h-16 rounded-lg overflow-hidden bg-white/5 border border-white/10 flex-shrink-0">
-          <img
-            src={project.imageUrl}
-            alt={project.title}
-            className="w-full h-full object-cover"
-          />
-        </div>
-      ) : (
-        <div className="w-16 h-16 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center flex-shrink-0">
-          <span className="text-white/30 text-xs">No image</span>
+      {/* Expanded Form */}
+      {isExpanded && expandedContent && (
+        <div className="border-t border-white/10 p-6 bg-black/20">
+          {expandedContent}
         </div>
       )}
-
-      {/* Project Info */}
-      <div className="flex-1 min-w-0">
-        <h3 className="text-white font-semibold truncate">{project.title}</h3>
-        <p className="text-gray-400 text-sm">
-          {project.category} • {project.year}
-        </p>
-      </div>
-
-      {/* Actions */}
-      <div className="flex gap-2 flex-shrink-0">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onEdit}
-          className="bg-black text-white hover:bg-white hover:text-black dark:bg-white dark:text-black dark:hover:bg-black dark:hover:text-white border-transparent group cursor-pointer"
-        >
-          <Pencil className="w-4 h-4 group-hover:text-purple-400 transition-colors" />
-        </Button>
-        <Button
-          variant="destructive"
-          size="sm"
-          onClick={onDelete}
-          className="cursor-pointer hover:bg-red-600/20 group text-white"
-        >
-          <Trash2 className="w-4 h-4 group-hover:text-red-400 transition-colors" />
-        </Button>
-      </div>
     </div>
   );
 }

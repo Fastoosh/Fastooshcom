@@ -928,7 +928,8 @@ export function Admin() {
                 </Button>
               </div>
 
-              {editingProject && (
+              {/* Show form at top only for new projects (temporary ID starting with 'project-') */}
+              {editingProject && editingProject.id.startsWith('project-') && (
                 <ProjectForm
                   project={editingProject}
                   onSave={saveProject}
@@ -954,6 +955,17 @@ export function Admin() {
                       onEdit={() => setEditingProject(project)}
                       onDelete={() => deleteProject(project.id)}
                       onDragEnd={reorderProjects}
+                      isExpanded={editingProject?.id === project.id}
+                      expandedContent={
+                        editingProject?.id === project.id ? (
+                          <ProjectForm
+                            project={editingProject}
+                            onSave={saveProject}
+                            onCancel={() => setEditingProject(null)}
+                            categories={settings.projectCategories || ['Motion Design', 'Branding', '3D Animation', 'Video Editing', 'VFX', 'UI/UX Animation', 'Other']}
+                          />
+                        ) : null
+                      }
                     />
                   ))}
                 </div>
@@ -1039,7 +1051,8 @@ export function Admin() {
                 </Button>
               </div>
 
-              {editingTool && (
+              {/* Show form at top only for new tools (temporary ID starting with 'tool-') */}
+              {editingTool && editingTool.id.startsWith('tool-') && (
                 <ToolFormNew
                   tool={editingTool}
                   onSave={saveTool}
@@ -1066,6 +1079,18 @@ export function Admin() {
                       onEdit={() => setEditingTool(tool)}
                       onDelete={() => deleteTool(tool.id)}
                       onDragEnd={reorderTools}
+                      isExpanded={editingTool?.id === tool.id}
+                      expandedContent={
+                        editingTool?.id === tool.id ? (
+                          <ToolFormNew
+                            tool={editingTool}
+                            onSave={saveTool}
+                            onCancel={() => setEditingTool(null)}
+                            statuses={(settings.toolStatuses || []).map(s => s.label)}
+                            toolCategories={settings.toolCategories || []}
+                          />
+                        ) : null
+                      }
                     />
                   ))}
                 </div>

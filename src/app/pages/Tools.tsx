@@ -252,7 +252,7 @@ export function Tools() {
                         <span className="text-xs text-white/40 line-through">{tool.oldPrice}</span>
                       )}
                       <span className={`text-lg font-bold ${tool.oldPrice ? 'text-purple-300' : 'text-white'}`}>
-                        {tool.price === 'Free' ? 'Free' : `$${tool.price}`}
+                        {tool.price === 'Free' ? 'Free' : (tool.price?.toString().startsWith('$') ? tool.price : `$${tool.price}`)}
                         {tool.pricingSuffix && (
                           <span className="text-sm font-normal text-white/50">{tool.pricingSuffix}</span>
                         )}
