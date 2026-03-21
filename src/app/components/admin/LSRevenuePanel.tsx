@@ -154,12 +154,13 @@ export function LSRevenuePanel() {
   const [loaded,    setLoaded]    = useState(false);
   const [error,     setError]     = useState<string | null>(null);
   const [chartRange, setChartRange] = useState<7 | 14 | 30>(30);
+  const [mode,      setMode]      = useState<'test' | 'production'>('production'); // LS API mode
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (apiMode: 'test' | 'production' = mode) => {
     setLoading(true);
     setError(null);
     try {
-      const res  = await fetch(`${API_BASE}/admin/ls-revenue`, { headers: getAuthHeaders() });
+      const res  = await fetch(`${API_BASE}/admin/ls-revenue?mode=${apiMode}`, { headers: getAuthHeaders() });
       const json = await res.json();
       if (!json.success) throw new Error(json.error || 'Unknown error');
       setData(json.data);
@@ -170,7 +171,7 @@ export function LSRevenuePanel() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [mode]);
 
   const chartSeries = data?.series.slice(-chartRange) ?? [];
 
@@ -230,16 +231,45 @@ export function LSRevenuePanel() {
             <p className="text-white font-semibold">Failed to fetch Lemon Squeezy data</p>
             <p className="text-red-400/80 text-sm mt-1 font-mono">{error}</p>
             {error.includes('LEMON_SQUEEZY_API_KEY') && (
-              <p className="text-white/40 text-xs mt-2">
-                Make sure you've set the <span className="text-amber-400 font-mono">LEMON_SQUEEZY_API_KEY</span> secret in Supabase Edge Function settings.
-                You can find your API key at{' '}
-                <a href="https://app.lemonsqueezy.com/settings/api" target="_blank" rel="noreferrer" className="text-amber-400 underline">
-                  app.lemonsqueezy.com/settings/api
-                </a>.
-              </p>
+              <div className="mt-3 p-3 bg-white/5 rounded-lg border border-white/10">
+                <p className="text-white/60 text-xs mb-2 font-semibold">
+                  {error.includes('TEST') ? '🧪 Test Mode API Key Required' : '🔑 Production API Key Required'}
+                </p>
+                <p className="text-white/40 text-xs leading-relaxed">
+                  {error.includes('TEST') ? (
+                    <>
+                      <strong className="text-amber-400">Step 1:</strong> Go to{' '}
+                      <a href="https://app.lemonsqueezy.com/settings/api" target="_blank" rel="noreferrer" className="text-amber-400 underline">
+                        LemonSqueezy Settings
+                      </a>
+                      <br />
+                      <strong className="text-amber-400">Step 2:</strong> Enable <strong>Test Mode</strong> (toggle at top right)
+                      <br />
+                      <strong className="text-amber-400">Step 3:</strong> Create a new API key while Test Mode is active
+                      <br />
+                      <strong className="text-amber-400">Step 4:</strong> Add it to Supabase Edge Functions as{' '}
+                      <span className="text-purple-400 font-mono">LEMON_SQUEEZY_API_KEY_TEST</span>
+                    </>
+                  ) : (
+                    <>
+                      <strong className="text-amber-400">Step 1:</strong> Go to{' '}
+                      <a href="https://app.lemonsqueezy.com/settings/api" target="_blank" rel="noreferrer" className="text-amber-400 underline">
+                        LemonSqueezy Settings
+                      </a>
+                      <br />
+                      <strong className="text-amber-400">Step 2:</strong> Disable <strong>Test Mode</strong> (toggle at top right)
+                      <br />
+                      <strong className="text-amber-400">Step 3:</strong> Create a new API key while Test Mode is inactive
+                      <br />
+                      <strong className="text-amber-400">Step 4:</strong> Add it to Supabase Edge Functions as{' '}
+                      <span className="text-green-400 font-mono">LEMON_SQUEEZY_API_KEY</span>
+                    </>
+                  )}
+                </p>
+              </div>
             )}
           </div>
-          <button onClick={load} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white/50 hover:text-white text-xs transition-all">
+          <button onClick={() => load(mode)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white/50 hover:text-white text-xs transition-all">
             <RefreshCw className="w-3 h-3" />Retry
           </button>
         </div>
@@ -265,18 +295,50 @@ export function LSRevenuePanel() {
             <h3 className="text-white font-bold text-lg flex items-center gap-2">
               Lemon Squeezy
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/25 text-amber-400 uppercase tracking-wider">Live</span>
+              {/* Mode badge */}
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                mode === 'test' 
+                  ? 'bg-purple-500/15 border border-purple-500/25 text-purple-400' 
+                  : 'bg-green-500/15 border border-green-500/25 text-green-400'
+              }`}>
+                {mode}
+              </span>
             </h3>
             <p className="text-white/30 text-xs">{summary.totalOrders} orders fetched directly from the API</p>
           </div>
         </div>
-        <button
-          onClick={load}
-          disabled={loading}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white/40 hover:text-white/80 hover:bg-white/8 transition-all text-xs disabled:opacity-40"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Mode toggle */}
+          <div className="flex gap-1 p-0.5 rounded-lg bg-white/5 border border-white/8">
+            {(['test', 'production'] as const).map(m => (
+              <button
+                key={m}
+                onClick={() => {
+                  setMode(m);
+                  load(m);
+                }}
+                disabled={loading}
+                className={`px-3 py-1 rounded-md text-xs font-medium transition-all disabled:opacity-40 ${
+                  mode === m 
+                    ? m === 'test'
+                      ? 'bg-purple-500/20 text-purple-300'
+                      : 'bg-green-500/20 text-green-300'
+                    : 'text-white/30 hover:text-white/60'
+                }`}
+              >
+                {m === 'test' ? 'Test Mode' : 'Production'}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => load(mode)}
+            disabled={loading}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white/40 hover:text-white/80 hover:bg-white/8 transition-all text-xs disabled:opacity-40"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+        </div>
       </div>
 
       {/* ── Summary KPI tiles ───────────────────────────────────────────── */}

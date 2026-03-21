@@ -176,6 +176,7 @@ export function ToolFormNew({
   const [guideUploading, setGuideUploading] = useState(false);
   const [guideDeleting, setGuideDeleting]   = useState(false);
   const [guideMsg, setGuideMsg]             = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+  const [skipAITheming, setSkipAITheming]   = useState(false); // Option to skip AI theming for large files
   // Inline guide editor
   const [guideEditorOpen, setGuideEditorOpen]     = useState(false);
   const [guideEditorHtml, setGuideEditorHtml]     = useState('');
@@ -272,7 +273,7 @@ export function ToolFormNew({
           Authorization: `Bearer ${publicAnonKey}`,
           'X-Admin-Token': adminToken,
         },
-        body: JSON.stringify({ html, slug }),
+        body: JSON.stringify({ html, slug, skipAI: skipAITheming }),
       });
       const data = await res.json();
       if (data.success) {
@@ -1406,7 +1407,9 @@ export function ToolFormNew({
               ) : (
                 <FileCode className="w-3.5 h-3.5" />
               )}
-              {guideUploading ? 'Theming with AI…' : guideExists ? 'Replace Guide' : 'Upload Guide (.html)'}
+              {guideUploading 
+                ? (skipAITheming ? 'Uploading…' : 'Theming with AI…') 
+                : (guideExists ? 'Replace Guide' : 'Upload Guide (.html)')}
               <input
                 type="file"
                 accept=".html,text/html"

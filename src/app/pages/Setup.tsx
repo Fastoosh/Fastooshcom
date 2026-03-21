@@ -36,7 +36,8 @@ const ENV_DEFS: Omit<EnvVar, 'status'>[] = [
   { key: 'RESEND_API_KEY',             label: 'Resend API Key',              required: true,  hint: 'Transactional emails, security alerts & password-reset emails.', docUrl: 'https://resend.com/api-keys' },
   { key: 'GEMINI_API_KEY',             label: 'Gemini AI API Key',           required: true,  hint: 'Powers AI content generation & auto-translation in the admin panel.', docUrl: 'https://aistudio.google.com/app/apikey' },
   { key: 'VIMEO_ACCESS_TOKEN',         label: 'Vimeo Access Token',          required: false, hint: 'Required for the Vimeo video picker in the admin media gallery.', docUrl: 'https://developer.vimeo.com/apps' },
-  { key: 'LEMON_SQUEEZY_API_KEY',      label: 'Lemon Squeezy API Key',       required: false, hint: 'Required only if you sell tools via Lemon Squeezy.', docUrl: 'https://app.lemonsqueezy.com/settings/api' },
+  { key: 'LEMON_SQUEEZY_API_KEY',      label: 'Lemon Squeezy API Key (Production)',       required: false, hint: 'Production API key for live sales. Get it from LS settings when Test Mode is disabled.', docUrl: 'https://app.lemonsqueezy.com/settings/api' },
+  { key: 'LEMON_SQUEEZY_API_KEY_TEST', label: 'Lemon Squeezy API Key (Test Mode)',       required: false, hint: 'Test mode API key for development. Get it from LS settings when Test Mode is enabled.', docUrl: 'https://app.lemonsqueezy.com/settings/api' },
   { key: 'LEMON_SQUEEZY_WEBHOOK_SECRET', label: 'Lemon Squeezy Webhook Secret', required: false, hint: 'Required only if you sell tools via Lemon Squeezy.', docUrl: 'https://app.lemonsqueezy.com/settings/webhooks' },
 ];
 

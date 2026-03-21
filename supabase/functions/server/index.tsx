@@ -363,7 +363,7 @@ const normalizeTool = (tool: Record<string, any>): Record<string, any> => {
 };
 // ────────────────────────────────────────────────────────────────────────────
 
-// ── Brute-force rate limiter ──────────────────────────────────────────────
+// ── Brute-force rate limiter ─────────────────────��────────────────────────
 // Tracks failed login attempts per IP in memory.  Edge-function instances are
 // ephemeral so this doesn't survive a cold-start — that's acceptable because
 // the Resend alert adds a persistent, out-of-band notification layer on top.
@@ -2885,7 +2885,7 @@ app.post("/make-server-e07959ec/projects/reorder", requireAuth, async (c) => {
 
     if (projectIds.length === 0) {
       console.log('Reorder: empty array, nothing to do');
-      return c.json({ success: true });
+      return c.json({ success: true }, 200);
     }
 
     console.log(`Reordering ${projectIds.length} projects...`);
@@ -2907,7 +2907,7 @@ app.post("/make-server-e07959ec/projects/reorder", requireAuth, async (c) => {
     await Promise.all(updatePromises);
     
     console.log('✅ Successfully reordered all projects');
-    return c.json({ success: true });
+    return c.json({ success: true }, 200);
   } catch (error) {
     console.error(`Error reordering projects: ${error}`);
     return c.json({ success: false, error: String(error) }, 500);
@@ -2927,7 +2927,7 @@ app.post("/make-server-e07959ec/tools/reorder", requireAuth, async (c) => {
 
     if (toolIds.length === 0) {
       console.log('Reorder: empty array, nothing to do');
-      return c.json({ success: true });
+      return c.json({ success: true }, 200);
     }
 
     console.log(`Reordering ${toolIds.length} tools...`);
@@ -2949,7 +2949,7 @@ app.post("/make-server-e07959ec/tools/reorder", requireAuth, async (c) => {
     await Promise.all(updatePromises);
     
     console.log('✅ Successfully reordered all tools');
-    return c.json({ success: true });
+    return c.json({ success: true }, 200);
   } catch (error) {
     console.error(`Error reordering tools: ${error}`);
     return c.json({ success: false, error: String(error) }, 500);
@@ -5332,8 +5332,19 @@ async function lsFetchAll(apiKey: string, path: string, extraParams: Record<stri
 // GET /ls/variants — admin: fetch all LS products with their variants for the import picker
 app.get('/make-server-e07959ec/ls/variants', requireAuth, async (c) => {
   try {
-    const apiKey = Deno.env.get('LEMON_SQUEEZY_API_KEY');
-    if (!apiKey) return c.json({ success: false, error: 'LEMON_SQUEEZY_API_KEY is not configured' }, 500);
+    // Check which mode the admin wants: test or production
+    const mode = c.req.query('mode') || 'production';
+    const envKey = mode === 'test' ? 'LEMON_SQUEEZY_API_KEY_TEST' : 'LEMON_SQUEEZY_API_KEY';
+    const apiKey = Deno.env.get(envKey);
+    
+    if (!apiKey) {
+      return c.json({ 
+        success: false, 
+        error: `${envKey} is not configured. Please set it in Supabase Edge Function settings.` 
+      }, 500);
+    }
+    
+    console.log(`[ls/variants] Fetching products/variants using ${mode} mode (${envKey})`);
 
     // Fetch store info to get the store slug for constructing checkout URLs
     const storeRes = await fetch('https://api.lemonsqueezy.com/v1/stores', {
@@ -5404,13 +5415,21 @@ app.get('/make-server-e07959ec/ls/variants', requireAuth, async (c) => {
 // GET /admin/ls-revenue — live revenue data pulled directly from Lemon Squeezy API
 app.get('/make-server-e07959ec/admin/ls-revenue', requireAuth, async (c) => {
   try {
-    const apiKey = Deno.env.get('LEMON_SQUEEZY_API_KEY');
+    // Check which mode the admin wants: test or production
+    const mode = c.req.query('mode') || 'production';
+    const envKey = mode === 'test' ? 'LEMON_SQUEEZY_API_KEY_TEST' : 'LEMON_SQUEEZY_API_KEY';
+    const apiKey = Deno.env.get(envKey);
+    
     if (!apiKey) {
-      return c.json({ success: false, error: 'LEMON_SQUEEZY_API_KEY is not configured' }, 500);
+      return c.json({ 
+        success: false, 
+        error: `${envKey} is not configured. Please set it in Supabase Edge Function settings.` 
+      }, 500);
     }
 
+    console.log(`[ls-revenue] Fetching orders using ${mode} mode (${envKey})`);
     const orders = await lsFetchAll(apiKey, '/orders');
-    console.log(`[ls-revenue] Fetched ${orders.length} orders from Lemon Squeezy`);
+    console.log(`[ls-revenue] Fetched ${orders.length} orders from Lemon Squeezy (${mode} mode)`);
 
     const now            = new Date();
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
@@ -8265,18 +8284,41 @@ app.post('/make-server-e07959ec/tools/:id/guide', requireAuth, async (c) => {
   try {
     const toolId = c.req.param('id');
     const body = await c.req.json();
-    const { html, slug } = body;
+    const { html, slug, skipAI } = body;
     if (!html) return c.json({ success: false, error: 'html field is required' }, 400);
     if (!slug) return c.json({ success: false, error: 'slug field is required' }, 400);
 
+    let finalHtml = html;
+    let themeResult = { ok: false, error: 'AI theming skipped by user' };
+
     // ── Theme with Gemini (color-only dark conversion) ─────────────────────
-    console.log(`[guide-upload] Theming guide for tool "${toolId}" with Gemini…`);
-    const themeResult = await applyDarkThemeWithGemini(html);
-    const finalHtml = themeResult.ok ? themeResult.html : html; // fallback to original if AI fails
-    if (!themeResult.ok) {
-      console.log(`[guide-upload] Gemini theming failed (saving original): ${themeResult.error}`);
+    if (!skipAI) {
+      console.log(`[guide-upload] Theming guide for tool "${toolId}" with Gemini…`);
+      
+      // Add timeout wrapper for Gemini request (45 seconds)
+      const timeoutPromise = new Promise<{ ok: false; error: string }>((_, reject) => 
+        setTimeout(() => reject(new Error('AI theming timeout (45s limit)')), 45000)
+      );
+      
+      try {
+        themeResult = await Promise.race([
+          applyDarkThemeWithGemini(html),
+          timeoutPromise
+        ]);
+        finalHtml = themeResult.ok ? themeResult.html : html;
+      } catch (timeoutErr: any) {
+        console.log(`[guide-upload] Gemini theming timeout for tool "${toolId}": ${String(timeoutErr)}`);
+        themeResult = { ok: false, error: String(timeoutErr) };
+        finalHtml = html; // fallback to original
+      }
+      
+      if (!themeResult.ok) {
+        console.log(`[guide-upload] Gemini theming failed (saving original): ${themeResult.error}`);
+      } else {
+        console.log(`[guide-upload] ✅ Gemini theming succeeded for tool "${toolId}"`);
+      }
     } else {
-      console.log(`[guide-upload] ✅ Gemini theming succeeded for tool "${toolId}"`);
+      console.log(`[guide-upload] Skipping AI theming for tool "${toolId}" (user opted out)`);
     }
 
     const path = `${slug}/guide.html`;
@@ -8732,6 +8774,21 @@ app.notFound((c) => {
   }, 404);
 });
 
+// Global error handler for Hono
+app.onError((err, c) => {
+  console.error('[HONO ERROR HANDLER]', err);
+  return c.json({ 
+    success: false, 
+    error: err.message || 'Internal server error' 
+  }, 500);
+});
+
+// Global unhandled rejection handler
+globalThis.addEventListener('unhandledrejection', (event) => {
+  console.error('[UNHANDLED REJECTION]', event.reason);
+  event.preventDefault();
+});
+
 // Start server with error handling
 Deno.serve({
   onError: (error) => {
@@ -8770,8 +8827,20 @@ Deno.serve({
       );
     }
     
+    // Ensure response has proper headers
+    const headers = new Headers(response.headers);
+    if (!headers.has('Content-Type')) {
+      headers.set('Content-Type', 'application/json');
+    }
+    
     console.log(`[DENO SERVE] ${method} ${url.pathname} -> ${response.status}`);
-    return response;
+    
+    // Return response with guaranteed headers
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: headers
+    });
   } catch (error) {
     console.error(`[APP FETCH ERROR] ${method} ${url.pathname}:`, error);
     return new Response(

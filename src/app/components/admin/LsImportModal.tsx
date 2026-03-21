@@ -48,13 +48,14 @@ export function LsImportModal({ open, onImport, onClose }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [expandedProduct, setExpandedProduct] = useState<string | null>(null);
+  const [mode, setMode] = useState<'test' | 'production'>('production'); // LS API mode
 
-  const fetchProducts = async () => {
+  const fetchProducts = async (apiMode: 'test' | 'production' = mode) => {
     setLoading(true);
     setError('');
     try {
       const adminToken = localStorage.getItem('admin_token');
-      const res = await fetch(`${API_BASE}/ls/variants`, {
+      const res = await fetch(`${API_BASE}/ls/variants?mode=${apiMode}`, {
         headers: { 
           Authorization: `Bearer ${publicAnonKey}`,
           'X-Admin-Token': adminToken || '',
@@ -148,14 +149,46 @@ export function LsImportModal({ open, onImport, onClose }: Props) {
           <div className="flex items-center gap-2.5">
             <span className="text-lg">🍋</span>
             <div>
-              <h3 className="text-sm font-bold text-white">Import from LemonSqueezy</h3>
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                Import from LemonSqueezy
+                {/* Mode badge */}
+                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider ${
+                  mode === 'test' 
+                    ? 'bg-purple-500/15 border border-purple-500/25 text-purple-400' 
+                    : 'bg-green-500/15 border border-green-500/25 text-green-400'
+                }`}>
+                  {mode}
+                </span>
+              </h3>
               <p className="text-xs text-white/35 mt-0.5">Click a variant to auto-fill version fields</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {/* Mode toggle */}
+            <div className="flex gap-0.5 p-0.5 rounded-lg bg-white/5 border border-white/8">
+              {(['test', 'production'] as const).map(m => (
+                <button
+                  key={m}
+                  onClick={() => {
+                    setMode(m);
+                    fetchProducts(m);
+                  }}
+                  disabled={loading}
+                  className={`px-2 py-0.5 rounded text-[10px] font-medium transition-all disabled:opacity-40 ${
+                    mode === m 
+                      ? m === 'test'
+                        ? 'bg-purple-500/20 text-purple-300'
+                        : 'bg-green-500/20 text-green-300'
+                      : 'text-white/30 hover:text-white/60'
+                  }`}
+                >
+                  {m === 'test' ? 'Test' : 'Prod'}
+                </button>
+              ))}
+            </div>
             {!loading && (
               <button
-                onClick={fetchProducts}
+                onClick={() => fetchProducts(mode)}
                 className="p-1.5 rounded-lg hover:bg-white/8 text-white/40 hover:text-white/70 transition-colors"
                 title="Refresh"
               >
