@@ -154,8 +154,20 @@ function processGuideHtml(html: string): { processedHtml: string; roots: TocNode
   // ─── Client-side safety net: strip all background colours from the guide ────
   const BODY_BG = 'rgb(7, 11, 24)';
   const CALLOUT_RE = /\b(tip|note|warning|caution|danger|error|info|success|alert|callout|admonition)\b/i;
+  // UI mock containers — preserve their backgrounds so app mockups render correctly
+  const MOCK_RE = /\b(app-mock|mock-|ui-mock|step-block|pipeline|hero)\b/;
 
-  /** Remove background-* AND padding/margin declarations from an inline style element */
+  /** Check if an element is inside a UI mock container */
+  const isInsideMock = (el: HTMLElement): boolean => {
+    let node: HTMLElement | null = el;
+    while (node) {
+      if (MOCK_RE.test(node.className)) return true;
+      node = node.parentElement;
+    }
+    return false;
+  };
+
+  /** Remove background-* from an inline style element */
   const stripBgInline = (el: HTMLElement | null) => {
     if (!el) return;
     el.style.removeProperty('background');
@@ -164,7 +176,7 @@ function processGuideHtml(html: string): { processedHtml: string; roots: TocNode
     if (!el.getAttribute('style')?.trim()) el.removeAttribute('style');
   };
 
-  // 1. Strip inline styles on <html> and <body> — also remove padding & margin from body
+  // 1. Strip inline styles on <html> and <body>
   stripBgInline(doc.documentElement);
   stripBgInline(doc.body);
   if (doc.body) {
@@ -172,10 +184,12 @@ function processGuideHtml(html: string): { processedHtml: string; roots: TocNode
     if (!doc.body.getAttribute('style')?.trim()) doc.body.removeAttribute('style');
   }
 
-  // 2. Strip inline backgrounds on ALL elements except callout-class divs
+  // 2. Strip inline backgrounds — skip callouts and anything inside a UI mock
   doc.querySelectorAll('*').forEach(el => {
     if (!(el instanceof HTMLElement)) return;
     if (CALLOUT_RE.test(el.className)) return; // keep semantic callout colours
+    if (MOCK_RE.test(el.className)) return;     // keep mock container backgrounds
+    if (isInsideMock(el)) return;               // keep everything inside a mock
     stripBgInline(el);
   });
 
@@ -211,18 +225,6 @@ function processGuideHtml(html: string): { processedHtml: string; roots: TocNode
       }
     );
 
-    // Remove background-* from ALL div selector rules
-    css = css.replace(
-      /\bdiv\b([^{]*)\{([^}]*)\}/g,
-      (_m, extra: string, rules: string) => {
-        const cleaned = rules
-          .split(';')
-          .filter(r => !/^\s*background/i.test(r))
-          .join(';');
-        return `div${extra}{${cleaned}}`;
-      }
-    );
-
     // Remove gradient-text tricks from h1-h6 CSS rules so they can't
     // make headings invisible after we wipe their background.
     css = css.replace(
@@ -251,7 +253,6 @@ function processGuideHtml(html: string): { processedHtml: string; roots: TocNode
       background-image: none !important;
       margin: 0 !important;
     }
-    div  { background-color: transparent !important; background-image: none !important; }
     /* H1 — force same purple as H2; neutralise any leftover gradient-text tricks */
     h1 {
       color: #8842f0 !important;
