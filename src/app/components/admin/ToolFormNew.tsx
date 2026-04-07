@@ -248,6 +248,7 @@ export function ToolFormNew({
   // Check whether a guide is already uploaded for this tool
   useEffect(() => {
     const slug = tool.slug;
+    setGuideMsg(null); // clear any stale message from a previous session
     if (!slug) return;
     fetch(`${API_BASE}/tools/${encodeURIComponent(slug)}/guide-exists`, {
       headers: { Authorization: `Bearer ${publicAnonKey}` },
