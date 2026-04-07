@@ -8428,6 +8428,343 @@ app.delete('/make-server-e07959ec/tools/:id/guide', requireAuth, async (c) => {
   }
 });
 
+// ========== GUIDE TEMPLATE GENERATION ==========
+
+/**
+ * The locked guide template.
+ * The AI fills ONLY the content inside each <!-- SLOT:xxx --> comment.
+ * CSS, layout, and structure are NEVER modified by the AI.
+ */
+const GUIDE_TEMPLATE = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>{{TOOL_NAME}} — User Guide</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+
+  :root {
+    --accent: #a855f7;
+    --accent-dim: rgba(168,85,247,0.12);
+    --accent-border: rgba(168,85,247,0.30);
+    --text: rgba(238,240,248,0.90);
+    --text-soft: rgba(168,176,204,0.85);
+    --muted: rgba(90,99,133,0.90);
+    --border: rgba(255,255,255,0.07);
+    --border-strong: rgba(255,255,255,0.12);
+    --surface: rgba(255,255,255,0.03);
+    --surface2: rgba(255,255,255,0.055);
+    --code-bg: rgba(0,0,0,0.35);
+    --radius: 8px;
+    --mono: 'JetBrains Mono', 'SFMono-Regular', Menlo, Monaco, 'Courier New', monospace;
+    --sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  }
+
+  html, body {
+    margin: 0; padding: 0;
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.65;
+    color: var(--text);
+    background: transparent;
+  }
+
+  body { padding: 28px 32px 48px; }
+
+  @media (max-width: 680px) { body { padding: 16px 18px 40px; } }
+
+  /* ── Typography ── */
+  h1 { font-size: 1.75rem; font-weight: 800; letter-spacing: -0.02em; margin: 0 0 0.25rem; color: var(--accent); }
+  h2 { font-size: 1.2rem; font-weight: 700; margin: 2.4rem 0 0.5rem; color: var(--accent);
+       padding-bottom: 0.4rem; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 1.0rem; font-weight: 600; margin: 1.6rem 0 0.4rem; color: var(--accent); }
+  h4 { font-size: 0.92rem; font-weight: 600; margin: 1.2rem 0 0.3rem; color: rgba(168,85,247,0.80); }
+  p  { margin: 0.3rem 0 0.65rem; color: var(--text-soft); }
+
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  ul, ol { margin: 0.3rem 0 0.75rem 0.9rem; padding-left: 0.4rem; color: var(--text-soft); }
+  li { margin: 0.2rem 0; }
+
+  /* ── Code ── */
+  code {
+    font-family: var(--mono); font-size: 0.82rem;
+    background: var(--code-bg); color: var(--accent);
+    border: 1px solid var(--border-strong); border-radius: 4px;
+    padding: 1px 5px;
+  }
+  pre {
+    font-family: var(--mono); font-size: 0.82rem;
+    background: var(--code-bg); color: rgba(238,240,248,0.80);
+    border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 12px 14px; overflow-x: auto; white-space: pre;
+    margin: 0.5rem 0 0.85rem;
+  }
+  pre code { background: none; border: none; padding: 0; color: inherit; font-size: inherit; }
+
+  /* ── Keyboard shortcut ── */
+  kbd {
+    font-family: var(--mono); font-size: 0.75rem;
+    padding: 2px 5px; border-radius: 4px;
+    border: 1px solid var(--border-strong);
+    background: var(--code-bg); margin: 0 2px;
+  }
+
+  /* ── Callouts ── */
+  .callout {
+    border-radius: var(--radius); padding: 11px 14px;
+    margin: 0.65rem 0 1rem; font-size: 0.875rem;
+    display: flex; gap: 10px; align-items: flex-start;
+    border: 1px solid var(--accent-border);
+    background: var(--accent-dim); color: var(--text-soft);
+  }
+  .callout-icon { flex-shrink: 0; font-size: 1rem; margin-top: 1px; }
+  .callout strong { color: rgba(196,181,253,0.95); }
+
+  .callout-warning  { background: rgba(245,158,11,0.08); border-color: rgba(245,158,11,0.30); }
+  .callout-warning strong { color: rgba(252,211,77,0.95); }
+  .callout-danger   { background: rgba(239,68,68,0.08);  border-color: rgba(239,68,68,0.30); }
+  .callout-danger strong  { color: rgba(252,165,165,0.95); }
+  .callout-success  { background: rgba(52,211,153,0.08); border-color: rgba(52,211,153,0.28); }
+  .callout-success strong { color: rgba(110,231,183,0.95); }
+  .callout-info     { background: rgba(99,102,241,0.08); border-color: rgba(99,102,241,0.28); }
+  .callout-info strong    { color: rgba(165,180,252,0.95); }
+
+  /* ── Step blocks ── */
+  .steps { display: flex; flex-direction: column; gap: 0; margin: 0.5rem 0 1.2rem; }
+  .step {
+    display: grid; grid-template-columns: 36px 1fr; gap: 14px;
+  }
+  .step-left { display: flex; flex-direction: column; align-items: center; }
+  .step-num {
+    width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
+    background: var(--accent-dim); border: 1px solid var(--accent-border);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 0.85rem; color: var(--accent);
+  }
+  .step-line {
+    width: 2px; flex: 1; min-height: 16px;
+    background: linear-gradient(to bottom, var(--accent-border), transparent);
+    margin-top: 4px;
+  }
+  .step-body { padding: 6px 0 24px; }
+  .step-title { font-weight: 700; font-size: 0.95rem; margin-bottom: 4px; color: var(--text); }
+  .step-desc  { font-size: 0.875rem; color: var(--text-soft); line-height: 1.65; }
+
+  /* ── Tables ── */
+  table { width: 100%; border-collapse: collapse; font-size: 0.875rem; margin: 0.5rem 0 1rem; }
+  th { background: rgba(168,85,247,0.10); color: rgba(196,181,253,0.95);
+       font-weight: 600; padding: 7px 10px; text-align: left;
+       border-bottom: 1px solid var(--border-strong); }
+  td { padding: 7px 10px; border-bottom: 1px solid var(--border);
+       color: var(--text-soft); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+
+  /* ── Two-column grid ── */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 0.5rem 0 1rem; }
+  @media (max-width: 600px) { .grid-2 { grid-template-columns: 1fr; } }
+
+  /* ── Card ── */
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 14px 16px;
+  }
+
+  /* ── Pill / badge ── */
+  .badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 2px 8px; font-size: 0.72rem; border-radius: 999px;
+    border: 1px solid var(--border-strong);
+    background: var(--surface2); color: var(--muted);
+  }
+  .badge-success { border-color: rgba(52,211,153,0.40); color: rgba(110,231,183,0.90); }
+  .badge-warning { border-color: rgba(245,158,11,0.40); color: rgba(252,211,77,0.90); }
+  .badge-accent  { border-color: var(--accent-border); color: var(--accent); }
+
+  /* ── Divider ── */
+  hr { border: none; border-top: 1px solid var(--border); margin: 1.8rem 0 1.4rem; }
+
+  /* ── Hero header ── */
+  .guide-hero { margin-bottom: 2rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--border); }
+  .guide-hero-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 0.5rem; }
+  .guide-hero-meta span { font-size: 0.78rem; color: var(--muted); }
+
+  /* ── Screenshot placeholder ── */
+  .screenshot {
+    border: 1px dashed var(--border-strong); border-radius: var(--radius);
+    padding: 10px 12px; font-size: 0.78rem; color: var(--muted);
+    margin: 0.5rem 0 0.85rem; background: rgba(0,0,0,0.20);
+    font-style: italic;
+  }
+
+  /* ── App UI mock wrapper ── */
+  .ui-mock {
+    border: 1px solid var(--border-strong); border-radius: 10px;
+    overflow: hidden; margin: 0.75rem 0 1.1rem;
+    background: rgba(0,0,0,0.25);
+  }
+  .ui-mock-bar {
+    padding: 8px 14px; border-bottom: 1px solid var(--border);
+    background: var(--surface2);
+    font-size: 0.75rem; color: var(--muted); font-weight: 600;
+  }
+  .ui-mock-body { padding: 16px; }
+</style>
+</head>
+<body>
+
+<!-- SLOT:HERO -->
+<header class="guide-hero">
+  <h1>{{TOOL_NAME}}</h1>
+  <p style="color:var(--text-soft);margin:0.2rem 0 0;">{{TOOL_TAGLINE}}</p>
+  <div class="guide-hero-meta">
+    <span class="badge badge-accent">{{TOOL_CATEGORY}}</span>
+    <span>·</span>
+    <span>{{TOOL_VERSION_INFO}}</span>
+    <span>·</span>
+    <span>Built by Fastoosh</span>
+  </div>
+</header>
+<!-- /SLOT:HERO -->
+
+<!-- SLOT:CONTENT -->
+{{GUIDE_SECTIONS}}
+<!-- /SLOT:CONTENT -->
+
+</body>
+</html>`;
+
+/**
+ * POST /tools/:id/generate-guide
+ * Accepts: { slug, sourceHtml? }
+ * - If sourceHtml is provided: AI extracts content from it and injects into the locked template
+ * - If not: AI generates content from the tool's database record
+ * Saves the result to storage (no AI theming needed — template is already dark)
+ */
+app.post('/make-server-e07959ec/tools/:id/generate-guide', requireAuth, async (c) => {
+  try {
+    const toolId = c.req.param('id');
+    const { slug, sourceHtml } = await c.req.json();
+    if (!slug) return c.json({ success: false, error: 'slug is required' }, 400);
+
+    // Fetch tool data from DB for context
+    const { data: toolRow } = await supabase
+      .from('tools')
+      .select('*')
+      .eq('id', toolId)
+      .single();
+
+    const { apiKey, model: geminiModel } = await getGeminiConfig();
+    if (!apiKey) return c.json({ success: false, error: 'GEMINI_API_KEY not configured' }, 500);
+
+    // Build version info string
+    const versions = toolRow?.versions || [];
+    const versionInfo = versions.length > 0
+      ? versions.map((v: any) => `${v.versionType} (${v.pricingModel})`).join(' · ')
+      : 'v1.0';
+
+    // Fill template placeholders that are fixed (not AI-generated)
+    const templateWithMeta = GUIDE_TEMPLATE
+      .replace(/\{\{TOOL_NAME\}\}/g, toolRow?.name || slug)
+      .replace('{{TOOL_TAGLINE}}', toolRow?.tagline || toolRow?.description?.slice(0, 120) || '')
+      .replace('{{TOOL_CATEGORY}}', toolRow?.toolCategory || toolRow?.category || 'Tool')
+      .replace('{{TOOL_VERSION_INFO}}', versionInfo);
+
+    // Build the AI prompt
+    const systemPrompt = sourceHtml
+      ? `You are a technical writer. You will be given:
+1. A locked HTML template with a <!-- SLOT:CONTENT --> placeholder
+2. A source guide HTML file with existing content
+
+Your task: Extract ALL content from the source guide (every section, paragraph, code block, table, callout, step, FAQ, etc.) and rewrite it using ONLY the HTML components defined in the template's CSS.
+
+STRICT RULES:
+- Output ONLY the HTML that goes between <!-- SLOT:CONTENT --> and <!-- /SLOT:CONTENT -->. Nothing else.
+- Use ONLY these CSS classes from the template: callout, callout-warning, callout-danger, callout-success, callout-info, steps, step, step-left, step-num, step-line, step-body, step-title, step-desc, grid-2, card, badge, badge-success, badge-warning, badge-accent, screenshot, ui-mock, ui-mock-bar, ui-mock-body, hr
+- Use standard HTML tags: h2, h3, h4, p, ul, ol, li, table, thead, tbody, tr, th, td, pre, code, kbd, strong, em, a, hr
+- Do NOT add any <style> tags, inline styles, or classes not listed above
+- Do NOT add navigation, sidebar, header, or TOC — the page provides its own
+- Preserve ALL content from the source — do not skip or summarize any section
+- For callouts: use <div class="callout"><span class="callout-icon">💡</span><div>...</div></div> (tip), callout-warning (⚠️), callout-danger (🚨), callout-success (✅), callout-info (ℹ️)
+- For numbered steps: use <div class="steps"><div class="step"><div class="step-left"><div class="step-num">1</div><div class="step-line"></div></div><div class="step-body"><div class="step-title">Title</div><div class="step-desc">Description</div></div></div></div>
+- For UI mockups that existed in the source: reproduce them using <div class="ui-mock"><div class="ui-mock-bar">Panel name</div><div class="ui-mock-body">...</div></div>
+- For screenshot placeholders: use <div class="screenshot">📸 Screenshot: description</div>
+- Start with the first section heading (h2), no wrapping div needed
+
+Source guide HTML:
+${sourceHtml?.slice(0, 80000)}`
+      : `You are a technical writer. Generate a complete user guide for the following tool.
+
+Your task: Write a professional user guide and output ONLY the HTML that goes between <!-- SLOT:CONTENT --> and <!-- /SLOT:CONTENT -->. Nothing else.
+
+STRICT RULES:
+- Output ONLY section HTML starting from the first h2. No wrapping divs, no styles, no scripts.
+- Use ONLY these CSS classes: callout, callout-warning, callout-danger, callout-success, callout-info, steps, step, step-left, step-num, step-line, step-body, step-title, step-desc, grid-2, card, badge, badge-success, badge-warning, badge-accent, screenshot, ui-mock, ui-mock-bar, ui-mock-body
+- Use standard tags: h2, h3, h4, p, ul, ol, li, table, thead, tbody, tr, th, td, pre, code, kbd, strong, em, a, hr
+- Do NOT add any <style> tags, inline styles, or classes not listed above
+- Do NOT add navigation, sidebar, TOC, or hero — already provided
+- For callouts use: <div class="callout"><span class="callout-icon">💡</span><div>content</div></div>
+- For steps use the steps/step/step-left/step-num/step-line/step-body/step-title/step-desc structure
+- Include these sections (adapt as needed for this tool): Overview, Requirements, Installation, How to use, Key features explained, Tips & best practices, FAQ
+- Be thorough and accurate based on the tool description below
+
+Tool data:
+Name: ${toolRow?.name || slug}
+Description: ${toolRow?.description || ''}
+Tagline: ${toolRow?.tagline || ''}
+Category: ${toolRow?.toolCategory || toolRow?.category || ''}
+How it works: ${JSON.stringify(toolRow?.howItWorks || [])}
+System requirements: ${toolRow?.systemRequirements || ''}
+FAQs: ${JSON.stringify(toolRow?.faqs || [])}
+Features: ${JSON.stringify(toolRow?.features || [])}`;
+
+    const geminiRes = await fetch(geminiUrl(geminiModel, apiKey), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: systemPrompt }] }],
+        generationConfig: {
+          responseMimeType: 'text/plain',
+          temperature: 0.2,
+          maxOutputTokens: 65536,
+        },
+      }),
+      signal: AbortSignal.timeout(90_000),
+    });
+
+    if (!geminiRes.ok) {
+      const errText = await geminiRes.text();
+      return c.json({ success: false, error: `Gemini error: ${errText.slice(0, 300)}` }, 500);
+    }
+
+    const geminiData = await geminiRes.json();
+    const generatedSections = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    if (!generatedSections.trim()) {
+      return c.json({ success: false, error: 'Gemini returned empty content' }, 500);
+    }
+
+    // Inject generated content into the locked template
+    const finalHtml = templateWithMeta.replace('{{GUIDE_SECTIONS}}', generatedSections.trim());
+
+    // Save to storage
+    const path = `${slug}/guide.html`;
+    const { error: uploadErr } = await supabase.storage
+      .from(GUIDE_BUCKET_NAME)
+      .upload(path, new Blob([finalHtml], { type: 'text/html' }), {
+        upsert: true,
+        contentType: 'text/html; charset=utf-8',
+      });
+
+    if (uploadErr) return c.json({ success: false, error: uploadErr.message }, 500);
+
+    return c.json({ success: true, html: finalHtml });
+  } catch (err: any) {
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
 // ========== CHANGELOG ==========
 
 // Semver sort helper — descending (newest first)

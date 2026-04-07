@@ -177,6 +177,11 @@ export function ToolFormNew({
   const [guideDeleting, setGuideDeleting]   = useState(false);
   const [guideMsg, setGuideMsg]             = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
   const [skipAITheming, setSkipAITheming]   = useState(false); // Option to skip AI theming for large files
+  // Generate guide from template
+  const [guideGenerating, setGuideGenerating] = useState(false);
+  const [guideGenSourceHtml, setGuideGenSourceHtml] = useState<string | null>(null);
+  const [guideGenFileName, setGuideGenFileName] = useState<string | null>(null);
+
   // Inline guide editor
   const [guideEditorOpen, setGuideEditorOpen]     = useState(false);
   const [guideEditorHtml, setGuideEditorHtml]     = useState('');
@@ -254,6 +259,43 @@ export function ToolFormNew({
   }, [tool.slug]);
 
   // ── Guide handlers ──────────────────────────────────────────────────────────
+
+  const handleGenerateGuide = async () => {
+    const slug = formData.slug || tool.slug;
+    const id   = tool.id;
+    if (!slug || !id) {
+      setGuideMsg({ type: 'err', text: 'Save the tool first before generating a guide.' });
+      return;
+    }
+    setGuideGenerating(true);
+    setGuideMsg(null);
+    try {
+      const token = localStorage.getItem('admin_token');
+      const res = await fetch(`${API_BASE}/tools/${id}/generate-guide`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${publicAnonKey}`,
+          'X-Admin-Token': token || '',
+        },
+        body: JSON.stringify({ slug, sourceHtml: guideGenSourceHtml || undefined }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setGuideExists(true);
+        setGuideGenSourceHtml(null);
+        setGuideGenFileName(null);
+        setGuideMsg({ type: 'ok', text: 'Guide generated and saved successfully.' });
+      } else {
+        setGuideMsg({ type: 'err', text: data.error || 'Generation failed.' });
+      }
+    } catch (err: any) {
+      setGuideMsg({ type: 'err', text: err.message || 'Network error.' });
+    } finally {
+      setGuideGenerating(false);
+    }
+  };
+
   const handleGuideUpload = async (file: File) => {
     const slug = formData.slug || tool.slug;
     const id   = tool.id;
@@ -1374,21 +1416,94 @@ export function ToolFormNew({
           )}
         </div>
         <p className="text-xs text-white/35 leading-relaxed">
-          Upload an HTML file for this tool's user guide. It will be accessible at{' '}
+          Generate a guide from the locked template (recommended) or upload a custom HTML file.
+          Guides are accessible at{' '}
           <code className="text-purple-300/70 bg-purple-500/10 px-1 py-0.5 rounded text-[11px]">
             /tools/{formData.slug || tool.slug || '<slug>'}/guide
           </code>
-          {' '}and the page will automatically restyle it with the site's current colour theme.
         </p>
 
         {!tool.id && (
           <p className="text-xs text-amber-400/70 flex items-center gap-1.5">
             <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
-            Save the tool first before uploading a guide.
+            Save the tool first before generating a guide.
           </p>
         )}
 
+        {/* ── Generate from template ────────────────────────────────────────── */}
         {tool.id && (
+          <div className="rounded-xl border border-purple-500/20 bg-purple-500/5 p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+              <span className="text-sm font-semibold text-white/80">Generate from Template</span>
+              <span className="text-[10px] text-white/30 font-normal">— consistent layout every time</span>
+            </div>
+
+            {/* Optional source file */}
+            <div className="space-y-1.5">
+              <p className="text-xs text-white/40">
+                Optionally attach an existing guide HTML — the AI will extract its content and reformat it into the template. Leave empty to generate from the tool's data.
+              </p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium
+                  border border-white/10 bg-white/5 text-white/50 hover:text-white/80 hover:bg-white/8
+                  hover:border-white/20 transition-all cursor-pointer">
+                  <FileCode className="w-3 h-3" />
+                  {guideGenFileName ? guideGenFileName : 'Attach source guide (optional)'}
+                  <input
+                    type="file"
+                    accept=".html,text/html"
+                    className="hidden"
+                    onChange={async e => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const text = await file.text();
+                      setGuideGenSourceHtml(text);
+                      setGuideGenFileName(file.name);
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
+                {guideGenSourceHtml && (
+                  <button
+                    type="button"
+                    onClick={() => { setGuideGenSourceHtml(null); setGuideGenFileName(null); }}
+                    className="text-xs text-white/30 hover:text-red-400 transition-colors"
+                  >
+                    ✕ Remove
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleGenerateGuide}
+              disabled={guideGenerating}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold
+                bg-purple-600/80 hover:bg-purple-600 border border-purple-500/40
+                text-white transition-all disabled:opacity-50 disabled:cursor-wait"
+            >
+              {guideGenerating ? (
+                <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                </svg>
+              ) : (
+                <Sparkles className="w-3.5 h-3.5" />
+              )}
+              {guideGenerating
+                ? (guideGenSourceHtml ? 'Extracting & reformatting…' : 'Generating guide…')
+                : (guideExists ? 'Regenerate Guide' : 'Generate Guide')}
+            </button>
+          </div>
+        )}
+
+        {tool.id && (
+          <div className="space-y-2">
+            <p className="text-[11px] text-white/25 uppercase tracking-widest font-semibold">
+              Manual — upload custom HTML
+            </p>
           <div className="flex flex-wrap items-center gap-3">
             {/* Upload button */}
             <label
@@ -1486,6 +1601,7 @@ export function ToolFormNew({
                 {guideDeleting ? 'Deleting…' : 'Delete Guide'}
               </button>
             )}
+          </div>
           </div>
         )}
 
