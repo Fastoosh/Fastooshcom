@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { motion, AnimatePresence } from 'motion/react';
+import { useTracker } from '../../hooks/useTracker';
 import {
   X, Mail, AlertCircle, CheckCircle, Loader2, Download,
   RotateCcw, KeyRound,
@@ -29,6 +30,8 @@ export function FreeDownloadModal({
   toolVersionId,
   onClose,
 }: FreeDownloadModalProps) {
+  const { track } = useTracker();
+
   // ── Step 1: email ────────────────────────────────────────────────────────
   const [email,       setEmail]       = useState('');
   const [acceptedTerms, setAcceptedTerms] = useState(false);
@@ -149,6 +152,7 @@ export function FreeDownloadModal({
       }
 
       // ✅ Verified — trigger download and show success
+      track('free_download', { toolId: toolVersionId, toolName, toolSlug });
       setDownloadUrl(data.downloadUrl);
       setStep('done');
       if (data.downloadUrl) {

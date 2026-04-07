@@ -134,6 +134,8 @@ interface Settings {
     behance?: string;
     tiktok?: string;
   };
+  geminiApiKey?: string;
+  geminiModel?: string;
 }
 
 export function Admin() {
@@ -1390,7 +1392,21 @@ export function Admin() {
                   <p className="text-gray-400 text-sm">{settings.calendlyUrl || 'Not set'}</p>
                   <p className="text-gray-600 text-xs mt-0.5">Used on the "Work with us" page for the discovery call booking widget.</p>
                 </div>
-                
+
+                <div className="p-4 bg-white/5 rounded-lg border border-white/10">
+                  <h3 className="text-white font-semibold mb-1">Gemini API Key</h3>
+                  <p className="text-gray-400 text-sm font-mono">
+                    {settings.geminiApiKey ? `${settings.geminiApiKey.slice(0, 8)}${'•'.repeat(20)}` : 'Not set'}
+                  </p>
+                  <p className="text-gray-600 text-xs mt-0.5">Used for all AI content generation features. Click "Edit Settings" to update.</p>
+                </div>
+
+                <div className="p-4 bg-white/5 rounded-lg border border-white/10">
+                  <h3 className="text-white font-semibold mb-1">Gemini Model</h3>
+                  <p className="text-gray-400 text-sm">{settings.geminiModel || 'gemini-2.5-flash (default)'}</p>
+                  <p className="text-gray-600 text-xs mt-0.5">Switch models when you hit quota limits. Click "Edit Settings" to change.</p>
+                </div>
+
               </div>
             </GlassCard>
 
@@ -3384,6 +3400,42 @@ function SettingsForm({
           </div>
         </div>
         
+        {/* Gemini AI Settings */}
+        <div className="pt-4 border-t border-white/10">
+          <h4 className="text-white font-semibold mb-3">Gemini AI</h4>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                API Key
+              </label>
+              <Input
+                type="password"
+                placeholder="AIza..."
+                value={formData.geminiApiKey || ''}
+                onChange={(e) => setFormData({ ...formData, geminiApiKey: e.target.value })}
+                className="bg-black/50 border-white/20 text-white font-mono"
+              />
+              <p className="text-gray-500 text-xs mt-1">Overrides the GEMINI_API_KEY environment variable. Switch keys when you hit quota limits.</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Model
+              </label>
+              <select
+                value={formData.geminiModel || 'gemini-2.5-flash'}
+                onChange={(e) => setFormData({ ...formData, geminiModel: e.target.value })}
+                className="w-full bg-black/50 border border-white/20 text-white rounded-md px-3 py-2 text-sm"
+              >
+                <option value="gemini-2.5-flash">gemini-2.5-flash (default)</option>
+                <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite</option>
+                <option value="gemini-3-flash">gemini-3-flash</option>
+                <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite</option>
+              </select>
+              <p className="text-gray-500 text-xs mt-1">Switch to a lighter model if you reach your quota on the current one.</p>
+            </div>
+          </div>
+        </div>
+
         <div className="flex gap-2 pt-4 border-t border-white/10">
           <Button onClick={() => onSave(formData)} className="cursor-pointer bg-violet-600 hover:bg-violet-500 text-white">
             <Save className="w-4 h-4 mr-2" />

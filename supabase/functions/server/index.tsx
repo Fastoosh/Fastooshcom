@@ -949,13 +949,28 @@ function repairJson(raw: string): string {
   return s;
 }
 
+// ========== GEMINI HELPERS ==========
+
+/** Returns { apiKey, model } from site_settings (with env var fallback for the key). */
+async function getGeminiConfig(): Promise<{ apiKey: string; model: string }> {
+  const { data } = await supabase.from('site_settings').select('key, value').in('key', ['geminiApiKey', 'geminiModel']);
+  const row = (data || []).reduce((acc: any, item: any) => { acc[item.key] = item.value; return acc; }, {});
+  const apiKey: string = row.geminiApiKey || Deno.env.get('GEMINI_API_KEY') || '';
+  const model: string  = row.geminiModel  || 'gemini-2.5-flash';
+  return { apiKey, model };
+}
+
+function geminiUrl(model: string, apiKey: string): string {
+  return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+}
+
 // ========== AI CONTENT GENERATION ==========
 
 app.post("/make-server-e07959ec/admin/generate-tool-content", requireAuth, async (c) => {
   try {
     const { tool, versions, instruction = '', improveExisting = false } = await c.req.json();
 
-    const apiKey = Deno.env.get('GEMINI_API_KEY');
+    const { apiKey, model: geminiModel } = await getGeminiConfig();
     if (!apiKey) {
       return c.json({ success: false, error: 'GEMINI_API_KEY not configured in environment' }, 500);
     }
@@ -1096,7 +1111,7 @@ ${schemaLines}}`;
     console.log(`Calling Gemini for "${toolName}" [${improveExisting ? 'REWRITE' : 'FILL'}]${instruction ? ` instruction="${instruction.substring(0,60)}"` : ''} — fields: ${Object.keys(gen).join(', ')}${versionsNeedGen.length ? ` + ${versionsNeedGen.length} version(s)` : ''}`);
 
     const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      geminiUrl(geminiModel, apiKey),
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1149,7 +1164,7 @@ app.post("/make-server-e07959ec/admin/generate-rich-features", requireAuth, asyn
   try {
     const { toolName, category, description, versionType, instruction, count = 5 } = await c.req.json();
 
-    const apiKey = Deno.env.get('GEMINI_API_KEY');
+    const { apiKey, model: geminiModel } = await getGeminiConfig();
     if (!apiKey) return c.json({ success: false, error: 'GEMINI_API_KEY not configured' }, 500);
     if (!toolName?.trim()) return c.json({ success: false, error: 'toolName is required' }, 400);
 
@@ -1180,7 +1195,7 @@ Return ONLY valid JSON:
 }`;
 
     const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      geminiUrl(geminiModel, apiKey),
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1231,7 +1246,7 @@ app.post("/make-server-e07959ec/admin/generate-project-content", requireAuth, as
   try {
     const { project, instruction = '', improveExisting = false } = await c.req.json();
 
-    const apiKey = Deno.env.get('GEMINI_API_KEY');
+    const { apiKey, model: geminiModel } = await getGeminiConfig();
     if (!apiKey) return c.json({ success: false, error: 'GEMINI_API_KEY not configured' }, 500);
 
     const title = (project.title || '').trim();
@@ -1295,7 +1310,7 @@ ${schemaLines}}`;
     console.log(`Calling Gemini for project "${title}" [${improveExisting ? 'REWRITE' : 'FILL'}] fields: ${Object.keys(gen).join(', ')}`);
 
     const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      geminiUrl(geminiModel, apiKey),
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1339,7 +1354,7 @@ app.post("/make-server-e07959ec/admin/improve-field", requireAuth, async (c) => 
   try {
     const { fieldKey, currentValue, context, instruction = '', isAlternative = false } = await c.req.json();
 
-    const apiKey = Deno.env.get('GEMINI_API_KEY');
+    const { apiKey, model: geminiModel } = await getGeminiConfig();
     if (!apiKey) return c.json({ success: false, error: 'GEMINI_API_KEY not configured' }, 500);
     if (!fieldKey) return c.json({ success: false, error: 'fieldKey is required' }, 400);
 
@@ -1573,7 +1588,7 @@ Return ONLY the improved text — no labels, no explanations, no markdown fences
     console.log(`[improve-field] fieldKey=${fieldKey} entity="${entityName}" alt=${isAlternative}${instruction ? ` inst="${instruction.substring(0, 60)}"` : ''}`);
 
     const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      geminiUrl(geminiModel, apiKey),
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1620,7 +1635,7 @@ app.post("/make-server-e07959ec/admin/generate-team-content", requireAuth, async
   try {
     const { member, instruction = '', improveExisting = false } = await c.req.json();
 
-    const apiKey = Deno.env.get('GEMINI_API_KEY');
+    const { apiKey, model: geminiModel } = await getGeminiConfig();
     if (!apiKey) return c.json({ success: false, error: 'GEMINI_API_KEY not configured' }, 500);
 
     const name = (member.name || '').trim();
@@ -1653,7 +1668,7 @@ Return exactly this JSON:
 }`;
 
     const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      geminiUrl(geminiModel, apiKey),
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1697,7 +1712,7 @@ app.post("/make-server-e07959ec/admin/generate-style", requireAuth, async (c) =>
   try {
     const { prompt, mode = 'dark' } = await c.req.json();
 
-    const apiKey = Deno.env.get('GEMINI_API_KEY');
+    const { apiKey, model: geminiModel } = await getGeminiConfig();
     if (!apiKey) return c.json({ success: false, error: 'GEMINI_API_KEY not configured' }, 500);
     if (!prompt?.trim()) return c.json({ success: false, error: 'Style prompt is required' }, 400);
 
@@ -1795,7 +1810,7 @@ Where XXXXXX represents exactly 6 hexadecimal digits (0-9, a-f). Example: #7c3ae
     console.log(`[generate-style] prompt="${prompt.trim().substring(0, 60)}" mode=${mode}`);
 
     const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      geminiUrl(geminiModel, apiKey),
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -5635,27 +5650,31 @@ app.post('/make-server-e07959ec/track/event', async (c) => {
     session.lastSeenAt = new Date().toISOString();
 
     const evs: any[]  = session.events;
-    const pageViews   = evs.filter((e: any) => e.type === 'page_view');
-    const pageExits   = evs.filter((e: any) => e.type === 'page_exit');
-    const toolViews   = evs.filter((e: any) => e.type === 'tool_view');
-    const buyClicks   = evs.filter((e: any) => e.type === 'buy_click');
-    const videoPlays  = evs.filter((e: any) => e.type === 'video_play');
-    const purchases   = evs.filter((e: any) => e.type === 'purchase_complete');
+    const pageViews    = evs.filter((e: any) => e.type === 'page_view');
+    const pageExits    = evs.filter((e: any) => e.type === 'page_exit');
+    const toolViews    = evs.filter((e: any) => e.type === 'tool_view');
+    const buyClicks    = evs.filter((e: any) => e.type === 'buy_click');
+    const videoPlays   = evs.filter((e: any) => e.type === 'video_play');
+    const purchases    = evs.filter((e: any) => e.type === 'purchase_complete');
+    const freeDownloads = evs.filter((e: any) => e.type === 'free_download');
 
-    session.pageCount       = pageViews.length;
-    session.totalDuration   = pageExits.reduce((s: number, e: any) => s + (e.data?.duration || 0), 0);
-    session.toolsViewed     = [...new Set(toolViews.map((e: any) => e.data?.toolSlug).filter(Boolean))];
-    session.toolNamesViewed = [...new Set(toolViews.map((e: any) => e.data?.toolName).filter(Boolean))];
-    session.buyClickCount   = buyClicks.length;
-    session.videoPlayCount  = videoPlays.length;
-    session.converted       = purchases.length > 0;
-    session.isBounce        = session.pageCount <= 1 && session.totalDuration < 30;
-    session.lastPath        = pageViews.at(-1)?.data?.path || '';
+    session.pageCount        = pageViews.length;
+    session.totalDuration    = pageExits.reduce((s: number, e: any) => s + (e.data?.duration || 0), 0);
+    session.toolsViewed      = [...new Set(toolViews.map((e: any) => e.data?.toolSlug).filter(Boolean))];
+    session.toolNamesViewed  = [...new Set(toolViews.map((e: any) => e.data?.toolName).filter(Boolean))];
+    session.buyClickCount    = buyClicks.length;
+    session.videoPlayCount   = videoPlays.length;
+    session.downloadCount    = freeDownloads.length;
+    session.toolsDownloaded  = [...new Set(freeDownloads.map((e: any) => e.data?.toolSlug).filter(Boolean))];
+    session.converted        = purchases.length > 0;
+    session.isBounce         = session.pageCount <= 1 && session.totalDuration < 30;
+    session.lastPath         = pageViews.at(-1)?.data?.path || '';
 
-    if (purchases.length > 0)      session.funnelStage = 'purchase';
-    else if (buyClicks.length > 0) session.funnelStage = 'buy_click';
-    else if (toolViews.length > 0) session.funnelStage = 'tool_view';
-    else                           session.funnelStage = 'visit';
+    if (purchases.length > 0)        session.funnelStage = 'purchase';
+    else if (freeDownloads.length > 0) session.funnelStage = 'free_download';
+    else if (buyClicks.length > 0)   session.funnelStage = 'buy_click';
+    else if (toolViews.length > 0)   session.funnelStage = 'tool_view';
+    else                             session.funnelStage = 'visit';
 
     await kv.set(`session:${sessionId}`, session);
     return c.json({ success: true });
@@ -5683,17 +5702,19 @@ app.get('/make-server-e07959ec/admin/behavior', requireAuth, async (c) => {
 
     sessions.sort((a: any, b: any) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
 
-    const fVisits    = sessions.filter((s: any) => (s.pageCount || 0) > 0).length;
-    const fToolViews = sessions.filter((s: any) => (s.toolsViewed?.length || 0) > 0).length;
-    const fBuyClicks = sessions.filter((s: any) => (s.buyClickCount || 0) > 0).length;
-    const fPurchases = sessions.filter((s: any) => s.converted).length;
+    const fVisits       = sessions.filter((s: any) => (s.pageCount || 0) > 0).length;
+    const fToolViews    = sessions.filter((s: any) => (s.toolsViewed?.length || 0) > 0).length;
+    const fBuyClicks    = sessions.filter((s: any) => (s.buyClickCount || 0) > 0).length;
+    const fDownloads    = sessions.filter((s: any) => (s.downloadCount || 0) > 0).length;
+    const fPurchases    = sessions.filter((s: any) => s.converted).length;
     const pct = (n: number) => fVisits > 0 ? Math.round((n / fVisits) * 1000) / 10 : 0;
 
     const funnel = [
-      { stage: 'visit',     label: 'Page Visits', count: fVisits,    pct: 100,             dropOff: 0 },
-      { stage: 'tool_view', label: 'Tool Views',  count: fToolViews, pct: pct(fToolViews), dropOff: fVisits    - fToolViews },
-      { stage: 'buy_click', label: 'Buy Clicks',  count: fBuyClicks, pct: pct(fBuyClicks), dropOff: fToolViews - fBuyClicks },
-      { stage: 'purchase',  label: 'Purchases',   count: fPurchases, pct: pct(fPurchases), dropOff: fBuyClicks - fPurchases },
+      { stage: 'visit',         label: 'Page Visits',    count: fVisits,    pct: 100,             dropOff: 0 },
+      { stage: 'tool_view',     label: 'Tool Views',     count: fToolViews, pct: pct(fToolViews), dropOff: fVisits    - fToolViews },
+      { stage: 'buy_click',     label: 'Buy Clicks',     count: fBuyClicks, pct: pct(fBuyClicks), dropOff: fToolViews - fBuyClicks },
+      { stage: 'free_download', label: 'Free Downloads', count: fDownloads, pct: pct(fDownloads), dropOff: fToolViews - fDownloads },
+      { stage: 'purchase',      label: 'Purchases',      count: fPurchases, pct: pct(fPurchases), dropOff: fBuyClicks - fPurchases },
     ];
 
     const pageMap: Record<string, { count: number; totalDuration: number }> = {};
@@ -5715,15 +5736,16 @@ app.get('/make-server-e07959ec/admin/behavior', requireAuth, async (c) => {
       .sort(([, a], [, b]) => b.count - a.count).slice(0, 12)
       .map(([path, v]) => ({ path, count: v.count, avgDuration: v.count > 0 ? Math.round(v.totalDuration / v.count) : 0 }));
 
-    const toolMap: Record<string, { slug: string; name: string; views: number; buyClicks: number; videoPlays: number }> = {};
+    const toolMap: Record<string, { slug: string; name: string; views: number; buyClicks: number; videoPlays: number; downloads: number }> = {};
     for (const s of sessions) {
       for (const e of (s.events || []) as any[]) {
         const sl = e.data?.toolSlug;
         if (!sl) continue;
-        if (!toolMap[sl]) toolMap[sl] = { slug: sl, name: e.data?.toolName || sl, views: 0, buyClicks: 0, videoPlays: 0 };
-        if (e.type === 'tool_view')  toolMap[sl].views++;
-        if (e.type === 'buy_click')  toolMap[sl].buyClicks++;
-        if (e.type === 'video_play') toolMap[sl].videoPlays++;
+        if (!toolMap[sl]) toolMap[sl] = { slug: sl, name: e.data?.toolName || sl, views: 0, buyClicks: 0, videoPlays: 0, downloads: 0 };
+        if (e.type === 'tool_view')    toolMap[sl].views++;
+        if (e.type === 'buy_click')    toolMap[sl].buyClicks++;
+        if (e.type === 'video_play')   toolMap[sl].videoPlays++;
+        if (e.type === 'free_download') toolMap[sl].downloads++;
       }
     }
     const toolFunnel = Object.values(toolMap)
@@ -6555,7 +6577,7 @@ app.put('/make-server-e07959ec/seo/:pageKey', requireAuth, async (c) => {
 app.post('/make-server-e07959ec/admin/generate-seo-content', requireAuth, async (c) => {
   try {
     const { pageName, pageType, pageContext, existingSeo, instruction = '', improveExisting = false } = await c.req.json();
-    const apiKey = Deno.env.get('GEMINI_API_KEY');
+    const { apiKey, model: geminiModel } = await getGeminiConfig();
     if (!apiKey) return c.json({ success: false, error: 'GEMINI_API_KEY not configured' }, 500);
     if (!pageName) return c.json({ success: false, error: 'pageName is required' }, 400);
 
@@ -6617,7 +6639,7 @@ ${schemaLines}}`;
     console.log(`[seo] Gemini call for "${pageName}" [${improveExisting ? 'REWRITE' : 'FILL'}] fields: ${Object.keys(gen).join(', ')}`);
 
     const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      geminiUrl(geminiModel, apiKey),
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -6695,7 +6717,7 @@ app.put('/make-server-e07959ec/home-content', requireAuth, async (c) => {
 app.post('/make-server-e07959ec/admin/generate-home-content', requireAuth, async (c) => {
   try {
     const { section = 'all', existingContent = {}, instruction = '', improveExisting = false } = await c.req.json();
-    const apiKey = Deno.env.get('GEMINI_API_KEY');
+    const { apiKey, model: geminiModel } = await getGeminiConfig();
     if (!apiKey) return c.json({ success: false, error: 'GEMINI_API_KEY not configured' }, 500);
 
     const instructionLine = instruction?.trim() ? `\nExtra instruction: "${instruction.trim()}"` : '';
@@ -6731,7 +6753,7 @@ ${guideText}
 RULES: Return ONLY valid JSON, no markdown, no explanation. All strings concise and professional.`;
 
     const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      geminiUrl(geminiModel, apiKey),
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -6862,7 +6884,7 @@ app.get('/make-server-e07959ec/availability-calendar/current', async (c) => {
 app.post('/make-server-e07959ec/admin/generate-seo-jsonld', requireAuth, async (c) => {
   try {
     const { pageName, pageType, pageContext, siteUrl, existingJsonLd, instruction = '', improveExisting = false } = await c.req.json();
-    const apiKey = Deno.env.get('GEMINI_API_KEY');
+    const { apiKey, model: geminiModel } = await getGeminiConfig();
     if (!apiKey) return c.json({ success: false, error: 'GEMINI_API_KEY not configured' }, 500);
     if (!pageName) return c.json({ success: false, error: 'pageName is required' }, 400);
 
@@ -6913,7 +6935,7 @@ Rules:
     console.log(`[seo-jsonld] Gemini call for "${pageName}" [${pageType}] ${improveExisting ? 'REWRITE' : 'GENERATE'}`);
 
     const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      geminiUrl(geminiModel, apiKey),
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -7345,7 +7367,7 @@ app.post('/make-server-e07959ec/admin/translate-legal-html', requireAuth, async 
     if (!lang || !langName || !htmlContent) {
       return c.json({ success: false, error: 'lang, langName, and htmlContent are required' }, 400);
     }
-    const apiKey = Deno.env.get('GEMINI_API_KEY');
+    const { apiKey, model: geminiModel } = await getGeminiConfig();
     if (!apiKey) return c.json({ success: false, error: 'GEMINI_API_KEY not configured' }, 500);
 
     const arabicNote = lang === 'ar'
@@ -7368,7 +7390,7 @@ HTML to translate:
 ${htmlContent}`;
 
     const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      geminiUrl(geminiModel, apiKey),
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -7419,7 +7441,7 @@ app.post('/make-server-e07959ec/admin/translate', requireAuth, async (c) => {
     if (!lang || !langName || !fields || Object.keys(fields).length === 0) {
       return c.json({ success: false, error: 'lang, langName, and fields are required' }, 400);
     }
-    const apiKey = Deno.env.get('GEMINI_API_KEY');
+    const { apiKey, model: geminiModel } = await getGeminiConfig();
     if (!apiKey) return c.json({ success: false, error: 'GEMINI_API_KEY not configured' }, 500);
 
     const arabicNote = lang === 'ar'
@@ -7441,7 +7463,7 @@ Input:
 ${JSON.stringify(fields, null, 2)}`;
 
     const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      geminiUrl(geminiModel, apiKey),
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -8189,7 +8211,7 @@ app.get('/make-server-e07959ec/tools/:slug/guide-html', async (c) => {
 
 // ── Shared Gemini dark-theme transformation ───────────────────────────────────
 async function applyDarkThemeWithGemini(originalHtml: string): Promise<{ ok: true; html: string } | { ok: false; error: string }> {
-  const apiKey = Deno.env.get('GEMINI_API_KEY');
+  const { apiKey, model: geminiModel } = await getGeminiConfig();
   if (!apiKey) return { ok: false, error: 'GEMINI_API_KEY not configured' };
 
   const prompt = `You are a dark-theme conversion expert. Transform this HTML document from a light theme to a dark theme.
@@ -8252,7 +8274,7 @@ ${originalHtml}`;
 
   try {
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      geminiUrl(geminiModel, apiKey),
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -8499,7 +8521,7 @@ app.post("/make-server-e07959ec/admin/format-legal-html", requireAuth, async (c)
   try {
     const { rawText, pageType = 'legal' } = await c.req.json();
 
-    const apiKey = Deno.env.get('GEMINI_API_KEY');
+    const { apiKey, model: geminiModel } = await getGeminiConfig();
     if (!apiKey) return c.json({ success: false, error: 'GEMINI_API_KEY not configured' }, 500);
     if (!rawText?.trim()) return c.json({ success: false, error: 'rawText is required' }, 400);
 
@@ -8529,7 +8551,7 @@ Return ONLY the formatted HTML. No explanations, no markdown fences, no preamble
     console.log(`[format-legal-html] pageType=${pageType} rawText length=${rawText.trim().length}`);
 
     const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      geminiUrl(geminiModel, apiKey),
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -8581,7 +8603,7 @@ app.post('/make-server-e07959ec/admin/generate-fake-reviews', requireAuth, async
 
     const safeCount = Math.min(10, Math.max(1, Number(count) || 3));
 
-    const apiKey = Deno.env.get('GEMINI_API_KEY');
+    const { apiKey, model: geminiModel } = await getGeminiConfig();
     if (!apiKey) return c.json({ success: false, error: 'GEMINI_API_KEY not configured' }, 500);
 
     // Fetch tool metadata from Supabase
@@ -8639,7 +8661,7 @@ Return ONLY a valid JSON array. No markdown, no commentary, no code fences:
     console.log(`[generate-fake-reviews] tool="${toolName}" count=${safeCount} dateRange=${releaseIso}→${todayIso}`);
 
     const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      geminiUrl(geminiModel, apiKey),
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
