@@ -1423,26 +1423,28 @@ export function ToolFormNew({
           </p>
         )}
 
-        {/* ── Generate from template ────────────────────────────────────────── */}
+        {/* ── Guide actions ─────────────────────────────────────────────────── */}
         {tool.id && (
-          <div className="rounded-xl border border-purple-500/20 bg-purple-500/5 p-4 space-y-3">
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-3.5 h-3.5 text-purple-400" />
-              <span className="text-sm font-semibold text-white/80">Generate from Template</span>
-              <span className="text-[10px] text-white/30 font-normal">— consistent layout every time</span>
-            </div>
+          <div className="space-y-4">
 
-            {/* Optional source file */}
-            <div className="space-y-1.5">
+            {/* Generate from template — primary recommended path */}
+            <div className="rounded-xl border border-purple-500/20 bg-purple-500/5 p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                <span className="text-sm font-semibold text-white/80">Generate from Template</span>
+                <span className="text-[10px] text-white/30 font-normal">— recommended</span>
+              </div>
               <p className="text-xs text-white/40">
-                Optionally attach an existing guide HTML — the AI will extract its content and reformat it into the template. Leave empty to generate from the tool's data.
+                AI generates a consistently styled guide. Optionally attach an existing HTML file to extract its content instead of using the tool data.
               </p>
-              <div className="flex items-center gap-2 flex-wrap">
+
+              <div className="flex items-center gap-3 flex-wrap">
+                {/* Optional source file */}
                 <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium
                   border border-white/10 bg-white/5 text-white/50 hover:text-white/80 hover:bg-white/8
                   hover:border-white/20 transition-all cursor-pointer">
                   <FileCode className="w-3 h-3" />
-                  {guideGenFileName ? guideGenFileName : 'Attach source guide (optional)'}
+                  {guideGenFileName ? guideGenFileName : 'Attach existing guide (optional)'}
                   <input
                     type="file"
                     accept=".html,text/html"
@@ -1467,98 +1469,16 @@ export function ToolFormNew({
                   </button>
                 )}
               </div>
-            </div>
 
-            <button
-              type="button"
-              onClick={handleGenerateGuide}
-              disabled={guideGenerating}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold
-                bg-purple-600/80 hover:bg-purple-600 border border-purple-500/40
-                text-white transition-all disabled:opacity-50 disabled:cursor-wait"
-            >
-              {guideGenerating ? (
-                <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                </svg>
-              ) : (
-                <Sparkles className="w-3.5 h-3.5" />
-              )}
-              {guideGenerating
-                ? (guideGenSourceHtml ? 'Extracting & reformatting…' : 'Generating guide…')
-                : (guideExists ? 'Regenerate Guide' : 'Generate Guide')}
-            </button>
-          </div>
-        )}
-
-        {tool.id && (
-          <div className="space-y-2">
-            <p className="text-[11px] text-white/25 uppercase tracking-widest font-semibold">
-              Manual — upload custom HTML
-            </p>
-          <div className="flex flex-wrap items-center gap-3">
-            {/* Upload button */}
-            <label
-              className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium
-                border transition-all cursor-pointer select-none
-                ${guideUploading
-                  ? 'bg-purple-500/15 border-purple-500/30 text-purple-300/50 cursor-wait'
-                  : 'bg-purple-500/10 border-purple-500/25 text-purple-300 hover:bg-purple-500/20 hover:border-purple-400/40'
-                }`}
-            >
-              {guideUploading ? (
-                <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                </svg>
-              ) : (
-                <FileCode className="w-3.5 h-3.5" />
-              )}
-              {guideUploading ? 'Uploading…' : (guideExists ? 'Replace Guide' : 'Upload Guide (.html)')}
-              <input
-                type="file"
-                accept=".html,text/html"
-                className="hidden"
-                disabled={guideUploading}
-                onChange={e => {
-                  const file = e.target.files?.[0];
-                  if (file) handleGuideUpload(file);
-                  e.target.value = '';
-                }}
-              />
-            </label>
-
-            {/* Edit in-place button — only when guide exists */}
-            {guideExists && (
               <button
                 type="button"
-                onClick={() => guideEditorOpen ? setGuideEditorOpen(false) : handleOpenGuideEditor()}
-                className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium
-                  border transition-all
-                  ${guideEditorOpen
-                    ? 'bg-indigo-500/20 border-indigo-400/40 text-indigo-300'
-                    : 'bg-indigo-500/10 border-indigo-500/25 text-indigo-300 hover:bg-indigo-500/20 hover:border-indigo-400/40'
-                  }`}
+                onClick={handleGenerateGuide}
+                disabled={guideGenerating}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold
+                  bg-purple-600/80 hover:bg-purple-600 border border-purple-500/40
+                  text-white transition-all disabled:opacity-50 disabled:cursor-wait"
               >
-                <Pencil className="w-3.5 h-3.5" />
-                {guideEditorOpen ? 'Close Editor' : 'Edit Guide'}
-              </button>
-            )}
-
-            {/* Re-theme with AI — apply dark theme to already-uploaded guide */}
-            {guideExists && (
-              <button
-                type="button"
-                onClick={handleGuideRetheme}
-                disabled={guideUploading}
-                title="Re-apply AI dark theme to the current guide HTML"
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium
-                  bg-violet-500/8 border border-violet-500/20 text-violet-300/70
-                  hover:bg-violet-500/15 hover:border-violet-400/30 hover:text-violet-300 transition-all
-                  disabled:opacity-40 disabled:cursor-wait"
-              >
-                {guideUploading ? (
+                {guideGenerating ? (
                   <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
@@ -1566,33 +1486,115 @@ export function ToolFormNew({
                 ) : (
                   <Sparkles className="w-3.5 h-3.5" />
                 )}
-                Re-theme with AI
+                {guideGenerating
+                  ? (guideGenSourceHtml ? 'Extracting & reformatting…' : 'Generating guide…')
+                  : (guideExists ? 'Regenerate Guide' : 'Generate Guide')}
               </button>
+            </div>
+
+            {/* Secondary actions — only when guide exists */}
+            {guideExists && (
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => guideEditorOpen ? setGuideEditorOpen(false) : handleOpenGuideEditor()}
+                  className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium
+                    border transition-all
+                    ${guideEditorOpen
+                      ? 'bg-indigo-500/20 border-indigo-400/40 text-indigo-300'
+                      : 'bg-white/5 border-white/10 text-white/50 hover:bg-white/8 hover:border-white/20 hover:text-white/80'
+                    }`}
+                >
+                  <Pencil className="w-3 h-3" />
+                  {guideEditorOpen ? 'Close Editor' : 'Edit HTML'}
+                </button>
+
+                <label className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium
+                  border transition-all cursor-pointer select-none
+                  ${guideUploading
+                    ? 'bg-white/3 border-white/8 text-white/25 cursor-wait'
+                    : 'bg-white/5 border-white/10 text-white/50 hover:bg-white/8 hover:border-white/20 hover:text-white/80'
+                  }`}
+                >
+                  {guideUploading ? (
+                    <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                    </svg>
+                  ) : (
+                    <FileCode className="w-3 h-3" />
+                  )}
+                  {guideUploading ? 'Uploading…' : 'Upload HTML'}
+                  <input
+                    type="file"
+                    accept=".html,text/html"
+                    className="hidden"
+                    disabled={guideUploading}
+                    onChange={e => {
+                      const file = e.target.files?.[0];
+                      if (file) handleGuideUpload(file);
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
+
+                <button
+                  type="button"
+                  onClick={handleGuideDelete}
+                  disabled={guideDeleting}
+                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium
+                    bg-red-500/8 border border-red-500/15 text-red-400/60
+                    hover:bg-red-500/15 hover:border-red-400/30 hover:text-red-300 transition-all
+                    disabled:opacity-40 disabled:cursor-wait"
+                >
+                  {guideDeleting ? (
+                    <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                    </svg>
+                  ) : (
+                    <Trash2 className="w-3 h-3" />
+                  )}
+                  {guideDeleting ? 'Deleting…' : 'Delete Guide'}
+                </button>
+              </div>
             )}
 
-            {/* Delete */}
-            {guideExists && (
-              <button
-                type="button"
-                onClick={handleGuideDelete}
-                disabled={guideDeleting}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium
-                  bg-red-500/8 border border-red-500/20 text-red-400/70
-                  hover:bg-red-500/15 hover:border-red-400/30 hover:text-red-300 transition-all
-                  disabled:opacity-40 disabled:cursor-wait"
-              >
-                {guideDeleting ? (
-                  <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                  </svg>
-                ) : (
-                  <Trash2 className="w-3.5 h-3.5" />
-                )}
-                {guideDeleting ? 'Deleting…' : 'Delete Guide'}
-              </button>
+            {/* No guide yet — show upload option */}
+            {!guideExists && (
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-white/25">or</span>
+                <label className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium
+                  border transition-all cursor-pointer select-none
+                  ${guideUploading
+                    ? 'bg-white/3 border-white/8 text-white/25 cursor-wait'
+                    : 'bg-white/5 border-white/10 text-white/50 hover:bg-white/8 hover:border-white/20 hover:text-white/80'
+                  }`}
+                >
+                  {guideUploading ? (
+                    <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                    </svg>
+                  ) : (
+                    <FileCode className="w-3 h-3" />
+                  )}
+                  {guideUploading ? 'Uploading…' : 'Upload custom HTML'}
+                  <input
+                    type="file"
+                    accept=".html,text/html"
+                    className="hidden"
+                    disabled={guideUploading}
+                    onChange={e => {
+                      const file = e.target.files?.[0];
+                      if (file) handleGuideUpload(file);
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
+              </div>
             )}
-          </div>
+
           </div>
         )}
 
