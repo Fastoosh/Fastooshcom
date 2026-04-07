@@ -59,6 +59,37 @@ function removeInlineToc(doc: Document): void {
   for (const sel of selectors) {
     try { doc.querySelectorAll(sel).forEach(el => el.remove()); } catch { /* ignore */ }
   }
+
+  // Strip chrome that conflicts with the site's own UI
+  doc.querySelectorAll('nav, footer, aside, #reading-progress').forEach(el => el.remove());
+
+  // If the guide uses a layout wrapper (grid/flex with sidebar), unwrap it —
+  // pull out <main> content and replace the layout div with just that content
+  const mainEl = doc.querySelector('main');
+  const layoutEl = doc.querySelector('.layout, [class*="layout"], [class*="wrapper"]');
+  if (mainEl && layoutEl && layoutEl.contains(mainEl)) {
+    layoutEl.replaceWith(mainEl);
+  }
+
+  // Strip any element with position:fixed or position:sticky in inline styles
+  doc.querySelectorAll('[style]').forEach(el => {
+    if (!(el instanceof HTMLElement)) return;
+    const pos = el.style.position;
+    if (pos === 'fixed' || pos === 'sticky') el.remove();
+  });
+
+  // Remove fixed/sticky rules from <style> blocks
+  doc.querySelectorAll('style').forEach(styleEl => {
+    let css = styleEl.textContent ?? '';
+    // Blank out any rule that sets position:fixed or position:sticky
+    css = css.replace(/\{([^}]*)\}/g, (_m, rules: string) => {
+      const cleaned = rules.split(';')
+        .filter(r => !/position\s*:\s*(fixed|sticky)/i.test(r))
+        .join(';');
+      return `{${cleaned}}`;
+    });
+    styleEl.textContent = css;
+  });
 }
 
 /**
