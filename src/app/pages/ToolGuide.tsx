@@ -137,11 +137,6 @@ function processGuideHtml(html: string): { processedHtml: string; roots: TocNode
   stripBgInline(doc.documentElement);
   stripBgInline(doc.body);
   if (doc.body) {
-    doc.body.style.removeProperty('padding');
-    doc.body.style.removeProperty('padding-top');
-    doc.body.style.removeProperty('padding-right');
-    doc.body.style.removeProperty('padding-bottom');
-    doc.body.style.removeProperty('padding-left');
     doc.body.style.removeProperty('margin');
     if (!doc.body.getAttribute('style')?.trim()) doc.body.removeAttribute('style');
   }
@@ -172,13 +167,14 @@ function processGuideHtml(html: string): { processedHtml: string; roots: TocNode
   doc.querySelectorAll('style').forEach(styleEl => {
     let css = styleEl.textContent ?? '';
 
-    // Remove background-*, padding, and margin declarations from body / html rules
+    // Remove background-* and margin declarations from body / html rules
+    // (keep padding — the guide template uses it for content spacing)
     css = css.replace(
       /\b(html|body)\b([^{]*)\{([^}]*)\}/g,
       (_m, tag: string, extra: string, rules: string) => {
         const cleaned = rules
           .split(';')
-          .filter(r => !/^\s*(background|padding|margin)/i.test(r))
+          .filter(r => !/^\s*(background|margin)/i.test(r))
           .join(';');
         return `${tag}${extra}{${cleaned}}`;
       }
@@ -222,7 +218,6 @@ function processGuideHtml(html: string): { processedHtml: string; roots: TocNode
     body {
       background-color: ${BODY_BG} !important;
       background-image: none !important;
-      padding: 0 !important;
       margin: 0 !important;
     }
     div  { background-color: transparent !important; background-image: none !important; }
