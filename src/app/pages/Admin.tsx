@@ -3083,6 +3083,35 @@ function SettingsForm({
   const [uploading, setUploading] = useState(false);
   const [uploadingFavicon, setUploadingFavicon] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [geminiTest, setGeminiTest] = useState<{ status: 'idle' | 'testing' | 'ok' | 'err'; message: string }>({ status: 'idle', message: '' });
+
+  const handleTestGemini = async () => {
+    const key = formData.geminiApiKey?.trim();
+    const model = formData.geminiModel || 'gemini-2.5-flash';
+    if (!key) {
+      setGeminiTest({ status: 'err', message: 'Enter an API key first.' });
+      return;
+    }
+    setGeminiTest({ status: 'testing', message: 'Testing…' });
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ parts: [{ text: 'Reply with just the word OK.' }] }] }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        const errMsg = data?.error?.message || `HTTP ${res.status}`;
+        setGeminiTest({ status: 'err', message: errMsg });
+      } else {
+        const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        setGeminiTest({ status: 'ok', message: `Working — model replied: "${reply.trim().slice(0, 60)}"` });
+      }
+    } catch (err: any) {
+      setGeminiTest({ status: 'err', message: err.message || 'Network error' });
+    }
+  };
 
   const handleFaviconUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -3389,13 +3418,28 @@ function SettingsForm({
               <label className="block text-sm font-medium text-gray-300 mb-2">
                 API Key
               </label>
-              <Input
-                type="password"
-                placeholder="AIza..."
-                value={formData.geminiApiKey || ''}
-                onChange={(e) => setFormData({ ...formData, geminiApiKey: e.target.value })}
-                className="bg-black/50 border-white/20 text-white font-mono"
-              />
+              <div className="flex gap-2">
+                <Input
+                  type="password"
+                  placeholder="AIza..."
+                  value={formData.geminiApiKey || ''}
+                  onChange={(e) => { setFormData({ ...formData, geminiApiKey: e.target.value }); setGeminiTest({ status: 'idle', message: '' }); }}
+                  className="bg-black/50 border-white/20 text-white font-mono flex-1"
+                />
+                <Button
+                  type="button"
+                  onClick={handleTestGemini}
+                  disabled={geminiTest.status === 'testing'}
+                  className="cursor-pointer bg-white/10 hover:bg-white/20 text-white border border-white/20 text-xs px-3 shrink-0"
+                >
+                  {geminiTest.status === 'testing' ? '…' : 'Test'}
+                </Button>
+              </div>
+              {geminiTest.status !== 'idle' && (
+                <p className={`text-xs mt-1 ${geminiTest.status === 'ok' ? 'text-emerald-400' : geminiTest.status === 'err' ? 'text-red-400' : 'text-white/40'}`}>
+                  {geminiTest.status === 'ok' ? '✓ ' : geminiTest.status === 'err' ? '✗ ' : ''}{geminiTest.message}
+                </p>
+              )}
               <p className="text-gray-500 text-xs mt-1">Overrides the GEMINI_API_KEY environment variable. Switch keys when you hit quota limits.</p>
             </div>
             <div>
