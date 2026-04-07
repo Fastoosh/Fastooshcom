@@ -1,0 +1,990 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>Fastoosh Data Automator</title>
+
+  <link href="bootstrap/css/bootstrap.min.css" rel="stylesheet" />
+  <link href="css/styles.css" rel="stylesheet" />
+  <link href="css/fontawesome/css/fontawesome.css" rel="stylesheet" />
+  <link href="css/fontawesome/css/solid.css" rel="stylesheet" />
+  <link href="css/fontawesome/css/regular.css" rel="stylesheet" />
+
+  <!-- CEP shim -->
+  <script src="js/cs_interface_shim.js"></script>
+  <script src="bootstrap/js/bootstrap.bundle.min.js"></script>
+
+  <!-- Tabs controller + collapsible cards -->
+  <script>
+    // ----- Bootstrap tooltips init -----
+    window.onload = function () {
+      if (window.bootstrap && bootstrap.Tooltip) {
+        var tooltipTriggerList = [].slice.call(
+          document.querySelectorAll('[data-bs-toggle="tooltip"], .tip[title]')
+        );
+
+        tooltipTriggerList.forEach(function (el) {
+          new bootstrap.Tooltip(el, {
+            trigger: 'hover',
+            placement: 'auto',
+            delay: { show: 500, hide: 100 },
+            container: document.body, // Critical for CEP
+            boundary: 'viewport'
+          });
+        });
+      }
+    };
+
+    document.addEventListener('DOMContentLoaded', function () {
+      // ===== Naming UI (prefix vs column) =====
+      const usePrefix = document.getElementById("usePrefix");
+      const nameColumn = document.getElementById("nameColumn");
+      const namePrefixRow = document.getElementById("namePrefixRow");
+
+      function updateNamingUI() {
+        if (usePrefix.checked) {
+          nameColumn.disabled = true;
+          nameColumn.classList.add("disabled-dropdown");
+          namePrefixRow.style.display = "";
+        } else {
+          nameColumn.disabled = false;
+          nameColumn.classList.remove("disabled-dropdown");
+          namePrefixRow.style.display = "none";
+        }
+      }
+
+      if (usePrefix && nameColumn && namePrefixRow) {
+        usePrefix.addEventListener("change", updateNamingUI);
+        updateNamingUI(); // initialize state
+      }
+
+      // ===== Tabs =====
+      var btns   = Array.prototype.slice.call(document.querySelectorAll('.tab-btn'));
+      var panels = Array.prototype.slice.call(document.querySelectorAll('.tab-panel'));
+
+      function activate(name) {
+        btns.forEach(function (b) {
+          b.classList.toggle('active', b.dataset.tab === name);
+        });
+        panels.forEach(function (p) {
+          p.classList.toggle('active', p.dataset.tab === name);
+        });
+        try { localStorage.setItem('fastoosh_tab', name); } catch (e) {}
+      }
+
+      btns.forEach(function (b) {
+        b.addEventListener('click', function () {
+          activate(b.dataset.tab);
+        });
+      });
+
+      var last = null;
+      try { last = localStorage.getItem('fastoosh_tab'); } catch (e) {}
+      var first = btns[0] ? btns[0].dataset.tab : null;
+      activate(last || first);
+
+      // ===== Helpers: collapse/expand cards & nested sections =====
+      function setCardCollapsed(card, collapsed) {
+        if (!card) return;
+        card.classList.toggle('collapsed', !!collapsed);
+      }
+
+      function setNestedCollapsed(section, collapsed) {
+        if (!section) return;
+        section.classList.toggle('nested-collapsed', !!collapsed);
+      }
+
+      // ===== Card headers: toggle their own card =====
+      var headers = Array.prototype.slice.call(document.querySelectorAll('.card-header'));
+      headers.forEach(function (header) {
+        var card = header.closest('.card');
+        if (!card) return;
+
+        header.addEventListener('click', function (evt) {
+          // If the click is on a button inside the header (e.g. card-toggle icon),
+          // we still want to toggle the card – so no special filtering here.
+          var currentlyCollapsed = card.classList.contains('collapsed');
+          setCardCollapsed(card, !currentlyCollapsed);
+        });
+      });
+
+      // ===== Nested sections (KeyMap / Skeleton) =====
+      var nestedHeaders = Array.prototype.slice.call(
+        document.querySelectorAll('.nested-section .nested-header')
+      );
+
+      nestedHeaders.forEach(function (header) {
+        var section = header.closest('.nested-section');
+        if (!section) return;
+
+        header.addEventListener('click', function () {
+          var currentlyCollapsed = section.classList.contains('nested-collapsed');
+          setNestedCollapsed(section, !currentlyCollapsed);
+        });
+      });
+
+      // ===== Global Collapse / Expand All (current tab only) =====
+      var toggleButtons = Array.prototype.slice.call(
+        document.querySelectorAll('.toggle-collapse')
+      );
+
+      toggleButtons.forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var tabPanel = document.querySelector('.tab-panel.active');
+          if (!tabPanel) return;
+
+          // If button is "expanded" → we are about to collapse everything
+          var isCurrentlyExpanded = (btn.dataset.state === "expanded");
+          var collapseNow = isCurrentlyExpanded; // true = collapse, false = expand
+
+          // Cards in this tab
+          var cards = Array.prototype.slice.call(
+            tabPanel.querySelectorAll('.card')
+          );
+          cards.forEach(function (card) {
+            setCardCollapsed(card, collapseNow);
+          });
+
+          // Nested sections in this tab
+          var nestedSections = Array.prototype.slice.call(
+            tabPanel.querySelectorAll('.nested-section')
+          );
+          nestedSections.forEach(function (section) {
+            setNestedCollapsed(section, collapseNow);
+          });
+
+          // Update button state + icon
+          if (collapseNow) {
+            btn.dataset.state = "collapsed";
+            btn.title = "Expand all";
+            var icon = btn.querySelector("i");
+            if (icon) icon.className = "fa-solid fa-angle-down";
+          } else {
+            btn.dataset.state = "expanded";
+            btn.title = "Collapse all";
+            var icon2 = btn.querySelector("i");
+            if (icon2) icon2.className = "fa-solid fa-angle-up";
+          }
+        });
+      });
+
+      // (Optional legacy controls for .tab-tools are not needed anymore and were removed)
+    });
+  </script>
+
+
+  <!-- Main panel logic -->
+  <script src="js/main.js" defer></script>
+</head>
+<body>
+  <div class="app">
+
+    <!-- HEADER (compact) -->
+    <!-- PROJECT CARD -->
+    <section class="card card-project">
+      <div class="card-header">
+        <span class="card-title">Project setup</span>
+        <button type="button" class="card-toggle" aria-label="Toggle section">▾</button>
+      </div>
+
+      <div class="card-body">
+        <div class="row">
+          <label for="templateComp">Template comp</label>
+          <div class="field-group">
+            <select id="templateComp">
+              <!-- Placeholder shown when panel opens -->
+              <option value="">
+                Select template comp
+              </option>
+              <!-- Real comps will be appended via JS -->
+            </select>
+            <button id="refreshComps" class="icon-btn" data-bs-toggle="tooltip" title="Refresh Compositions">
+              <i class="fa-solid fa-rotate-right"></i>
+            </button>
+          </div>
+        </div>     
+      </div>
+    </section>
+
+    <!-- TAB BAR -->
+    <nav class="tabs">
+      <div class="tabs-left">
+
+        <button class="tab-btn" data-tab="import">
+          <i class="fa-solid fa-database tab-icon"></i>
+          <span class="tab-label">Data Import</span>
+        </button>
+        <button class="tab-btn" data-tab="skeleton">
+          <i class="fa-solid fa-link"></i>
+          <span class="tab-label">Keymap</span>
+        </button>
+        <button class="tab-btn" data-tab="process">
+          <i class="fa-solid fa-gears tab-icon"></i>
+          <span class="tab-label">Generate</span>
+        </button>
+        <button class="tab-btn" data-tab="layertag">
+          <i class="fa-solid fa-tag"></i>
+          <span class="tab-label">Layer tag</span>
+        </button>
+      </div>
+
+      <div class="tabs-right">
+        <!-- Panel menu -->
+        <div class="dropdown">
+          <button type="button"
+                  class="tiny-btn"
+                  id="btnPanelMenu"
+                  data-bs-toggle="dropdown"
+                  aria-expanded="false"
+                  title="Menu">
+            <i class="fa-solid fa-bars"></i>
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="btnPanelMenu">
+            <li>
+              <div class="dropdown-item d-flex align-items-center justify-content-between" id="menuToggleLogRow">
+                <span><i class="fa-solid fa-file me-2"></i>Log</span>
+
+                <div class="form-check form-switch m-0">
+                  <input class="form-check-input" type="checkbox" id="toggleLogSwitch">
+                </div>
+              </div>
+            </li>
+            <li>
+              <div class="dropdown-item d-flex align-items-center justify-content-between" id="menuToggleTooltipsRow">
+                <span><i class="fa-solid fa-comment-dots me-2"></i>Tooltips</span>
+
+                <div class="form-check form-switch m-0">
+                  <input class="form-check-input" type="checkbox" id="toggleTooltipsSwitch" checked>
+                </div>
+              </div>
+            </li>
+
+
+            <li><button class="dropdown-item" type="button" id="menuLicense">
+              <i class="fa-solid fa-key me-2"></i>License
+            </button></li>
+            <li><button class="dropdown-item" type="button" id="menuDocumentation">
+              <i class="fa-solid fa-book-open me-2"></i>Documentation
+            </button></li>
+            <li><button class="dropdown-item" type="button" id="menuReportBug">
+              <i class="fa-solid fa-bug me-2"></i>Report a bug…
+            </button></li>
+            <li><button class="dropdown-item" type="button" id="menuCheckUpdates">
+              <i class="fa-solid fa-rotate me-2"></i>Check for updates
+            </button></li>
+            <li><button class="dropdown-item" type="button" id="menuAbout">
+              <i class="fa-solid fa-circle-info me-2"></i>About
+            </button></li>
+          </ul>
+        </div>
+
+        <!-- License quick access -->
+        <button type="button"
+                class="tiny-btn"
+                id="btnLicense"
+                title="License: Unlicensed">
+          <i id="licenseIcon" class="fa-solid fa-lock lic-locked"></i>
+        </button>
+
+        <!-- Collapse all -->
+        <button type="button"
+                class="tiny-btn toggle-collapse"
+                data-state="expanded"
+                title="Collapse all">
+          <i class="fa-solid fa-angle-up"></i>
+        </button>
+      </div>
+    </nav>
+
+    <!-- TABS -->
+    <!-- Selected AE layers (layer tools) -->
+    <section id="tabs">
+      
+      <div class="tab-panel" data-tab="layertag">
+        <section class="card">
+          <div class="card-header"
+               data-bs-toggle="tooltip"
+               title="These tools operate on the selected layers in your active AE composition
+      (usually your template comp).">
+            <span class="card-title">Selected Layers (Inside composition) ⓘ</span>
+            <button type="button" class="card-toggle" aria-label="Toggle section">▾</button>
+          </div>
+          <div class="card-body">
+            <div class="row">
+              <div class="field-group">
+                <button
+                  id="btnAsPlaceholder"
+                  class="secondary-btn small"
+                  data-bs-toggle="tooltip"
+                  data-bs-html="true"
+                  title="Click : Mark selected layer(s) as '#placeholder_'<br>Alt/Cmd + Click : remove '#placeholder_' prefix.">
+                  <i class="fa-solid fa-image btn-icon"></i>
+                  Placeholder
+                </button>
+                <button
+                  id="btnMarkIgnored"
+                  class="secondary-btn small"
+                  data-bs-toggle="tooltip"
+                  data-bs-html="true"
+                  title="Click : Mark selected layer(s) with '~' to be ignored<br>Alt/Cmd + Click : remove '~' prefix.">
+                  <i class="fa-solid fa-eye-slash btn-icon"></i>
+                  Ignore
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- TAB 1: Import Data & Preview -->
+      <div class="tab-panel" data-tab="import">
+        <section class="card">
+          <div class="card-header">
+            <span class="card-title">Data source</span>
+            <button type="button" class="card-toggle" aria-label="Toggle section">▾</button>
+          </div>
+          <div class="card-body">
+            <div class="row">
+              <label>Data type</label>
+              <div class="inline-radios">
+                <label><input type="radio" name="dtype" value="csv" checked> CSV</label>
+                <label><input type="radio" name="dtype" value="json"> JSON</label>
+              </div>
+            </div>
+
+            <div class="row">
+              <label for="dataPath">Data file</label>
+              <div class="field-group">
+                <input id="dataPath" readonly placeholder="No file selected"/>
+                <button id="chooseData" class="icon-btn" data-bs-toggle="tooltip" title="Select your data file…">
+                  <i class="fa-solid fa-file-import btn-icon"> </i>
+                </button>
+              </div>
+            </div>
+
+            <div class="row">
+              <label for="imagesPath">Media folder</label>
+              <div class="field-group">
+                <input id="imagesPath" readonly placeholder="Images / videos folder"/>
+                <button id="chooseImages" class="icon-btn"  data-bs-toggle="tooltip" title="Select your media folder…">
+                  <i class="fa-solid fa-folder-open btn-icon"> </i>
+                </button>
+              </div>
+            </div>
+
+            <div class="row">
+              <label for="statusCol" class="with-tip">
+                Status column
+                <span class="tip" data-bs-toggle="tooltip" title="Rows with this column set to 'ready' will be processed.">ⓘ</span>
+              </label>
+              <div class="field-group">
+                <input id="statusCol" value="status"/>
+              </div>
+            </div>
+
+            <div class="row">
+              <div class="field-group">
+                <button
+                  id="loadData"
+                  class="primary-btn" 
+                  data-bs-toggle="tooltip" title="Load data from the selected datasheet.">
+                  <i class="fa-solid fa-database btn-icon"> </i>
+                  Load data
+                </button>
+              </div> 
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+              <span class="card-title">Data preview</span>
+              <button type="button" class="card-toggle" aria-label="Toggle section">▾</button>      
+          </div>
+          <div class="card-body">
+            <div class="row">
+                <div id="preview" class="preview">
+                  <em>No data loaded yet. Choose a file and click “Load data”.</em>
+                </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- TAB 2: Template Tools (Skeleton + KeyMap + layer utilities) -->
+      <div class="tab-panel" data-tab="skeleton">
+
+        <!-- Template scan + KeyMap + Skeleton -->
+        <section class="card">
+          <div class="card-header">
+            <span class="card-title"
+                  data-bs-toggle="tooltip"
+                  title="These options control which layers are included when scanning the template comp to generate KeyMap and Skeleton.">
+              Template scan, KeyMap &amp; Skeleton ⓘ
+            </span>
+            <button type="button" class="card-toggle" aria-label="Toggle section">▾</button>
+          </div>
+
+          <div class="card-body">
+            <!-- Scan options (parent section) -->
+            <div class="row">
+              <label class="with-tip"
+                     data-bs-toggle="tooltip"
+                     title="Hidden & shy layers will be skipped when generating Skeleton and KeyMap.">
+                <input type="checkbox" id="skIgnoreHidden">
+                Ignore hidden &amp; shy layers
+              </label>
+            </div>
+
+            <div class="row">
+              <label class="with-tip"
+                     data-bs-toggle="tooltip"
+                     title="Locked layers will be skipped when generating Skeleton and KeyMap.">
+                <input type="checkbox" id="skIgnoreLocked">
+                Ignore locked layers
+              </label>
+            </div>
+
+            <!-- Divider between parent and nested sections -->
+            <hr class="nested-separator"/>
+
+            <!-- Nested section: KeyMap -->
+            <div class="nested-section" id="nested-keymap">
+              <div class="nested-header">
+                <div class="nested-header-main">
+                  <span class="nested-title"
+                        data-bs-toggle="tooltip"
+                        title="KeyMap links your data keys (e.g. photo.image) to layer/precomp paths in AE (e.g. photo/image). Uses the scan options above.">
+                    KeyMap
+                  </span>
+                  <div class="row">
+                    <label>Mapping data → AE layers</label>
+                  </div>
+                </div>
+                <button type="button"
+                        class="nested-toggle"
+                        data-state="expanded"
+                        aria-label="Toggle KeyMap section">
+                  ▾
+                </button>
+              </div>
+
+              <div class="nested-body">
+                <div class="row">
+                  <div class="field-group">
+                    <button
+                      id="generateKeymap"
+                      class="icon-btn-primary icon-btn"
+                      data-bs-toggle="tooltip"
+                      title="Generate KeyMap using the current template and scan options.">
+                      <i class="fa-solid fa-wand-magic-sparkles btn-icon"></i>
+                    </button>
+
+                    <button
+                      id="btnImportKeymap"
+                      class="icon-btn"
+                      data-bs-toggle="tooltip"
+                      title="Import KeyMap from a JSON file…">
+                      <i class="fa-solid fa-download btn-icon"></i>
+                      
+                    </button>
+
+                    <button
+                      id="exportKeymap"
+                      class="icon-btn"
+                      data-bs-toggle="tooltip"
+                      title="Export current KeyMap to JSON…">
+                      <i class="fa-solid fa-upload btn-icon"></i>
+                    </button>
+                  </div>
+                </div>
+
+                
+                <!-- KeyMap mode switch -->
+                <div class="row">
+                  <label class="with-tip">
+                    KeyMap editor
+                    <span class="tip"
+                          data-bs-toggle="tooltip"
+                          title="Simple = map columns to AE endpoints with dropdowns. JSON = edit KeyMap directly.">ⓘ</span>
+                  </label>
+
+                  <div class="field-group">
+                    <button id="kmModeSimple" type="button" class="icon-btn small icon-btn-primary" data-mode="simple" data-bs-toggle="tooltip" title="Simple builder">
+                      <i class="fa-solid fa-table-list"></i>
+                    </button>
+                    <button id="kmModeJson" type="button" class="icon-btn small" data-mode="json" data-bs-toggle="tooltip" title="Advanced JSON">
+                      <i class="fa-solid fa-code"></i>
+                    </button>
+                    <div class="small text-muted" id="kmModeHint" style="margin-left:6px;">Simple builder</div>
+                  </div>
+                </div>
+
+                <!-- SIMPLE BUILDER -->
+                <div id="keymapBuilderPanel" class="row" style="margin-top:8px;">
+                  <div class="small text-muted" id="kmBuilderEmpty" style="margin-bottom:6px;">
+                    Generate or import a KeyMap to populate endpoints. Load data to populate columns.
+                  </div>
+
+                  <div class="field-group" style="justify-content:space-between; align-items:center; margin-bottom:6px;">
+                    <div id="kmWarnings" class="small" style="text-align:right;"></div>
+                  </div>
+
+                  <div class="km-table-wrap">
+
+                    <table class="grid">
+                      <thead>
+                        <tr>
+                          <th style="width:45%;">  
+                            <div class="km-th-wrap">
+                              <button id="kmToggleAllPaths" type="button" class="km-target-toggle km-target-toggle--sm" title="Show full paths">
+                                <i class="fa-solid fa-eye"></i>
+                              </button>
+                              <span>AE target</span>
+                            </div>
+                          </th>
+                          <th style="width:32%;">Data column</th>
+                          <th style="width:23%;">State</th>
+                        </tr>
+                      </thead>
+                      <tbody id="kmBuilderBody"></tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <!-- ADVANCED JSON -->
+                <div id="keymapJsonPanel" style="display:none; margin-top:8px;">
+                  <div class="row">
+                    <label for="keyMap" class="with-tip">
+                      KeyMap viewer (JSON)
+                      <span class="tip"
+                            data-bs-toggle="tooltip"
+                            title='Map data columns to AE layer / precomp paths. Example: { "Column_name": ["Layer_name"] }'>ⓘ</span>
+                    </label>
+                    <div class="row">
+                      <textarea
+                      id="keyMap"
+                      rows="3"
+                      class="textarea"
+                      placeholder='Example: { "Column_name": ["Layer_name"], "title.text": ["titlecomposition/textlayer"], "Image": ["Placeholder/image"] }'
+                    ></textarea>
+                    </div>
+                  
+                  
+                    <div class="row row-compact">
+                      <button id="kmApplyJson" type="button" class="secondary-btn small"
+                              data-bs-toggle="tooltip"
+                              title="Parse JSON and update the builder.">
+                        Apply JSON
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="row row-compact">
+                  <button id="kmHelpToggle" type="button" class="linklike">
+                    How KeyMap works
+                  </button>
+                </div>
+
+                <div id="kmHelp" class="help hidden">
+                  <p><strong>Purpose:</strong> Link your data keys to actual AE layer / precomp paths.</p>
+                  <pre class="example">
+      Data row → { "name": "John", "photo.image": "john.png" }
+      AE structure:
+      Main → photo → image
+
+      KeyMap → { "photo.image": ["photo/image"] }
+
+      Result:
+      - Text fields map automatically by name
+      - "photo.image" replaces the nested "photo/image" layer with john.png
+                  </pre>
+                  <p>Nested compositions example: <code>{"Main.logo.image": ["Main/logo/image"]}</code></p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Divider between nested sections -->
+            <hr class="nested-separator"/>
+
+            <!-- Nested section: Export skeleton -->
+            <div class="nested-section" id="nested-skeleton">
+              <div class="nested-header">
+                <div class="nested-header-main">
+                  <span class="nested-title"
+                        data-bs-toggle="tooltip"
+                        title="Export a CSV or JSON skeleton of your template as a starting point for your data. Uses the scan options above.">
+                    Export skeleton
+                  </span>
+                  <div class="row"><label class="nested-tag">Generate data header</label></div>
+                </div>
+                <button type="button"
+                        class="nested-toggle"
+                        data-state="expanded"
+                        aria-label="Toggle skeleton section">
+                  ▾
+                </button>
+              </div>
+
+              <div class="nested-body">
+                <div class="row">
+                  <span>Skeleton format</span>
+                  <div class="inline-radios">
+                    <label>
+                      <input type="radio" name="exportType" value="csv" checked>
+                      CSV
+                    </label>
+                    <label>
+                      <input type="radio" name="exportType" value="json">
+                      JSON
+                    </label>
+                  </div>
+                </div>
+
+                <div class="row actions-row">
+                  <button
+                    id="exportData"
+                    class="primary-btn">
+                    <i class="fa-solid fa-file-export btn-icon"></i>
+                    Export skeleton…
+                  </button>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+      </div>
+
+      <!-- TAB 4: Processing & Render -->
+      <div class="tab-panel" data-tab="process">
+        <section class="card">
+          <div class="card-header">
+            <span class="card-title">Processing options</span>
+            <button type="button" class="card-toggle" aria-label="Toggle section">▾</button>
+          </div>
+          <div class="card-body">
+            <div class="row">
+              <label class="with-tip" data-bs-toggle="tooltip" title="If enabled, missing data, layers or media will be reported in a strict error dialog.">
+                <input type="checkbox" id="strict">
+                Strict mode (report missing layers / media)
+              </label>
+            </div>
+
+            <div class="row">
+              <label class="with-tip"
+                     data-bs-toggle="tooltip"
+                     title="Enable control over how nested precomps are duplicated.">
+                <input type="checkbox" id="reuseNestedCB" disabled>
+                Nested precomps duplication policy
+              </label>
+            </div>
+
+            <div class="row nested-row" id="nestedPolicyRow" style="display:none">
+              <label for="nestedPolicy"
+                     class="with-tip"
+                     data-bs-toggle="tooltip"
+                     title="Controls how nested precomps that receive data behave during duplication.">
+                Nested precomps policy
+              </label>
+
+              <div class="field-group">
+                <select id="nestedPolicy"
+                        data-bs-toggle="tooltip"
+                        data-bs-html="true"
+                        title="• Auto: duplicate only the comps that receive data. <br>
+            • Duplicate everything: isolate every nested comp per row. <br>
+            • Reuse: all rows share the same nested comps." disabled>
+                  <option value="auto">Auto</option>
+                  <option value="duplicate">Duplicate everything</option>
+                  <option value="reuse">Reuse</option>
+                </select>
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+            <span class="card-title">Render options</span>
+            <button type="button" class="card-toggle" aria-label="Toggle section">▾</button>
+          </div>
+          <div class="card-body">
+            <div class="row">
+              <label class="with-tip" data-bs-toggle="tooltip" title="If enabled, all generated comps will be added to the AE Render Queue.">
+                <input type="checkbox" id="addToQueue" disabled>
+                Add generated comps to AE Render Queue
+              </label>
+            </div>
+
+            <div id="outBlock" class="row nested-row" style="display:none">
+              <label for="outputPath">Output folder</label>
+              <div class="field-group">
+                <input id="outputPath" readonly placeholder="Select render output folder"/>
+                <button id="chooseOutput" class="icon-btn" data-bs-toggle="tooltip" title="Select your output folder">
+                  <i class="fa-solid fa-folder-open btn-icon"></i>
+                </button>
+              </div>
+            </div>
+
+            <div id="omBlock" class="row nested-row" style="display:none">
+              <label for="omTemplate">Output module</label>
+              <div class="field-group">
+                <select id="omTemplate"></select>
+                <button id="refreshOMs" class="icon-btn" data-bs-toggle="tooltip" title="Refresh output Module">
+                  <i class="fa-solid fa-rotate-right"></i>
+                </button>
+              </div>
+            </div>
+
+            <div id="autoBlock" class="row nested-row" style="display:none">
+              <label class="with-tip" data-bs-toggle="tooltip" title="If enabled, the AE Render Queue will start rendering automatically after queueing.">
+                <input type="checkbox" id="autoRender">
+                Render immediately after queueing
+              </label>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+            <span class="card-title">Generate & Render</span>
+            <button type="button" class="card-toggle" aria-label="Toggle section">▾</button>
+          </div>
+          <div class="card-body">
+            <div class="row">
+              <label for="compsFolder">Output folder in AE</label>
+              <div class="field-group">
+                <input id="compsFolder" placeholder="Generated_Comps"/>
+                <button id="editCompsFolder" class="icon-btn" data-bs-toggle="tooltip" title="Edit name of generated composition folder">
+                  <i class="fa-solid fa-pen"></i>
+                </button>
+              </div>
+            </div>
+
+            <!-- Naming options -->
+            <div class="row">
+              <label for="nameColumn" class="with-tip" data-bs-toggle="tooltip" title="Use a column from your data to name each generated composition.">
+                Name from column ⓘ
+              </label>
+              <div class="field-group">
+                <select id="nameColumn">
+                  <option value="">(auto naming)</option>
+                  <!-- options filled from CSV/JSON headers -->
+                </select>
+              </div>
+            </div>
+
+            <div class="row">
+              <label class="with-tip" data-bs-toggle="tooltip" title="Use a custom prefix + incremental number (e.g. Speaker_001, Speaker_002…).">
+                <input type="checkbox" id="usePrefix" disabled/>
+                Use custom prefix ⓘ
+              </label>
+            </div>
+
+            <div class="row" id="namePrefixRow" style="display:none">
+              <label for="namePrefix">Prefix for new comps</label>
+              <input id="namePrefix" placeholder="e.g. Speaker_" disabled/>
+            </div>
+            <div class="row actions-row">
+              <button
+                id="processPending"
+                class="primary-btn" data-bs-toggle="tooltip" title="Process rows with ready status.">
+                <i class="fa-solid fa-play btn-icon"> </i>
+                Process ready 
+              </button>
+              
+              <button 
+                id="processAll"
+                class="secondary-btn" data-bs-toggle="tooltip" title="Process all rows no matter the status is.">
+                <i class="fa-solid fa-forward btn-icon"> </i>
+                Process all
+              </button>
+
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <!-- LOG -->
+    <section class="card card-log collapsed" id="logSection">
+      <div class="card-header">
+        <span class="card-title">Log</span>
+        <button type="button" class="card-toggle" aria-label="Toggle section">▾</button>
+      </div>
+      <div class="card-body">
+        <pre id="log"></pre>
+      </div>
+    </section>
+
+
+    <!-- TOAST NOTIFICATIONS -->
+    <div class="position-fixed bottom-0 end-0 p-2" style="z-index: 9999;">
+      <div id="fdaToast" class="toast align-items-center border-0" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="d-flex">
+          <div class="toast-body small" id="fdaToastMsg"></div>
+          <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- LICENSE MODAL -->
+    <div class="modal fade" id="licenseModal" tabindex="-1" aria-labelledby="licenseModalLabel" aria-hidden="true"
+         data-bs-backdrop="static" data-bs-keyboard="false">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="licenseModalLabel">License</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+
+          <div class="modal-body">
+            <p class="mb-2 small text-muted">
+              Paste your Lemon Squeezy license key. This panel can activate this device, refresh the current status, and deactivate this device when needed.
+            </p>
+
+            <input id="licenseKeyInput"
+                   class="form-control"
+                   type="text"
+                   placeholder="XXXX-XXXX-XXXX-XXXX"
+                   autocomplete="off"
+                   spellcheck="false" />
+
+            <div id="licenseModalMsg" class="small mt-2"></div>
+            <div id="licenseDetails" class="license-details small mt-3 text-muted">No license activated on this device.</div>
+            <div class="mt-3">
+              <a href="#" id="licenseToolPageLink" class="fastoosh-purple-link small">Fastoosh Data Automator page</a>
+            </div>
+          </div>
+
+          <div class="modal-footer license-modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+            <button type="button" class="btn btn-outline-secondary" id="btnRefreshLicense">Refresh</button>
+            <button type="button" class="btn btn-outline-danger" id="btnDeactivateLicense">Deactivate this device</button>
+            <button type="button" class="btn btn-primary" id="btnValidateLicense">Activate / Save</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- REPORT BUG MODAL -->
+    <div class="modal fade" id="supportModal" tabindex="-1" aria-labelledby="supportModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="supportModalLabel">Report a bug</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <label class="form-label small">What happened?</label>
+            <textarea id="supportText" class="form-control" rows="4" placeholder="Steps, what you expected, what you got…"></textarea>
+
+            <div class="d-flex gap-2 mt-3">
+
+              <button type="button" class="btn btn-primary btn-sm" id="btnEmailBugReport">
+                Send email
+              </button>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ABOUT MODAL -->
+    <div class="modal fade" id="aboutModal" tabindex="-1" aria-labelledby="aboutModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="aboutModalLabel">About</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <div class="about-title">Fastoosh Data Automator</div>
+            <div class="small text-muted" id="aboutVersion">Version: —</div>
+            <div class="small text-muted" id="aboutEnv">—</div>
+            <div class="mt-2">
+              <a href="https://www.fastoosh.com/tools/" id="aboutToolsLink" class="fastoosh-link">Fastoosh Tools</a>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- UPDATE AVAILABLE MODAL -->
+    <div class="modal fade" id="updateModal" tabindex="-1" aria-labelledby="updateModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="updateModalLabel">
+              <i class="fa-solid fa-circle-arrow-up me-2" style="color: #7c5cfc;"></i>Update Available
+            </h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <div class="about-title">Fastoosh Data Automator</div>
+            <div class="small text-muted" style="margin: 6px 0 14px;">
+              Version <strong id="updateModalLatestVersion">—</strong> is now available &mdash;
+              you are on <strong id="updateModalCurrentVersion">—</strong>.
+            </div>
+            <p class="small" style="margin-bottom: 14px;">
+              A new version has been released. Re-download from your LemonSqueezy order to get the latest features and fixes.
+            </p>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <button type="button" id="btnUpdateDownload" class="btn btn-primary btn-sm">
+                <i class="fa-solid fa-download me-2"></i>Re-download from LemonSqueezy
+              </button>
+              <button type="button" id="btnUpdateChangelog" class="btn btn-outline-secondary btn-sm">
+                <i class="fa-solid fa-list me-2"></i>View changelog
+              </button>
+            </div>
+          </div>
+          <div class="modal-footer" style="justify-content: flex-start;">
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="btnUpdateDismiss">
+              Later (don't remind me for this version)
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Confirm delete endpoint modal -->
+    <div class="modal fade" id="kmDeleteModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+
+          <div class="modal-header">
+            <h5 class="modal-title">Remove AE target</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+
+          <div class="modal-body">
+            <p style="margin:0 0 8px;">This will permanently remove this AE target from the KeyMap JSON.</p>
+            <div class="help">
+              <div class="text-muted" style="margin-bottom:4px;">AE target</div>
+              <div id="kmDeletePath" class="example" style="white-space:normal;"></div>
+            </div>
+            <p class="text-muted" style="margin:8px 0 0;">Tip: re-generate KeyMap to bring back removed targets.</p>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-danger" id="kmDeleteConfirmBtn">Remove</button>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

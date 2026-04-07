@@ -1,0 +1,76 @@
+@import './fonts.css';
+@import './tailwind.css';
+@import './theme.css';
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* ── Language-switch fade transition ────────────────────────────────────────
+   The #fastoosh-site wrapper fades out (100 ms) while the new language loads,
+   then fades back in.  The existing prefers-reduced-motion block already
+   overrides transition-duration to 0.01 ms for users who opt out. */
+#fastoosh-site {
+  transition: opacity 100ms ease;
+}
+html.lang-switching #fastoosh-site {
+  opacity: 0;
+}
+
+/* Disable smooth scrolling for users who prefer reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #000;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(168, 85, 247, 0.3);
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(168, 85, 247, 0.5);
+}
+
+/* Focus visible styles for accessibility */
+*:focus-visible {
+  outline: 2px solid #a855f7;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Ensure text selection works in input fields and editable content */
+input,
+textarea,
+[contenteditable="true"],
+[role="textbox"] {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  -ms-user-select: text !important;
+  cursor: text !important;
+}
+
+/* Fix for potential overlapping elements blocking selection */
+input:focus,
+textarea:focus {
+  position: relative;
+  z-index: 10;
+}

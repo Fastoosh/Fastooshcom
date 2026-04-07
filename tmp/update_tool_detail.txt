@@ -1,0 +1,9 @@
+Plan to update ToolDetail.tsx:
+
+1. Remove debug console.logs (lines 958-964)
+2. Add source version tracking per feature
+3. Add isFeatureFree check per feature  
+4. Add handleFeatureCTA per feature
+5. Update button onClick from handleCTA to handleFeatureCTA
+6. Update button styling to use isFeatureFree instead of isFree
+7. Update button text to use 'viewPricing' for paid features
