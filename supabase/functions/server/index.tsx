@@ -8627,6 +8627,7 @@ app.post('/make-server-e07959ec/tools/:id/generate-guide', requireAuth, async (c
 
     const { apiKey, model: geminiModel } = await getGeminiConfig();
     if (!apiKey) return c.json({ success: false, error: 'GEMINI_API_KEY not configured' }, 500);
+    console.log(`[generate-guide] Using model="${geminiModel}" apiKey="${apiKey.slice(0, 8)}…"`);
 
     // Build version info string
     const versions = toolRow?.versions || [];
@@ -8705,7 +8706,8 @@ Features: ${JSON.stringify(toolRow?.features || [])}`;
 
     if (!geminiRes.ok) {
       const errText = await geminiRes.text();
-      return c.json({ success: false, error: `Gemini error: ${errText.slice(0, 300)}` }, 500);
+      console.log(`[generate-guide] Gemini error for tool "${toolId}" model "${geminiModel}":`, errText.slice(0, 500));
+      return c.json({ success: false, error: `Gemini error (${geminiModel}): ${errText.slice(0, 300)}` }, 500);
     }
 
     const geminiData = await geminiRes.json();
