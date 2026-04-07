@@ -3446,17 +3446,14 @@ function SettingsForm({
               <label className="block text-sm font-medium text-gray-300 mb-2">
                 Model
               </label>
-              <select
-                value={formData.geminiModel || 'gemini-2.5-flash'}
-                onChange={(e) => setFormData({ ...formData, geminiModel: e.target.value })}
-                className="w-full bg-black/50 border border-white/20 text-white rounded-md px-3 py-2 text-sm"
-              >
-                <option value="gemini-2.5-flash">gemini-2.5-flash (default)</option>
-                <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite</option>
-                <option value="gemini-3-flash">gemini-3-flash</option>
-                <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite</option>
-              </select>
-              <p className="text-gray-500 text-xs mt-1">Switch to a lighter model if you reach your quota on the current one.</p>
+              <Input
+                type="text"
+                placeholder="gemini-2.5-flash"
+                value={formData.geminiModel || ''}
+                onChange={(e) => { setFormData({ ...formData, geminiModel: e.target.value }); setGeminiTest({ status: 'idle', message: '' }); }}
+                className="bg-black/50 border-white/20 text-white font-mono"
+              />
+              <p className="text-gray-500 text-xs mt-1">Enter the exact model ID from your Gemini API page. Use the Test button above to verify it works.</p>
             </div>
           </div>
         </div>
