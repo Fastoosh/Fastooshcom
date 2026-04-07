@@ -8638,7 +8638,7 @@ app.post('/make-server-e07959ec/tools/:id/generate-guide', requireAuth, async (c
     // Fill template placeholders that are fixed (not AI-generated)
     const templateWithMeta = GUIDE_TEMPLATE
       .replace(/\{\{TOOL_NAME\}\}/g, toolRow?.name || slug)
-      .replace('{{TOOL_TAGLINE}}', toolRow?.tagline || toolRow?.description?.slice(0, 120) || '')
+      .replace('{{TOOL_TAGLINE}}', toolRow?.tagline || toolRow?.description || '')
       .replace('{{TOOL_CATEGORY}}', toolRow?.toolCategory || toolRow?.category || 'Tool')
       .replace('{{TOOL_VERSION_INFO}}', versionInfo);
 
