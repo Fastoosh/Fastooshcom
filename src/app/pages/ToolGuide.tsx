@@ -641,7 +641,7 @@ export function ToolGuide() {
                       {tool?.name ?? slug}
                     </h1>
                     {tool?.description && (
-                      <p className="text-white/40 text-sm leading-relaxed line-clamp-2">
+                      <p className="text-white/40 text-sm leading-relaxed">
                         {tool.description}
                       </p>
                     )}
