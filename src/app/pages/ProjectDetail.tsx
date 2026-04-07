@@ -89,17 +89,7 @@ export function ProjectDetail() {
 
   useEffect(() => { idRef.current = slug; }, [slug]);
 
-  // ── Record view on page load (autoplay) ────────────────────────────────────
-  useEffect(() => {
-    if (!viewRecordedRef.current && slug) {
-      viewRecordedRef.current = true;
-      fetch(`${API_BASE}/projects/${slug}/video-view`, {
-        method:  'POST',
-        headers: { 'Authorization': `Bearer ${publicAnonKey}`, 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ addView: true, watchSeconds: 0 }),
-      }).catch(err => console.warn('[VideoTrack] view record failed:', err));
-    }
-  }, [slug]);
+  // View is recorded on first play event, not on page load
 
   /** Fire-and-forget: POST seconds watched to the server. */
   const postWatchSeconds = useCallback((secs: number) => {
@@ -145,7 +135,18 @@ export function ProjectDetail() {
     if (url.includes('vimeo.com') || iframeRef.current.src.includes('vimeo.com') || iframeRef.current.src.includes('player.vimeo')) {
       const vimeoPlayer = new Player(iframeRef.current);
 
-      const onPlay  = () => { isPlayingRef.current = true;  playStartRef.current = Date.now(); };
+      const onPlay  = () => {
+        isPlayingRef.current = true;
+        playStartRef.current = Date.now();
+        if (!viewRecordedRef.current && idRef.current) {
+          viewRecordedRef.current = true;
+          fetch(`${API_BASE}/projects/${idRef.current}/video-view`, {
+            method:  'POST',
+            headers: { 'Authorization': `Bearer ${publicAnonKey}`, 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ addView: true, watchSeconds: 0 }),
+          }).catch(err => console.warn('[VideoTrack] view record failed:', err));
+        }
+      };
       const onPause = () => { isPlayingRef.current = false; drainTimer(false); };
       const onEnded = () => { isPlayingRef.current = false; drainTimer(false); };
 
@@ -171,6 +172,14 @@ export function ProjectDetail() {
           if (state === 1) {
             isPlayingRef.current = true;
             playStartRef.current = Date.now();
+            if (!viewRecordedRef.current && idRef.current) {
+              viewRecordedRef.current = true;
+              fetch(`${API_BASE}/projects/${idRef.current}/video-view`, {
+                method:  'POST',
+                headers: { 'Authorization': `Bearer ${publicAnonKey}`, 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ addView: true, watchSeconds: 0 }),
+              }).catch(err => console.warn('[VideoTrack] view record failed:', err));
+            }
           } else if (state === 2 || state === 0) {
             isPlayingRef.current = false;
             drainTimer(false);
