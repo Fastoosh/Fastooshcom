@@ -8301,50 +8301,19 @@ ${originalHtml}`;
   }
 }
 
-// POST /tools/:id/guide — admin only, upload + AI-theme HTML guide { html, slug }
+// POST /tools/:id/guide — admin only, upload HTML guide { html, slug }
+// Note: dark theming is handled at render time by ToolGuide.tsx CSS overrides,
+// so we just save the original HTML as-is without any Gemini theming step.
 app.post('/make-server-e07959ec/tools/:id/guide', requireAuth, async (c) => {
   try {
     const toolId = c.req.param('id');
     const body = await c.req.json();
-    const { html, slug, skipAI } = body;
+    const { html, slug } = body;
     if (!html) return c.json({ success: false, error: 'html field is required' }, 400);
     if (!slug) return c.json({ success: false, error: 'slug field is required' }, 400);
 
-    let finalHtml = html;
-    let themeResult = { ok: false, error: 'AI theming skipped by user' };
-
-    // ── Theme with Gemini (color-only dark conversion) ─────────────────────
-    if (!skipAI) {
-      console.log(`[guide-upload] Theming guide for tool "${toolId}" with Gemini…`);
-      
-      // Add timeout wrapper for Gemini request (45 seconds)
-      const timeoutPromise = new Promise<{ ok: false; error: string }>((_, reject) => 
-        setTimeout(() => reject(new Error('AI theming timeout (45s limit)')), 45000)
-      );
-      
-      try {
-        themeResult = await Promise.race([
-          applyDarkThemeWithGemini(html),
-          timeoutPromise
-        ]);
-        finalHtml = themeResult.ok ? themeResult.html : html;
-      } catch (timeoutErr: any) {
-        console.log(`[guide-upload] Gemini theming timeout for tool "${toolId}": ${String(timeoutErr)}`);
-        themeResult = { ok: false, error: String(timeoutErr) };
-        finalHtml = html; // fallback to original
-      }
-      
-      if (!themeResult.ok) {
-        console.log(`[guide-upload] Gemini theming failed (saving original): ${themeResult.error}`);
-      } else {
-        console.log(`[guide-upload] ✅ Gemini theming succeeded for tool "${toolId}"`);
-      }
-    } else {
-      console.log(`[guide-upload] Skipping AI theming for tool "${toolId}" (user opted out)`);
-    }
-
     const path = `${slug}/guide.html`;
-    const blob = new Blob([finalHtml], { type: 'text/html; charset=utf-8' });
+    const blob = new Blob([html], { type: 'text/html; charset=utf-8' });
 
     const { error } = await supabase.storage
       .from(GUIDE_BUCKET_NAME)
@@ -8360,7 +8329,7 @@ app.post('/make-server-e07959ec/tools/:id/guide', requireAuth, async (c) => {
       .getPublicUrl(path);
 
     console.log(`[guide-upload] ✅ Guide saved for tool "${toolId}" at path "${path}"`);
-    return c.json({ success: true, url: publicUrl, themedHtml: finalHtml, aiThemed: themeResult.ok });
+    return c.json({ success: true, url: publicUrl });
   } catch (err) {
     console.log('[guide-upload] Unexpected error:', err);
     return c.json({ success: false, error: `Upload failed: ${String(err)}` }, 500);

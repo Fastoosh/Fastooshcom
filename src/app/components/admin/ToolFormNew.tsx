@@ -176,7 +176,6 @@ export function ToolFormNew({
   const [guideUploading, setGuideUploading] = useState(false);
   const [guideDeleting, setGuideDeleting]   = useState(false);
   const [guideMsg, setGuideMsg]             = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
-  const [skipAITheming, setSkipAITheming]   = useState(false); // Option to skip AI theming for large files
   // Generate guide from template
   const [guideGenerating, setGuideGenerating] = useState(false);
   const [guideGenSourceHtml, setGuideGenSourceHtml] = useState<string | null>(null);
@@ -315,19 +314,12 @@ export function ToolFormNew({
           Authorization: `Bearer ${publicAnonKey}`,
           'X-Admin-Token': adminToken,
         },
-        body: JSON.stringify({ html, slug, skipAI: skipAITheming }),
+        body: JSON.stringify({ html, slug }),
       });
       const data = await res.json();
       if (data.success) {
         setGuideExists(true);
-        const aiNote = data.aiThemed ? ' AI dark theme applied.' : ' (AI theming skipped, original saved)';
-        setGuideMsg({ type: 'ok', text: `Guide uploaded.${aiNote}` });
-        // Open the editor automatically so the admin sees the themed result
-        if (data.themedHtml) {
-          setGuideEditorHtml(data.themedHtml);
-          setGuideEditorOpen(true);
-          setGuideEditorTab('preview');
-        }
+        setGuideMsg({ type: 'ok', text: 'Guide uploaded.' });
       } else {
         setGuideMsg({ type: 'err', text: data.error ?? 'Upload failed.' });
       }
@@ -1522,9 +1514,7 @@ export function ToolFormNew({
               ) : (
                 <FileCode className="w-3.5 h-3.5" />
               )}
-              {guideUploading 
-                ? (skipAITheming ? 'Uploading…' : 'Theming with AI…') 
-                : (guideExists ? 'Replace Guide' : 'Upload Guide (.html)')}
+              {guideUploading ? 'Uploading…' : (guideExists ? 'Replace Guide' : 'Upload Guide (.html)')}
               <input
                 type="file"
                 accept=".html,text/html"
