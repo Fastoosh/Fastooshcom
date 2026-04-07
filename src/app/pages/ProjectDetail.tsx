@@ -95,7 +95,6 @@ export function ProjectDetail() {
   const postWatchSeconds = useCallback((secs: number) => {
     const pid = idRef.current;
     if (secs <= 0 || !pid) return;
-    console.log(`[VideoTrack] sending ${secs}s for project ${pid}`);
     fetch(`${API_BASE}/projects/${pid}/video-view`, {
       method:    'POST',
       headers:   { 'Authorization': `Bearer ${publicAnonKey}`, 'Content-Type': 'application/json' },

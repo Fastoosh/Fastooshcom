@@ -718,7 +718,7 @@ app.post('/make-server-e07959ec/auth/register', async (c) => {
     }
 
     const userId    = data.user.id;
-    const safeEmail = btoa(cleanEmail).replace(/=/g, '');
+    const safeEmail = encodeURIComponent(cleanEmail).replace(/%/g, '_');
     const otpKey    = `signup_otp:${safeEmail}`;
     const otp       = String(Math.floor(100000 + Math.random() * 900000));
     const expiresAt = Date.now() + 15 * 60 * 1000; // 15 min
@@ -805,7 +805,7 @@ app.post('/make-server-e07959ec/auth/register/verify', async (c) => {
     }
 
     const cleanEmail = email.toLowerCase().trim();
-    const safeEmail  = btoa(cleanEmail).replace(/=/g, '');
+    const safeEmail  = encodeURIComponent(cleanEmail).replace(/%/g, '_');
     const otpKey     = `signup_otp:${safeEmail}`;
     const entry      = await kv.get(otpKey);
 
@@ -4925,7 +4925,7 @@ app.post('/make-server-e07959ec/free-download', async (c) => {
       const { data: { user: authUser }, error: authErr } = await supabase.auth.getUser(userToken);
       if (!authErr && authUser) {
         const userId    = authUser.id;
-        const safeEmail = btoa(email.toLowerCase().trim()).replace(/=/g, '');
+        const safeEmail = encodeURIComponent(email.toLowerCase().trim()).replace(/%/g, '_');
         const now       = new Date().toISOString();
 
         // Fetch tool image for the downloads list
@@ -4971,7 +4971,7 @@ app.post('/make-server-e07959ec/free-download', async (c) => {
     }
 
     // Save lead as UNVERIFIED — flipped to true only after OTP verification
-    const safeEmail = btoa(email.toLowerCase().trim()).replace(/=/g, '');
+    const safeEmail = encodeURIComponent(email.toLowerCase().trim()).replace(/%/g, '_');
     const kvKey     = `lead:free:${toolVersionId}:${safeEmail}`;
     const logKey    = `lead:free:log:${Date.now()}:${safeEmail}`;
     const now       = new Date().toISOString();
@@ -5087,7 +5087,7 @@ app.post('/make-server-e07959ec/free-download/verify', async (c) => {
       return c.json({ success: false, error: 'email, code, and toolVersionId are required' }, 400);
     }
 
-    const safeEmail = btoa(email.toLowerCase().trim()).replace(/=/g, '');
+    const safeEmail = encodeURIComponent(email.toLowerCase().trim()).replace(/%/g, '_');
     const otpKey    = `otp:${toolVersionId}:${safeEmail}`;
     const entry     = await kv.get(otpKey);
 

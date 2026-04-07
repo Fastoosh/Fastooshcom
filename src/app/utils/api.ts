@@ -106,7 +106,7 @@ export const api = {
   },
 
   async getProject(id: string) {
-    return cachedFetch<any>(`project:${id}`, `${API_BASE}/projects/${id}`, { headers: authHeaders() });
+    return cachedFetch<any>(`project:${id}`, `${API_BASE}/projects/${encodeURIComponent(id)}`, { headers: authHeaders() });
   },
 
   // Tools
@@ -115,7 +115,7 @@ export const api = {
   },
 
   async getTool(id: string) {
-    return cachedFetch<any>(`tool:${id}`, `${API_BASE}/tools/${id}`, { headers: authHeaders() });
+    return cachedFetch<any>(`tool:${id}`, `${API_BASE}/tools/${encodeURIComponent(id)}`, { headers: authHeaders() });
   },
 
   // Team

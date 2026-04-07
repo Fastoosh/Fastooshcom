@@ -172,10 +172,6 @@ export function Home() {
   const c = homeContent;
   const embedUrl = getEmbedUrl(c.showreelUrl);
   
-  // DEBUG: Check what URL we have
-  console.log('🎬 Showreel URL:', c.showreelUrl);
-  console.log('🎬 Embed URL:', embedUrl);
-
   // ── Showreel video tracking ────────────────────────────────────────────────
   const showreelIframeRef  = useRef<HTMLIFrameElement>(null);
   const srPlayStartRef     = useRef<number | null>(null);
@@ -184,7 +180,6 @@ export function Home() {
 
   const postShowreelWatch = useCallback((secs: number) => {
     if (secs <= 0) return;
-    console.log(`[ShowreelTrack] sending ${secs}s`);
     fetch(`${API_BASE}/showreel/video-view`, {
       method:    'POST',
       headers:   { 'Authorization': `Bearer ${publicAnonKey}`, 'Content-Type': 'application/json' },

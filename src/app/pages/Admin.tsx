@@ -381,8 +381,6 @@ export function Admin() {
 
   const saveProject = async (project: Project): Promise<{ success: boolean; message: string }> => {
     try {
-      console.log('Saving project:', project);
-
       // Ensure slug is always set — auto-derive from title if missing
       const projectToSave = {
         ...project,
@@ -402,9 +400,7 @@ export function Admin() {
         body: JSON.stringify(projectToSave),
       });
 
-      console.log('Save response status:', response.status);
       const result = await response.json();
-      console.log('Save result:', JSON.stringify(result, null, 2));
       
       if (response.status === 401) {
         console.error('Authentication failed - token may have expired');
@@ -466,7 +462,6 @@ export function Admin() {
       const token = localStorage.getItem('admin_token');
       const projectIds = projects.map(p => p.id);
       
-      console.log('💾 Saving new project order:', projectIds);
       
       const response = await fetch(`${API_BASE}/projects/reorder`, {
         method: 'POST',
@@ -487,7 +482,6 @@ export function Admin() {
 
       const result = await response.json();
       if (result.success) {
-        console.log('✅ Projects reordered successfully');
         bustApiCache('projects');
       } else {
         console.error('❌ Error reordering projects:', result.error);
@@ -503,7 +497,6 @@ export function Admin() {
 
   const saveTool = async (tool: Tool): Promise<{ success: boolean; message: string }> => {
     try {
-      console.log('Attempting to save tool:', tool);
       
       // Ensure slug is set - auto-generate from name if empty
       const toolToSave = {
@@ -524,17 +517,12 @@ export function Admin() {
         body: JSON.stringify(toolToSave),
       });
 
-      console.log('Response status:', response.status);
-      console.log('Response ok:', response.ok);
-      
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('Response error text:', errorText);
         return { success: false, message: `Error saving tool: HTTP ${response.status} - ${errorText}` };
       }
-      
+
       const result = await response.json();
-      console.log('Response data:', result);
       
       if (result.success) {
         bustApiCache('tools');
@@ -590,7 +578,6 @@ export function Admin() {
       const token = localStorage.getItem('admin_token');
       const toolIds = tools.map(t => t.id);
       
-      console.log('💾 Saving new tool order:', toolIds);
       
       const response = await fetch(`${API_BASE}/tools/reorder`, {
         method: 'POST',
@@ -611,7 +598,6 @@ export function Admin() {
 
       const result = await response.json();
       if (result.success) {
-        console.log('✅ Tool order saved successfully');
         bustApiCache('tools');
       } else {
         console.error('❌ Reorder failed:', result.error);
@@ -856,21 +842,21 @@ export function Admin() {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="mb-6 flex-wrap">
             <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
-            <TabsTrigger value="home">Home</TabsTrigger>
             <TabsTrigger value="projects">Projects</TabsTrigger>
             <TabsTrigger value="tools">Tools</TabsTrigger>
             <TabsTrigger value="team">Team</TabsTrigger>
-            <TabsTrigger value="settings">Settings</TabsTrigger>
-            <TabsTrigger value="style">Style</TabsTrigger>
-            <TabsTrigger value="leads">Leads</TabsTrigger>
+            <TabsTrigger value="home">Home</TabsTrigger>
             <TabsTrigger value="reviews">Reviews</TabsTrigger>
-            <TabsTrigger value="seo">SEO</TabsTrigger>
+            <TabsTrigger value="leads">Leads</TabsTrigger>
+            <TabsTrigger value="messages">🔧 Tool Requests</TabsTrigger>
             <TabsTrigger value="traffic">🌐 Traffic</TabsTrigger>
             <TabsTrigger value="translations">🌍 Translations</TabsTrigger>
+            <TabsTrigger value="seo">SEO</TabsTrigger>
+            <TabsTrigger value="style">Style</TabsTrigger>
+            <TabsTrigger value="settings">Settings</TabsTrigger>
             <TabsTrigger value="legal">⚖️ Legal</TabsTrigger>
-            <TabsTrigger value="messages">🔧 Messages</TabsTrigger>
-            <TabsTrigger value="reset" className="text-red-400 data-[state=active]:text-red-300">⚠️ Reset</TabsTrigger>
             <TabsTrigger value="guide">📖 Guide</TabsTrigger>
+            <TabsTrigger value="reset" className="text-red-400 data-[state=active]:text-red-300">⚠️ Reset</TabsTrigger>
           </TabsList>
 
           {/* DASHBOARD TAB */}
@@ -1934,11 +1920,7 @@ function ProjectForm({
   };
 
   const handleSave = async () => {
-    console.log('ProjectForm - Save button clicked');
-    console.log('ProjectForm - Form data:', formData);
-    
     if (validateForm()) {
-      console.log('ProjectForm - Validation passed, calling onSave');
       setSaving(true);
       setFormMessage(null);
       const result = await onSave(formData);
@@ -1948,7 +1930,6 @@ function ProjectForm({
         setTimeout(() => onCancel(), 1500);
       }
     } else {
-      console.log('ProjectForm - Validation failed. Errors:', errors);
       setFormMessage({ type: 'error', text: 'Please fix the validation errors before saving.' });
     }
   };
