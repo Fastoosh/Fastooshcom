@@ -813,38 +813,84 @@ export function Admin() {
       <ScrollingGradientBackground />
       <div className="min-h-screen bg-black/80 p-6"
         style={{ '--fastoosh-card-bg': 'rgba(255,255,255,0.03)', '--fastoosh-card-dark': 'rgba(0,0,0,0.95)' } as React.CSSProperties}>
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-8 flex justify-between items-center">
-          <div>
-            <h1 className="text-4xl font-bold text-white mb-2">Admin Panel</h1>
-            <p className="text-gray-400">Manage your Fastoosh content</p>
-          </div>
-          <Button onClick={handleSignOut} variant="outline" className="bg-black text-white hover:bg-white hover:text-black dark:bg-white dark:text-black dark:hover:bg-black dark:hover:text-white border-transparent">
-            <LogOut className="w-4 h-4 mr-2" />
-            Sign Out
-          </Button>
-        </div>
+      <div className="max-w-screen-2xl mx-auto">
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="mb-6 flex-wrap">
-            <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
-            <TabsTrigger value="projects">Projects</TabsTrigger>
-            <TabsTrigger value="tools">Tools</TabsTrigger>
-            <TabsTrigger value="team">Team</TabsTrigger>
-            <TabsTrigger value="home">Home</TabsTrigger>
-            <TabsTrigger value="reviews">Reviews</TabsTrigger>
-            <TabsTrigger value="leads">Leads</TabsTrigger>
-            <TabsTrigger value="broadcast">📣 Broadcast</TabsTrigger>
-            <TabsTrigger value="messages">🔧 Tool Requests</TabsTrigger>
-            <TabsTrigger value="traffic">🌐 Traffic</TabsTrigger>
-            <TabsTrigger value="translations">🌍 Translations</TabsTrigger>
-            <TabsTrigger value="seo">SEO</TabsTrigger>
-            <TabsTrigger value="style">Style</TabsTrigger>
-            <TabsTrigger value="settings">Settings</TabsTrigger>
-            <TabsTrigger value="legal">⚖️ Legal</TabsTrigger>
-            <TabsTrigger value="guide">📖 Guide</TabsTrigger>
-            <TabsTrigger value="reset" className="text-red-400 data-[state=active]:text-red-300">⚠️ Reset</TabsTrigger>
-          </TabsList>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex gap-6 min-h-screen">
+
+          {/* ── Left sidebar nav ── */}
+          <div className="w-52 flex-shrink-0">
+            <div className="sticky top-6 space-y-1">
+              {/* Logo / header */}
+              <div className="px-3 pb-4 mb-2 border-b border-white/10">
+                <h1 className="text-lg font-bold text-white">Admin Panel</h1>
+                <p className="text-white/35 text-xs mt-0.5">Fastoosh</p>
+              </div>
+
+              {/* Nav groups */}
+              {[
+                { label: 'Content', items: [
+                  { value: 'dashboard', label: 'Dashboard' },
+                  { value: 'projects',  label: 'Projects' },
+                  { value: 'tools',     label: 'Tools' },
+                  { value: 'team',      label: 'Team' },
+                  { value: 'home',      label: 'Home' },
+                  { value: 'reviews',   label: 'Reviews' },
+                ]},
+                { label: 'Audience', items: [
+                  { value: 'leads',     label: 'Leads' },
+                  { value: 'broadcast', label: '📣 Broadcast' },
+                  { value: 'messages',  label: '🔧 Tool Requests' },
+                  { value: 'traffic',   label: '🌐 Traffic' },
+                ]},
+                { label: 'Site', items: [
+                  { value: 'seo',          label: 'SEO' },
+                  { value: 'style',        label: 'Style' },
+                  { value: 'translations', label: '🌍 Translations' },
+                  { value: 'guide',        label: '📖 Guide' },
+                  { value: 'settings',     label: 'Settings' },
+                  { value: 'legal',        label: '⚖️ Legal' },
+                ]},
+                { label: 'Danger', items: [
+                  { value: 'reset', label: '⚠️ Reset', danger: true },
+                ]},
+              ].map(group => (
+                <div key={group.label} className="pb-2">
+                  <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-white/25">{group.label}</p>
+                  {group.items.map((item: any) => (
+                    <button
+                      key={item.value}
+                      onClick={() => setActiveTab(item.value)}
+                      className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all ${
+                        activeTab === item.value
+                          ? item.danger
+                            ? 'bg-red-500/15 text-red-300 font-semibold'
+                            : 'bg-purple-500/20 text-purple-200 font-semibold'
+                          : item.danger
+                            ? 'text-red-400/60 hover:bg-red-500/10 hover:text-red-300'
+                            : 'text-white/50 hover:bg-white/6 hover:text-white/80'
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              ))}
+
+              {/* Sign out */}
+              <div className="pt-2 border-t border-white/10">
+                <button
+                  onClick={handleSignOut}
+                  className="w-full text-left px-3 py-2 rounded-lg text-sm text-white/35 hover:text-red-400 hover:bg-red-500/8 transition-all flex items-center gap-2"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  Sign Out
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* ── Main content ── */}
+          <div className="flex-1 min-w-0 py-1">
 
           {/* DASHBOARD TAB */}
           <TabsContent value="dashboard">
@@ -1589,6 +1635,7 @@ export function Admin() {
             <TranslationTab />
           </TabsContent>
 
+          </div>{/* end main content */}
         </Tabs>
       </div>
     </div>
