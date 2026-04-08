@@ -888,62 +888,6 @@ export function Admin() {
         <div className="ml-52 flex-1 min-w-0 bg-black/80 min-h-screen">
           <div className="p-8">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="hidden" />
-              {/* Logo / header */}
-              <div className="px-3 pb-4 mb-2 border-b border-white/10">
-                <h1 className="text-lg font-bold text-white">Admin Panel</h1>
-                <p className="text-white/35 text-xs mt-0.5">Fastoosh</p>
-              </div>
-
-              {/* Nav groups */}
-              {[
-                { label: 'Content', items: [
-                  { value: 'dashboard', label: 'Dashboard' },
-                  { value: 'projects',  label: 'Projects' },
-                  { value: 'tools',     label: 'Tools' },
-                  { value: 'team',      label: 'Team' },
-                  { value: 'home',      label: 'Home' },
-                  { value: 'reviews',   label: 'Reviews' },
-                ]},
-                { label: 'Audience', items: [
-                  { value: 'leads',     label: 'Leads' },
-                  { value: 'broadcast', label: '📣 Broadcast' },
-                  { value: 'messages',  label: '🔧 Tool Requests' },
-                  { value: 'traffic',   label: '🌐 Traffic' },
-                ]},
-                { label: 'Site', items: [
-                  { value: 'seo',          label: 'SEO' },
-                  { value: 'style',        label: 'Style' },
-                  { value: 'translations', label: '🌍 Translations' },
-                  { value: 'guide',        label: '📖 Guide' },
-                  { value: 'settings',     label: 'Settings' },
-                  { value: 'legal',        label: '⚖️ Legal' },
-                ]},
-                { label: 'Danger', items: [
-                  { value: 'reset', label: '⚠️ Reset', danger: true },
-                ]},
-              ].map(group => (
-                <div key={group.label} className="pb-2">
-                  <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-white/25">{group.label}</p>
-                  {group.items.map((item: any) => (
-                    <button
-                      key={item.value}
-                      onClick={() => setActiveTab(item.value)}
-                      className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all ${
-                        activeTab === item.value
-                          ? item.danger
-                            ? 'bg-red-500/15 text-red-300 font-semibold'
-                            : 'bg-purple-500/20 text-purple-200 font-semibold'
-                          : item.danger
-                            ? 'text-red-400/60 hover:bg-red-500/10 hover:text-red-300'
-                            : 'text-white/50 hover:bg-white/6 hover:text-white/80'
-                      }`}
-                    >
-                      {item.label}
-                    </button>
-                  ))}
-                </div>
-              ))}
 
 
           {/* DASHBOARD TAB */}
