@@ -811,15 +811,84 @@ export function Admin() {
   return (
     <>
       <ScrollingGradientBackground />
-      <div className="min-h-screen bg-black/80 p-6"
+      <div className="flex min-h-screen"
         style={{ '--fastoosh-card-bg': 'rgba(255,255,255,0.03)', '--fastoosh-card-dark': 'rgba(0,0,0,0.95)' } as React.CSSProperties}>
-      <div className="max-w-screen-2xl mx-auto">
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex gap-6 min-h-screen">
+        {/* ── Fixed left sidebar ── */}
+        <div className="w-52 flex-shrink-0 bg-black/60 border-r border-white/8 flex flex-col fixed top-0 left-0 h-screen overflow-y-auto z-10">
+          <div className="p-4 space-y-1 flex-1">
+            <div className="px-2 pb-4 mb-2 border-b border-white/10">
+              <h1 className="text-base font-bold text-white">Admin Panel</h1>
+              <p className="text-white/35 text-xs mt-0.5">Fastoosh</p>
+            </div>
 
-          {/* ── Left sidebar nav ── */}
-          <div className="w-52 flex-shrink-0">
-            <div className="sticky top-6 space-y-1">
+            {[
+              { label: 'Content', items: [
+                { value: 'dashboard', label: 'Dashboard' },
+                { value: 'projects',  label: 'Projects' },
+                { value: 'tools',     label: 'Tools' },
+                { value: 'team',      label: 'Team' },
+                { value: 'home',      label: 'Home' },
+                { value: 'reviews',   label: 'Reviews' },
+              ]},
+              { label: 'Audience', items: [
+                { value: 'leads',     label: 'Leads' },
+                { value: 'broadcast', label: '📣 Broadcast' },
+                { value: 'messages',  label: '🔧 Tool Requests' },
+                { value: 'traffic',   label: '🌐 Traffic' },
+              ]},
+              { label: 'Site', items: [
+                { value: 'seo',          label: 'SEO' },
+                { value: 'style',        label: 'Style' },
+                { value: 'translations', label: '🌍 Translations' },
+                { value: 'guide',        label: '📖 Guide' },
+                { value: 'settings',     label: 'Settings' },
+                { value: 'legal',        label: '⚖️ Legal' },
+              ]},
+              { label: 'Danger', items: [
+                { value: 'reset', label: '⚠️ Reset', danger: true },
+              ]},
+            ].map((group: any) => (
+              <div key={group.label} className="pb-2">
+                <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-white/25">{group.label}</p>
+                {group.items.map((item: any) => (
+                  <button
+                    key={item.value}
+                    onClick={() => setActiveTab(item.value)}
+                    className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all ${
+                      activeTab === item.value
+                        ? item.danger
+                          ? 'bg-red-500/15 text-red-300 font-semibold'
+                          : 'bg-purple-500/20 text-purple-200 font-semibold'
+                        : item.danger
+                          ? 'text-red-400/60 hover:bg-red-500/10 hover:text-red-300'
+                          : 'text-white/50 hover:bg-white/6 hover:text-white/80'
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            ))}
+          </div>
+
+          {/* Sign out at bottom */}
+          <div className="p-4 border-t border-white/10">
+            <button
+              onClick={handleSignOut}
+              className="w-full text-left px-3 py-2 rounded-lg text-sm text-white/35 hover:text-red-400 hover:bg-red-500/8 transition-all flex items-center gap-2"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              Sign Out
+            </button>
+          </div>
+        </div>
+
+        {/* ── Main content area (offset by sidebar width) ── */}
+        <div className="ml-52 flex-1 min-w-0 bg-black/80 min-h-screen">
+          <div className="p-8">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="hidden" />
               {/* Logo / header */}
               <div className="px-3 pb-4 mb-2 border-b border-white/10">
                 <h1 className="text-lg font-bold text-white">Admin Panel</h1>
@@ -876,21 +945,6 @@ export function Admin() {
                 </div>
               ))}
 
-              {/* Sign out */}
-              <div className="pt-2 border-t border-white/10">
-                <button
-                  onClick={handleSignOut}
-                  className="w-full text-left px-3 py-2 rounded-lg text-sm text-white/35 hover:text-red-400 hover:bg-red-500/8 transition-all flex items-center gap-2"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                  Sign Out
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* ── Main content ── */}
-          <div className="flex-1 min-w-0 py-1">
 
           {/* DASHBOARD TAB */}
           <TabsContent value="dashboard">
@@ -1635,10 +1689,10 @@ export function Admin() {
             <TranslationTab />
           </TabsContent>
 
-          </div>{/* end main content */}
         </Tabs>
-      </div>
-    </div>
+          </div>{/* end p-8 */}
+        </div>{/* end main content */}
+      </div>{/* end flex wrapper */}
     </>
   );
 }
