@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { GlassCard } from '../shared/GlassCard';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -7,7 +7,7 @@ import { AdminSelect } from './AdminSelect';
 import {
   Save, Sparkles, ChevronDown, ChevronRight, Globe, Share2,
   Twitter, Search, Link2, EyeOff, CheckCircle2, AlertCircle,
-  RotateCcw, Loader2, X, Code2, Wand2, Zap,
+  RotateCcw, Loader2, X, Code2, Wand2, Zap, Upload, ImageIcon,
 } from 'lucide-react';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import { invalidateSeoCache, invalidateSiteSettingsCache } from '../shared/SeoHead';
@@ -89,6 +89,10 @@ export function SeoTab() {
   const [highlightedFields, setHighlightedFields] = useState<Set<string>>(new Set());
   const [openSection, setOpenSection]       = useState<'basic' | 'og' | 'twitter' | 'jsonld'>('basic');
   const [jsonLdError, setJsonLdError]       = useState('');
+  const [globalSaving, setGlobalSaving]     = useState(false);
+  const [globalMsg, setGlobalMsg]           = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [ogImageUploading, setOgImageUploading] = useState(false);
+  const ogImageInputRef = useRef<HTMLInputElement>(null);
 
   // Load tools, projects, and site settings on mount
   useEffect(() => {
@@ -270,6 +274,63 @@ export function SeoTab() {
   // ── Reset ───────────────────────────────────────────────────────────────
   const handleReset = () => { setSeo({ ...EMPTY_SEO }); setFormMessage(null); setJsonLdError(''); };
 
+  // ── Global settings: save siteUrl + defaultOgImage ──────────────────────
+  const handleSaveGlobalSettings = async () => {
+    setGlobalSaving(true);
+    setGlobalMsg(null);
+    try {
+      const token = localStorage.getItem('admin_token');
+      const res = await fetch(`${API_BASE}/settings`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${publicAnonKey}`,
+          'X-Admin-Token': token || '',
+        },
+        body: JSON.stringify({ siteUrl, defaultOgImage }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        invalidateSiteSettingsCache?.();
+        setGlobalMsg({ type: 'success', text: 'Global settings saved.' });
+      } else {
+        setGlobalMsg({ type: 'error', text: data.error || 'Failed to save.' });
+      }
+    } catch (e) {
+      setGlobalMsg({ type: 'error', text: `Error: ${e}` });
+    }
+    setGlobalSaving(false);
+  };
+
+  // ── Upload OG image to Supabase storage ──────────────────────────────────
+  const handleUploadOgImage = async (file: File) => {
+    setOgImageUploading(true);
+    setGlobalMsg(null);
+    try {
+      const token = localStorage.getItem('admin_token');
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch(`${API_BASE}/upload-image`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${publicAnonKey}`,
+          'X-Admin-Token': token || '',
+        },
+        body: formData,
+      });
+      const data = await res.json();
+      if (data.success) {
+        setDefaultOgImage(data.data.url);
+        setGlobalMsg({ type: 'success', text: 'Image uploaded — click Save to apply.' });
+      } else {
+        setGlobalMsg({ type: 'error', text: data.error || 'Upload failed.' });
+      }
+    } catch (e) {
+      setGlobalMsg({ type: 'error', text: `Upload error: ${e}` });
+    }
+    setOgImageUploading(false);
+  };
+
   // ── Section header ──────────────────────────────────────────────────────
   const SectionHeader = ({ id, label, icon: Icon, badge }: { id: typeof openSection; label: string; icon: any; badge?: string }) => (
     <button
@@ -295,21 +356,93 @@ export function SeoTab() {
 
       {/* ── Left: Page list ──────────────────────────────────────────────── */}
       <div className="w-72 flex-shrink-0 space-y-3">
-        {/* Site globals banner */}
-        {(siteUrl || defaultOgImage) && (
-          <div className="p-3 rounded-xl bg-purple-500/8 border border-purple-500/20 space-y-1">
-            {siteUrl && (
-              <p className="text-[11px] text-white/40 truncate">
-                <span className="text-purple-400 font-semibold">Site: </span>{siteUrl}
-              </p>
-            )}
-            {defaultOgImage && (
-              <p className="text-[11px] text-white/40 truncate">
-                <span className="text-purple-400 font-semibold">Default OG: </span>set ✓
-              </p>
-            )}
+        {/* Site globals panel */}
+        <div className="p-3 rounded-xl bg-purple-500/8 border border-purple-500/20 space-y-3">
+          <p className="text-[11px] text-purple-400 font-semibold uppercase tracking-wider">Global Settings</p>
+
+          {/* Site URL */}
+          <div>
+            <label className="text-white/40 text-[11px] font-medium block mb-1">Site URL</label>
+            <Input
+              value={siteUrl}
+              onChange={e => setSiteUrl(e.target.value)}
+              placeholder="https://fastoosh.com"
+              className="bg-white/5 border-white/10 text-white placeholder-white/20 text-xs h-7 px-2"
+            />
           </div>
-        )}
+
+          {/* Default OG Image */}
+          <div>
+            <label className="text-white/40 text-[11px] font-medium block mb-1">Default OG Image</label>
+
+            {/* Preview */}
+            {defaultOgImage ? (
+              <div className="relative mb-2 group">
+                <img
+                  src={defaultOgImage}
+                  alt="OG image"
+                  className="w-full rounded-lg object-cover border border-white/10"
+                  style={{ maxHeight: '80px' }}
+                  onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                />
+                <button
+                  onClick={() => setDefaultOgImage('')}
+                  className="absolute top-1 right-1 p-0.5 rounded-full bg-black/60 text-white/50 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center w-full h-14 rounded-lg border border-dashed border-white/15 mb-2">
+                <ImageIcon className="w-5 h-5 text-white/20" />
+              </div>
+            )}
+
+            {/* Upload button */}
+            <input
+              ref={ogImageInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/jpg,image/webp"
+              className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) handleUploadOgImage(f); e.target.value = ''; }}
+            />
+            <button
+              onClick={() => ogImageInputRef.current?.click()}
+              disabled={ogImageUploading}
+              className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white/50 hover:text-white text-[11px] transition-all disabled:opacity-50"
+            >
+              {ogImageUploading
+                ? <><Loader2 className="w-3 h-3 animate-spin" />Uploading…</>
+                : <><Upload className="w-3 h-3" />{defaultOgImage ? 'Replace image' : 'Upload OG image'}</>
+              }
+            </button>
+            <p className="text-white/20 text-[10px] mt-1">1200×630 px recommended</p>
+          </div>
+
+          {/* Global msg */}
+          {globalMsg && (
+            <div className={`flex items-center gap-1.5 p-2 rounded-lg text-[11px] ${
+              globalMsg.type === 'success'
+                ? 'bg-green-500/10 border border-green-500/20 text-green-300'
+                : 'bg-red-500/10 border border-red-500/20 text-red-300'
+            }`}>
+              <span className="flex-1">{globalMsg.text}</span>
+              <button onClick={() => setGlobalMsg(null)}><X className="w-3 h-3" /></button>
+            </div>
+          )}
+
+          {/* Save global */}
+          <button
+            onClick={handleSaveGlobalSettings}
+            disabled={globalSaving}
+            className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-purple-600/70 hover:bg-purple-600 text-white text-[11px] font-semibold transition-all disabled:opacity-50"
+          >
+            {globalSaving
+              ? <><Loader2 className="w-3 h-3 animate-spin" />Saving…</>
+              : <><Save className="w-3 h-3" />Save global settings</>
+            }
+          </button>
+        </div>
 
         {/* Static pages */}
         <div>

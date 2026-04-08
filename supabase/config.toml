@@ -1,6 +1,3 @@
-[project]
-id = "ksndambbafpzxquxsgdw"
-
 # The function directory is "server/" but Figma Make deploys it as "make-server-e07959ec".
 # Both entries are listed so this works regardless of which name the CLI resolves.
 [functions.server]
