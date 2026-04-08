@@ -6988,10 +6988,12 @@ Rules:
 // POST /admin/broadcast — send a one-time email to a list of recipients via Resend
 app.post('/make-server-e07959ec/admin/broadcast', requireAuth, async (c) => {
   try {
-    const { subject, body, recipients } = await c.req.json() as {
+    const { subject, body, recipients, replyTo, senderName } = await c.req.json() as {
       subject: string;
       body: string;
       recipients: { email: string; displayName?: string }[];
+      replyTo?: string;
+      senderName?: string;
     };
 
     if (!subject?.trim())        return c.json({ success: false, error: 'subject is required' }, 400);
@@ -7002,6 +7004,8 @@ app.post('/make-server-e07959ec/admin/broadcast', requireAuth, async (c) => {
     if (!resendKey) return c.json({ success: false, error: 'RESEND_API_KEY not configured' }, 500);
 
     const resend = new Resend(resendKey);
+    const fromName = senderName?.trim() || 'Fastoosh';
+    const fromAddress = `${fromName} <noreply@contact.fastoosh.com>`;
 
     let sent   = 0;
     let failed = 0;
@@ -7073,11 +7077,12 @@ app.post('/make-server-e07959ec/admin/broadcast', requireAuth, async (c) => {
 
       try {
         await resend.emails.send({
-          from:    'Fastoosh <noreply@contact.fastoosh.com>',
-          to:      email,
-          subject: subject.trim(),
+          from:     fromAddress,
+          to:       email,
+          ...(replyTo?.trim() ? { reply_to: replyTo.trim() } : {}),
+          subject:  subject.trim(),
           // Plain-text: convert [text](url) → "text (url)" for readability
-          text:    personalBody.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '$1 ($2)'),
+          text:     personalBody.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '$1 ($2)'),
           html,
         });
         sent++;

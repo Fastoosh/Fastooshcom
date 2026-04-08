@@ -56,6 +56,10 @@ Thank you for your patience.
 — The Fastoosh Team`
   );
 
+  // ── Sender settings ───────────────────────────────────────────────────────
+  const [senderName, setSenderName] = useState('Fastoosh');
+  const [replyTo, setReplyTo]       = useState('youssef@fastoosh.com');
+
   // ── Link inserter ──────────────────────────────────────────────────────────
   const [showLinkBar, setShowLinkBar] = useState(false);
   const [linkText, setLinkText]       = useState('');
@@ -180,7 +184,7 @@ Thank you for your patience.
       const res = await fetch(`${API_BASE}/admin/broadcast`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${publicAnonKey}`, 'X-Admin-Token': token || '' },
-        body: JSON.stringify({ subject, body, recipients: allRecipients }),
+        body: JSON.stringify({ subject, body, recipients: allRecipients, senderName, replyTo }),
       });
       const data = await res.json();
       if (data.success) { setResult(data.result); setConfirmed(false); }
@@ -390,6 +394,33 @@ Thank you for your patience.
                 </button>
               </div>
             )}
+
+            {/* Sender settings */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-white/40 text-xs font-medium block mb-1">Sender name</label>
+                <Input
+                  value={senderName}
+                  onChange={e => setSenderName(e.target.value)}
+                  placeholder="Fastoosh"
+                  className="bg-white/5 border-white/10 text-white placeholder-white/20 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-white/40 text-xs font-medium block mb-1">
+                  Reply-To <span className="text-white/20">(recipients reply to this)</span>
+                </label>
+                <Input
+                  value={replyTo}
+                  onChange={e => setReplyTo(e.target.value)}
+                  placeholder="youssef@fastoosh.com"
+                  className="bg-white/5 border-white/10 text-white placeholder-white/20 text-sm"
+                />
+              </div>
+            </div>
+            <p className="text-white/20 text-xs -mt-2">
+              Sent from <code className="text-white/35">noreply@contact.fastoosh.com</code> (Resend verified domain) — replies go to your Reply-To address.
+            </p>
 
             {/* Subject */}
             <div>
