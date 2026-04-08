@@ -45,7 +45,5 @@ const applyDocAttrs = (lang: string) => {
 applyDocAttrs(getSavedLang());
 i18n.on('languageChanged', applyDocAttrs);
 
-// Log initial language for debugging
-console.log(`[i18n] Initial language: ${getSavedLang()} (default: en)`);
 
 export default i18n;

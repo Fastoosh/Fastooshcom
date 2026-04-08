@@ -43,7 +43,6 @@ export function ResetPassword() {
 
     // ── PKCE: email link contains ?code=  ───────────────────────────────────
     if (code) {
-      console.log('[ResetPassword] exchanging PKCE code…');
       let cancelled = false;
       supabase.auth.exchangeCodeForSession(code).then(({ data: { session }, error }) => {
         if (cancelled) return;
@@ -55,7 +54,6 @@ export function ResetPassword() {
           setStage('error');
           return;
         }
-        console.log('[ResetPassword] ✅ recovery session for', session.user.email);
         setStage('ready');
       });
 
@@ -80,7 +78,6 @@ export function ResetPassword() {
     if (hasToken) {
       // onAuthStateChange fires PASSWORD_RECOVERY when the recovery token is valid
       const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-        console.log('[ResetPassword] auth event:', event, session?.user?.email);
         if (event === 'PASSWORD_RECOVERY' || (event === 'SIGNED_IN' && session)) {
           setStage('ready');
         }

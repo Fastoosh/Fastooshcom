@@ -712,7 +712,6 @@ export function Account() {
       const syncData = await syncRes.json();
       if (syncData.success && syncData.synced > 0) {
         setSyncedCount(syncData.synced);
-        console.log(`✅ Claimed ${syncData.synced} purchase(s) from before sign-up`);
       }
     } catch (err) {
       console.error('Sync error (non-fatal):', err);

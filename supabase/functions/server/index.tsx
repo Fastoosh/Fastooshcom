@@ -3850,7 +3850,7 @@ app.get("/make-server-e07959ec/user/purchases", requireUserAuth, async (c) => {
       .order('purchased_at', { ascending: false });
 
     if (error) {
-      console.log(`Error fetching user purchases: ${error.message} | code: ${error.code} | details: ${error.details}`);
+      console.error(`Error fetching user purchases: ${error.message} | code: ${error.code} | details: ${error.details}`);
       return c.json({ success: false, error: `${error.message} (${error.code})` }, 500);
     }
 
@@ -4058,36 +4058,6 @@ app.post("/make-server-e07959ec/user/sync-purchases", requireUserAuth, async (c)
   } catch (error) {
     console.log('Error syncing purchases:', error);
     return c.json({ success: false, error: String(error) }, 500);
-  }
-});
-
-// ========== LEMON SQUEEZY DEBUG ==========
-
-// Temporary debug endpoint — logs the raw LS payload to Edge Function logs
-// Call: POST /webhooks/lemon-squeezy-debug  (no auth required)
-// REMOVE this after debugging is done
-app.post("/make-server-e07959ec/webhooks/lemon-squeezy-debug", async (c) => {
-  const rawBody   = await c.req.text();
-  const signature = c.req.header('X-Signature') || '(none)';
-  const headers   = Object.fromEntries(c.req.raw.headers.entries());
-
-  console.log('=== LS DEBUG DUMP ===');
-  console.log('Signature header:', signature);
-  console.log('Headers:', JSON.stringify(headers, null, 2));
-  try {
-    const parsed = JSON.parse(rawBody);
-    console.log('Parsed body:', JSON.stringify(parsed, null, 2));
-    // Also verify signature for comparison
-    const secret = Deno.env.get('LEMON_SQUEEZY_WEBHOOK_SECRET');
-    if (secret) {
-      const valid = await verifyLSSignature(secret, rawBody, signature);
-      console.log('Signature valid?', valid);
-    }
-    return c.json({ success: true, event: parsed.meta?.event_name, signatureReceived: signature });
-  } catch (e) {
-    console.log('Body parse error:', e);
-    console.log('Raw body (first 500):', rawBody.substring(0, 500));
-    return c.json({ success: false, error: String(e) });
   }
 });
 
