@@ -862,14 +862,16 @@ export function ToolFormNew({
   };
 
   const handleLsImport = (payload: LsImportPayload) => {
+    const isFree = payload.versionName === 'Free' || (!payload.lifetimePrice && !payload.monthlyPrice && !payload.yearlyPrice);
     addVersion({
       versionType:          payload.versionName,
       pricingModel:         payload.pricingModel,
       monthlyPrice:         payload.monthlyPrice ?? '',
       yearlyPrice:          payload.yearlyPrice  ?? '',
       lifetimePrice:        payload.lifetimePrice ?? '',
-      lifetimeBuyUrl:       payload.buyNowUrl,
-      downloadUrl:          payload.buyNowUrl,
+      // Free versions need a direct file URL — leave blank so admin fills it in
+      lifetimeBuyUrl:       isFree ? '' : payload.buyNowUrl,
+      downloadUrl:          isFree ? '' : payload.buyNowUrl,
       lemonSqueezyVariantId: payload.variantId,
       lemonSqueezyProductId: payload.productId,
     });
@@ -2130,6 +2132,14 @@ function VersionEditor({
         <label className="block text-sm font-medium text-gray-300 mb-2">
           {isVersionFree(version) ? 'Download URL' : 'Lemon Squeezy Checkout URL'}
         </label>
+        {isVersionFree(version) && !version.downloadUrl && (
+          <div className="flex items-start gap-2 mb-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30">
+            <span className="text-amber-400 text-xs font-semibold mt-0.5">⚠</span>
+            <p className="text-amber-300 text-xs leading-relaxed">
+              Free versions need a <strong>direct file URL</strong> (e.g. a .zip on your CDN or Google Drive). Do <em>not</em> paste an LS checkout link here — it will give users an "Access Denied" error.
+            </p>
+          </div>
+        )}
         <Input
           placeholder={
             isVersionFree(version)
@@ -2138,11 +2148,16 @@ function VersionEditor({
           }
           value={version.downloadUrl || ''}
           onChange={(e) => onUpdate({ downloadUrl: e.target.value })}
-          className="bg-black/50 border-white/20 text-white"
+          className={`bg-black/50 border-white/20 text-white ${isVersionFree(version) && !version.downloadUrl ? 'border-amber-500/50' : ''}`}
         />
         {!isVersionFree(version) && (
           <p className="text-xs text-white/30 mt-1">
             Paste your Lemon Squeezy checkout link. User email will be pre-filled automatically.
+          </p>
+        )}
+        {isVersionFree(version) && (
+          <p className="text-xs text-white/30 mt-1">
+            Must be a direct download link to the file, not a checkout page.
           </p>
         )}
       </div>
