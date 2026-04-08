@@ -5391,9 +5391,18 @@ app.get('/make-server-e07959ec/ls/variants', requireAuth, async (c) => {
       if (!variantsByProduct[pid]) variantsByProduct[pid] = [];
       
       const variantId = String(v.id);
-      // Construct checkout URL: use buy_now_url if available, otherwise construct it manually
-      let buyNowUrl = v.attributes?.buy_now_url || '';
-      if (!buyNowUrl && storeSlug && variantId) {
+      // The LS API's buy_now_url contains the UUID at the end of the path,
+      // but may use /buy/ instead of /checkout/buy/.
+      // Normalise to the /checkout/buy/<uuid> format which is the correct checkout link.
+      const rawBuyUrl: string = v.attributes?.buy_now_url || '';
+      let buyNowUrl = '';
+      if (rawBuyUrl) {
+        // Extract the UUID segment (last path component) and rebuild as /checkout/buy/<uuid>
+        const uuid = rawBuyUrl.split('/').pop() || '';
+        buyNowUrl = storeSlug
+          ? `https://${storeSlug}.lemonsqueezy.com/checkout/buy/${uuid}`
+          : rawBuyUrl.replace('/buy/', '/checkout/buy/');
+      } else if (storeSlug && variantId) {
         buyNowUrl = `https://${storeSlug}.lemonsqueezy.com/checkout/buy/${variantId}`;
       }
       
