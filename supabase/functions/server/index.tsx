@@ -5385,25 +5385,31 @@ app.get('/make-server-e07959ec/ls/variants', requireAuth, async (c) => {
     ]);
 
     // Group variants by product_id
+    // Build a map of product numeric ID → product buy_now_url (contains the UUID)
+    const productBuyUrls: Record<string, string> = {};
+    for (const p of rawProducts as any[]) {
+      const url: string = p.attributes?.buy_now_url || '';
+      if (url) productBuyUrls[String(p.id)] = url;
+    }
+
     const variantsByProduct: Record<string, any[]> = {};
     for (const v of rawVariants as any[]) {
       const pid = String(v.attributes?.product_id ?? '');
       if (!variantsByProduct[pid]) variantsByProduct[pid] = [];
-      
+
       const variantId = String(v.id);
-      // LS buy_now_url is product-level (same UUID for all variants of a product).
-      // To pre-select a specific variant, append ?variant=<numeric_variant_id>.
-      // This ensures the correct plan is pre-selected when the buyer opens the checkout.
-      const rawBuyUrl: string = v.attributes?.buy_now_url || '';
+      console.log(`[ls/variants] variant id=${variantId} name="${v.attributes?.name}" buy_now_url="${v.attributes?.buy_now_url || ''}"`);
+
+      // Construct per-variant checkout URL using the product's UUID + ?variant=numeric_id.
+      // LS variant buy_now_url is always empty; only the product has the UUID.
+      const productUrl = productBuyUrls[pid] || '';
       let buyNowUrl = '';
-      if (rawBuyUrl) {
-        const base = rawBuyUrl.includes('/checkout/buy/')
-          ? rawBuyUrl
-          : rawBuyUrl.replace('/buy/', '/checkout/buy/');
+      if (productUrl) {
+        const base = productUrl.includes('/checkout/buy/')
+          ? productUrl
+          : productUrl.replace('/buy/', '/checkout/buy/');
         buyNowUrl = `${base}?variant=${variantId}`;
       } else if (storeSlug) {
-        // Fallback: construct from store slug + product UUID isn't available here,
-        // so just use numeric variant ID path as last resort
         buyNowUrl = `https://${storeSlug}.lemonsqueezy.com/checkout/buy/${variantId}`;
       }
       
