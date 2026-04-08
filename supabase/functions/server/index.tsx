@@ -7005,7 +7005,8 @@ app.post('/make-server-e07959ec/admin/broadcast', requireAuth, async (c) => {
 
     const resend = new Resend(resendKey);
     const fromName = senderName?.trim() || 'Fastoosh';
-    const fromAddress = `${fromName} <noreply@contact.fastoosh.com>`;
+    // Once fastoosh.com is verified in Resend, change this to: youssef@fastoosh.com
+    const fromAddress = `${fromName} <youssef@fastoosh.com>`;
 
     let sent   = 0;
     let failed = 0;

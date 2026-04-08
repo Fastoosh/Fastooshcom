@@ -419,7 +419,7 @@ Thank you for your patience.
               </div>
             </div>
             <p className="text-white/20 text-xs -mt-2">
-              Sent from <code className="text-white/35">noreply@contact.fastoosh.com</code> (Resend verified domain) — replies go to your Reply-To address.
+              Sent from <code className="text-white/35">youssef@fastoosh.com</code> — requires fastoosh.com verified in Resend.
             </p>
 
             {/* Subject */}
