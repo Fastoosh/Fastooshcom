@@ -5385,7 +5385,7 @@ app.get('/make-server-e07959ec/ls/variants', requireAuth, async (c) => {
     ]);
 
     // Group variants by product_id
-    // Build a map of product numeric ID → product buy_now_url (contains the UUID)
+    // Build product UUID map for constructing per-variant checkout URLs
     const productBuyUrls: Record<string, string> = {};
     for (const p of rawProducts as any[]) {
       const url: string = p.attributes?.buy_now_url || '';
@@ -5398,28 +5398,23 @@ app.get('/make-server-e07959ec/ls/variants', requireAuth, async (c) => {
       if (!variantsByProduct[pid]) variantsByProduct[pid] = [];
 
       const variantId = String(v.id);
-      console.log(`[ls/variants] variant id=${variantId} name="${v.attributes?.name}" buy_now_url="${v.attributes?.buy_now_url || ''}"`);
-
-      // Construct per-variant checkout URL using the product's UUID + ?variant=numeric_id.
-      // LS variant buy_now_url is always empty; only the product has the UUID.
+      // Build per-variant checkout URL: product UUID + ?enabled=variant_numeric_id
+      // This pre-selects the exact variant on the LS checkout page.
       const productUrl = productBuyUrls[pid] || '';
       let buyNowUrl = '';
       if (productUrl) {
         const base = productUrl.includes('/checkout/buy/')
           ? productUrl
           : productUrl.replace('/buy/', '/checkout/buy/');
-        buyNowUrl = `${base}?variant=${variantId}`;
-      } else if (storeSlug) {
-        buyNowUrl = `https://${storeSlug}.lemonsqueezy.com/checkout/buy/${variantId}`;
+        buyNowUrl = `${base}?enabled=${variantId}`;
       }
-      
       variantsByProduct[pid].push({
         id:             variantId,
         name:           v.attributes?.name ?? '',
         price:          v.attributes?.price ?? 0,
         interval:       v.attributes?.interval ?? null,
         isSubscription: !!v.attributes?.is_subscription,
-        buyNowUrl:      buyNowUrl,
+        buyNowUrl,
         status:         v.attributes?.status ?? 'pending',
       });
     }

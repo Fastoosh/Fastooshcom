@@ -864,14 +864,14 @@ export function ToolFormNew({
   const handleLsImport = (payload: LsImportPayload) => {
     const isFree = payload.versionName === 'Free' || (!payload.lifetimePrice && !payload.monthlyPrice && !payload.yearlyPrice);
     addVersion({
-      versionType:          payload.versionName,
-      pricingModel:         payload.pricingModel,
-      monthlyPrice:         payload.monthlyPrice ?? '',
-      yearlyPrice:          payload.yearlyPrice  ?? '',
-      lifetimePrice:        payload.lifetimePrice ?? '',
-      // Free versions need a direct file URL — leave blank so admin fills it in
-      lifetimeBuyUrl:       isFree ? '' : payload.buyNowUrl,
-      downloadUrl:          isFree ? '' : payload.buyNowUrl,
+      versionType:           payload.versionName,
+      pricingModel:          payload.pricingModel,
+      monthlyPrice:          payload.monthlyPrice ?? '',
+      yearlyPrice:           payload.yearlyPrice  ?? '',
+      lifetimePrice:         payload.lifetimePrice ?? '',
+      // Free versions need a direct file URL — can't be a checkout link
+      lifetimeBuyUrl:        isFree ? '' : payload.buyNowUrl,
+      downloadUrl:           isFree ? '' : payload.buyNowUrl,
       lemonSqueezyVariantId: payload.variantId,
       lemonSqueezyProductId: payload.productId,
     });

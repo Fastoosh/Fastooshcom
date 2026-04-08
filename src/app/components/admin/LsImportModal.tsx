@@ -299,8 +299,16 @@ export function LsImportModal({ open, onImport, onClose }: Props) {
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-3 border-t border-white/8 text-xs text-white/25 text-center">
-          Each variant creates a separate version · Click monthly & yearly separately for distinct pricing tiers
+        <div className="px-5 py-3 border-t border-white/8 space-y-2">
+          <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/25">
+            <span className="text-amber-400 text-xs mt-0.5 flex-shrink-0">⚠</span>
+            <p className="text-amber-300/80 text-xs leading-relaxed">
+              After importing, paste each variant's own checkout link from{' '}
+              <strong className="text-amber-300">LS Dashboard → Product → Share → select the variant → Checkout Link</strong>.
+              Each variant has a unique URL — do not use the product-level link.
+            </p>
+          </div>
+          <p className="text-white/20 text-xs text-center">Each variant creates a separate version · Click monthly &amp; yearly separately for distinct pricing tiers</p>
         </div>
       </div>
     </div>
