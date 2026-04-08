@@ -105,9 +105,9 @@ export function SeoTab() {
     ]).then(([td, pd, sd]) => {
       setTools(td.data || []);
       setProjects(pd.data || []);
-      const s = sd.data || {};
-      setSiteUrl(s.siteUrl || '');
-      setDefaultOgImage(s.defaultOgImage || '');
+      const s = sd.data ?? sd ?? {};
+      setSiteUrl(typeof s.siteUrl === 'string' ? s.siteUrl : '');
+      setDefaultOgImage(typeof s.defaultOgImage === 'string' ? s.defaultOgImage : '');
     }).catch(console.error);
   }, []);
 
