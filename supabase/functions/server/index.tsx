@@ -7020,12 +7020,30 @@ app.post('/make-server-e07959ec/admin/broadcast', requireAuth, async (c) => {
       const firstName = r.displayName?.split(' ')[0]?.trim() || 'there';
       const personalBody = body.replace(/\{\{name\}\}/g, firstName);
 
-      // Convert plain text to basic HTML (preserve line breaks and links)
+      // Convert body to HTML:
+      // 1. Replace markdown links [text](url) with <a> tags BEFORE escaping
+      // 2. HTML-escape the remaining plain text
+      // 3. Convert bare URLs to links
+      // 4. Convert newlines to <br>
       const htmlBody = personalBody
+        // Step 1: extract markdown links as placeholders to protect them from escaping
+        .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, (_m, text, url) =>
+          `\x00LINK\x00${encodeURIComponent(url)}\x00${text}\x00ENDLINK\x00`
+        )
+        // Step 2: escape HTML special chars in the remaining text
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
-        .replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" style="color:#a855f7;">$1</a>')
+        // Step 3: restore markdown link placeholders as real <a> tags
+        .replace(/\x00LINK\x00([^\x00]+)\x00([^\x00]+)\x00ENDLINK\x00/g,
+          (_m, encodedUrl, text) =>
+            `<a href="${decodeURIComponent(encodedUrl)}" style="color:#a855f7;text-decoration:underline;">${text}</a>`
+        )
+        // Step 4: convert remaining bare URLs (not already inside an <a>) to links
+        .replace(/(?<!href=")https?:\/\/[^\s<]+/g, url =>
+          `<a href="${url}" style="color:#a855f7;text-decoration:underline;">${url}</a>`
+        )
+        // Step 5: newlines to <br>
         .replace(/\n/g, '<br>');
 
       const html = `<!DOCTYPE html>
@@ -7058,7 +7076,8 @@ app.post('/make-server-e07959ec/admin/broadcast', requireAuth, async (c) => {
           from:    'Fastoosh <noreply@contact.fastoosh.com>',
           to:      email,
           subject: subject.trim(),
-          text:    personalBody,
+          // Plain-text: convert [text](url) → "text (url)" for readability
+          text:    personalBody.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '$1 ($2)'),
           html,
         });
         sent++;
