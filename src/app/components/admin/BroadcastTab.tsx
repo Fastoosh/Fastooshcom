@@ -49,7 +49,7 @@ The issue has been fully resolved.
 You can now access your download here:
 [Get Fastoosh Data Automator](https://fastoosh.com/tools/fastoosh-data-automator?utm_source=email&utm_medium=newsletter)
 
-If you run into any issues or have questions, just reply to this email — we'll make it right.
+If you run into any issues or have questions, reply to this email or reach out directly at youssef@fastoosh.com — we'll make it right.
 
 Thank you for your patience.
 
@@ -419,7 +419,7 @@ Thank you for your patience.
               </div>
             </div>
             <p className="text-white/20 text-xs -mt-2">
-              Sent from <code className="text-white/35">youssef@fastoosh.com</code> — requires fastoosh.com verified in Resend.
+              Sent from <code className="text-white/35">noreply@contact.fastoosh.com</code> — when recipients hit Reply it goes to your Reply-To address.
             </p>
 
             {/* Subject */}
