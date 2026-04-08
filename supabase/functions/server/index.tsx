@@ -6983,6 +6983,99 @@ Rules:
   }
 });
 
+// ========== BROADCAST EMAIL ==========
+
+// POST /admin/broadcast — send a one-time email to a list of recipients via Resend
+app.post('/make-server-e07959ec/admin/broadcast', requireAuth, async (c) => {
+  try {
+    const { subject, body, recipients } = await c.req.json() as {
+      subject: string;
+      body: string;
+      recipients: { email: string; displayName?: string }[];
+    };
+
+    if (!subject?.trim())        return c.json({ success: false, error: 'subject is required' }, 400);
+    if (!body?.trim())           return c.json({ success: false, error: 'body is required' }, 400);
+    if (!recipients?.length)     return c.json({ success: false, error: 'recipients list is empty' }, 400);
+
+    const resendKey = Deno.env.get('RESEND_API_KEY');
+    if (!resendKey) return c.json({ success: false, error: 'RESEND_API_KEY not configured' }, 500);
+
+    const resend = new Resend(resendKey);
+
+    let sent   = 0;
+    let failed = 0;
+    const errors: string[] = [];
+
+    // Send individually so each email is personalised and no recipient sees others
+    for (const r of recipients) {
+      const email = r.email?.toLowerCase().trim();
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        failed++;
+        errors.push(`Invalid email: ${r.email}`);
+        continue;
+      }
+
+      // Replace {{name}} with first name or fallback to "there"
+      const firstName = r.displayName?.split(' ')[0]?.trim() || 'there';
+      const personalBody = body.replace(/\{\{name\}\}/g, firstName);
+
+      // Convert plain text to basic HTML (preserve line breaks and links)
+      const htmlBody = personalBody
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" style="color:#a855f7;">$1</a>')
+        .replace(/\n/g, '<br>');
+
+      const html = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#111111;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+    <tr><td align="center" style="padding:40px 16px;">
+      <table role="presentation" width="100%" style="max-width:520px;" cellpadding="0" cellspacing="0">
+        <tr><td style="padding-bottom:28px;">
+          <span style="font-size:20px;font-weight:800;letter-spacing:-0.5px;color:#111111;">Fastoosh</span>
+        </td></tr>
+        <tr><td style="font-size:15px;line-height:1.7;color:#333333;">
+          ${htmlBody}
+        </td></tr>
+        <tr><td style="padding-top:32px;border-top:1px solid #eeeeee;margin-top:32px;">
+          <p style="font-size:12px;color:#999999;margin:0;">
+            You received this email because you downloaded or purchased a Fastoosh tool.<br>
+            <a href="https://fastoosh.com" style="color:#999999;">fastoosh.com</a>
+          </p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+
+      try {
+        await resend.emails.send({
+          from:    'Fastoosh <noreply@contact.fastoosh.com>',
+          to:      email,
+          subject: subject.trim(),
+          text:    personalBody,
+          html,
+        });
+        sent++;
+      } catch (err) {
+        failed++;
+        errors.push(`${email}: ${String(err)}`);
+      }
+    }
+
+    console.log(`[broadcast] sent=${sent} failed=${failed} total=${recipients.length}`);
+    return c.json({ success: true, result: { sent, failed, errors } });
+  } catch (err) {
+    console.log(`[broadcast] Error: ${err}`);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
 // ========== TOOL REVIEWS ==========
 
 // GET /reviews?toolId=xxx — public: list all reviews for a tool

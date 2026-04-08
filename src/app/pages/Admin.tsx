@@ -27,6 +27,7 @@ import { ResetTab } from '../components/admin/ResetTab';
 import { VimeoPicker } from '../components/admin/VimeoPicker';
 import { GuideTab } from '../components/admin/GuideTab';
 import { LegalTab } from '../components/admin/LegalTab';
+import { BroadcastTab } from '../components/admin/BroadcastTab';
 import { VideoThumbnailCapture } from '../components/admin/VideoThumbnailCapture';
 import { ToolRequestsTab } from '../components/admin/ToolRequestsTab';
 import { DraggableProjectCard } from '../components/admin/DraggableProjectCard';
@@ -833,6 +834,7 @@ export function Admin() {
             <TabsTrigger value="home">Home</TabsTrigger>
             <TabsTrigger value="reviews">Reviews</TabsTrigger>
             <TabsTrigger value="leads">Leads</TabsTrigger>
+            <TabsTrigger value="broadcast">📣 Broadcast</TabsTrigger>
             <TabsTrigger value="messages">🔧 Tool Requests</TabsTrigger>
             <TabsTrigger value="traffic">🌐 Traffic</TabsTrigger>
             <TabsTrigger value="translations">🌍 Translations</TabsTrigger>
@@ -1539,6 +1541,11 @@ export function Admin() {
           {/* LEADS TAB */}
           <TabsContent value="leads">
             <LeadsTab />
+          </TabsContent>
+
+          {/* BROADCAST TAB */}
+          <TabsContent value="broadcast">
+            <BroadcastTab />
           </TabsContent>
 
           {/* TOOL REQUESTS / MESSAGES TAB */}
