@@ -68,18 +68,7 @@ export function AuthCallback() {
       searchParams.has('error') || searchParams.has('error_description') ||
       hashParams.has('error')   || hashParams.has('error_description');
 
-    // ── Diagnostic log (open DevTools / Network to inspect) ──────────────
     const storageKey = `sb-${new URL(`https://${location.hostname}`).hostname}-auth-token`;
-    console.log('[AuthCallback] landed', {
-      hasCode:       !!code,
-      hasToken,
-      hasError,
-      codePreview:   code ? `${code.slice(0, 8)}…` : null,
-      verifierKey:   `${storageKey}-code-verifier`,
-      verifierValue: localStorage.getItem(`${storageKey}-code-verifier`) ? '✓ present' : '✗ MISSING',
-      hash:          window.location.hash   || '(empty)',
-      search:        window.location.search || '(empty)',
-    });
 
     // ── Provider-level error ──────────────────────────────────────────────
     if (hasError) {
@@ -87,7 +76,6 @@ export function AuthCallback() {
         searchParams.get('error_description') || searchParams.get('error') ||
         hashParams.get('error_description')   || hashParams.get('error') ||
         'Authentication failed.';
-      console.error('[AuthCallback] provider error:', msg);
       setErrorMsg(msg);
       setStatus('error');
       return;
@@ -95,8 +83,6 @@ export function AuthCallback() {
 
     // ── PKCE flow — exchange with retry ───────────────────────────────────
     if (code) {
-      console.log('[AuthCallback] starting PKCE exchange…');
-
       retryWithBackoff(
         async () => {
           const { data: { session }, error } = await supabase.auth.exchangeCodeForSession(code);
@@ -105,21 +91,13 @@ export function AuthCallback() {
         },
         3,           // max attempts
         [600, 1500], // delays between attempts (ms)
-        (nextAttempt, prevErr) => {
-          console.warn(`[AuthCallback] attempt ${nextAttempt - 1} failed (${prevErr}), retrying in ${nextAttempt === 2 ? 600 : 1500}ms…`);
+        (nextAttempt, _prevErr) => {
           setAttempt(nextAttempt);
         },
-      ).then(session => {
-        console.log('[AuthCallback] ✅ signed in as', session?.user?.email ?? session?.user?.id ?? '(no email)');
+      ).then(_session => {
         navigate('/account', { replace: true });
       }).catch((err: any) => {
         const msg: string = err?.message ?? String(err);
-        console.error('[AuthCallback] all exchange attempts failed:', msg);
-
-        // Extra diagnostic: log verifier state after failure
-        console.log('[AuthCallback] verifier after failure:',
-          localStorage.getItem(`${storageKey}-code-verifier`) ? '✓ still present' : '✗ removed (was consumed)');
-
         setErrorMsg(msg);
         setStatus('error');
       });
@@ -129,7 +107,6 @@ export function AuthCallback() {
 
     // ── Legacy implicit flow — #access_token in hash ──────────────────────
     if (hasToken) {
-      console.log('[AuthCallback] implicit token detected, waiting for session…');
       supabase.auth.getSession().then(({ data: { session }, error }) => {
         if (error) { setErrorMsg(error.message); setStatus('error'); return; }
         if (session) { navigate('/account', { replace: true }); return; }
@@ -140,7 +117,6 @@ export function AuthCallback() {
     }
 
     // ── Nothing in the URL → redirect URL not whitelisted ────────────────
-    console.error('[AuthCallback] No token or code in URL — redirect URL may not be whitelisted.\nRequired:', CALLBACK_URL);
     setStatus('missing');
   }, [navigate]);
 

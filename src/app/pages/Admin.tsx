@@ -222,10 +222,7 @@ export function Admin() {
     try {
       const token = localStorage.getItem('admin_token');
       
-      console.log('Checking auth with token:', token ? token.substring(0, 20) + '...' : 'NO TOKEN');
-      
       if (!token) {
-        console.log('No token found, redirecting to login');
         navigate('/admin/login');
         return;
       }
@@ -245,33 +242,26 @@ export function Admin() {
         // Only wipe the token on explicit auth rejections (401 / 403).
         // A 5xx means the server is temporarily broken — preserve the session.
         if (res.status === 401 || res.status === 403) {
-          console.warn('Token rejected by server:', body.error || res.status, '— clearing token');
           localStorage.removeItem('admin_token');
           navigate('/admin/login');
         } else if (attempt < 1) {
-          console.warn('Server error during auth check, retrying in 2 s…', res.status);
           setTimeout(() => checkAuth(attempt + 1), 2000);
         } else {
-          console.error('Auth check: server error after retry', res.status);
           setNetworkError(true);
           setAuthChecking(false);
         }
         return;
       }
 
-      console.log('Token validated ✅, user is authenticated');
       setNetworkError(false);
       setAuthChecking(false);
       loadData();
     } catch (error) {
       // Network-level failure (edge function cold-start, brief redeployment, etc.)
       // Do NOT clear the token — the session may still be valid once the server recovers.
-      console.warn(`Auth check network error (attempt ${attempt}):`, error);
       if (attempt < 1) {
-        console.log('Retrying auth check in 2 s…');
         setTimeout(() => checkAuth(attempt + 1), 2000);
       } else {
-        console.error('Auth check failed after retry — showing network error screen');
         setNetworkError(true);
         setAuthChecking(false);
       }
@@ -310,10 +300,7 @@ export function Admin() {
       ]);
 
       const safeJson = async (r: PromiseSettledResult<Response>) => {
-        if (r.status === 'rejected') {
-          console.warn('A loadData fetch was rejected:', r.reason);
-          return {};
-        }
+        if (r.status === 'rejected') return {};
         try { return await r.value.json(); } catch { return {}; }
       };
 
@@ -354,7 +341,6 @@ export function Admin() {
     } catch (error) {
       console.error('Error loading data:', error);
       if (attempt < 2) {
-        console.warn(`loadData failed (attempt ${attempt + 1}/3), retrying in 3 s…`);
         setTimeout(() => loadData(attempt + 1), 3000);
         return;
       }
@@ -366,7 +352,6 @@ export function Admin() {
   const getAuthHeaders = async () => {
     const token = localStorage.getItem('admin_token');
     if (!token) {
-      console.error('No authentication token found');
       navigate('/admin/login');
       throw new Error('Not authenticated');
     }
