@@ -236,6 +236,8 @@ export function About() {
               }
               .fastoosh-marquee-track {
                 animation: fastoosh-marquee 28s linear infinite;
+                display: flex;
+                width: max-content;
               }
               .fastoosh-marquee-track:hover {
                 animation-play-state: paused;
@@ -246,12 +248,12 @@ export function About() {
               className="py-10 overflow-hidden"
               dir="ltr"
               style={{
-                WebkitMaskImage: 'linear-gradient(to right, transparent 0%, black 10%, black 90%, transparent 100%)',
-                maskImage:       'linear-gradient(to right, transparent 0%, black 10%, black 90%, transparent 100%)',
+                WebkitMaskImage: 'linear-gradient(to right, transparent 0%, black 12%, black 88%, transparent 100%)',
+                maskImage:       'linear-gradient(to right, transparent 0%, black 12%, black 88%, transparent 100%)',
               }}
             >
               {(() => {
-                // Ensure at least MIN_SLOTS logos per group so small sets don't leave giant gaps
+                // Ensure at least MIN_SLOTS logos per group so small sets don't leave gaps
                 const MIN_SLOTS = 6;
                 const repeat = clientLogos.length < MIN_SLOTS
                   ? Math.ceil(MIN_SLOTS / clientLogos.length)
@@ -260,44 +262,32 @@ export function About() {
                   ? Array.from({ length: repeat }, () => clientLogos).flat()
                   : clientLogos;
 
-                return (
+                const logoItem = (logo: ClientLogo, key: string) => (
                   <div
-                    className="fastoosh-marquee-track"
-                    style={{ display: 'flex', width: '200%' }}
+                    key={key}
+                    className="group flex-shrink-0 flex items-center justify-center"
+                    style={{ width: '140px', height: '64px', marginInline: '28px' }}
                   >
-                    {[0, 1].map(groupIdx => (
-                      <div
-                        key={groupIdx}
-                        style={{
-                          display: 'flex',
-                          width: '50%',
-                          justifyContent: 'space-around',
-                          alignItems: 'center',
-                          height: '4.5rem',
-                        }}
-                      >
-                        {displayLogos.map((logo, i) => (
-                          <div
-                            key={`${groupIdx}-${i}`}
-                            className="group flex-shrink-0 flex items-center justify-center"
-                            style={{ width: '120px', height: '64px' }}
-                          >
-                            {logo.imageUrl ? (
-                              <img
-                                src={logo.imageUrl}
-                                alt={logo.name}
-                                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                                className="opacity-40 group-hover:opacity-80 transition-all duration-300 grayscale group-hover:grayscale-0"
-                              />
-                            ) : (
-                              <span className="text-sm font-semibold text-white/30 group-hover:text-white/70 transition-colors duration-300 whitespace-nowrap tracking-wide">
-                                {logo.name}
-                              </span>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    ))}
+                    {logo.imageUrl ? (
+                      <img
+                        src={logo.imageUrl}
+                        alt={logo.name}
+                        style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                        className="opacity-40 group-hover:opacity-90 transition-all duration-300 brightness-0 invert group-hover:brightness-100 group-hover:invert-0"
+                      />
+                    ) : (
+                      <span className="text-sm font-semibold text-white/30 group-hover:text-white/70 transition-colors duration-300 whitespace-nowrap tracking-wide">
+                        {logo.name}
+                      </span>
+                    )}
+                  </div>
+                );
+
+                return (
+                  <div className="fastoosh-marquee-track">
+                    {/* Two identical groups — animation scrolls exactly one group width */}
+                    {displayLogos.map((logo, i) => logoItem(logo, `a-${i}`))}
+                    {displayLogos.map((logo, i) => logoItem(logo, `b-${i}`))}
                   </div>
                 );
               })()}
