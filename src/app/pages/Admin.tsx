@@ -127,6 +127,7 @@ interface Settings {
   toolCategories?: string[];
   toolStatuses?: { label: string; color: string }[];
   clientLogos?: { name: string; imageUrl?: string }[];
+  marqueeSpeed?: number;
   socialLinks?: {
     linkedin?: string;
     instagram?: string;
@@ -1433,6 +1434,32 @@ export function Admin() {
               <p className="text-gray-400 text-sm mb-5">
                 These scroll across the "Trusted by" banner on the About page. Add a name (required) and optionally paste an image URL for the logo. Hover over a logo in the ticker to pause the animation.
               </p>
+
+              {/* Scroll speed */}
+              <div className="flex items-center gap-3 mb-5 p-3 bg-white/5 border border-white/10 rounded-xl">
+                <div className="flex-1">
+                  <p className="text-white text-sm font-semibold mb-0.5">Scroll speed</p>
+                  <p className="text-white/40 text-xs">Seconds for one full loop. Lower = faster, higher = slower. Default: 28s.</p>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <input
+                    type="number"
+                    min={5}
+                    max={120}
+                    step={1}
+                    value={settings.marqueeSpeed ?? 28}
+                    onChange={e => {
+                      const v = Math.max(5, Math.min(120, Number(e.target.value)));
+                      setSettings(s => ({ ...s, marqueeSpeed: v }));
+                    }}
+                    onBlur={async () => {
+                      try { await saveSettings({ ...settings }); } catch {}
+                    }}
+                    className="w-20 bg-black/50 border border-white/20 rounded-lg px-3 py-1.5 text-white text-sm text-center focus:outline-none focus:border-purple-500"
+                  />
+                  <span className="text-white/40 text-sm">s</span>
+                </div>
+              </div>
 
               {/* Current logos */}
               <div className="space-y-2 mb-4">

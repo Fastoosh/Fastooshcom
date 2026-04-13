@@ -30,6 +30,7 @@ export function About() {
   const [team,         setTeam]         = useState<TeamMember[]>([]);
   const [loading,      setLoading]      = useState(true);
   const [clientLogos,  setClientLogos]  = useState<ClientLogo[]>([]);
+  const [marqueeSpeed, setMarqueeSpeed] = useState(28);
 
   // Covers initial mount AND language changes — fetches team + translations in
   // one Promise.all so members always render translated on the first paint.
@@ -54,6 +55,9 @@ export function About() {
       }
       if (settingsRes.success && Array.isArray(settingsRes.data?.clientLogos) && settingsRes.data.clientLogos.length > 0) {
         setClientLogos(settingsRes.data.clientLogos as ClientLogo[]);
+      }
+      if (settingsRes.success && typeof settingsRes.data?.marqueeSpeed === 'number') {
+        setMarqueeSpeed(settingsRes.data.marqueeSpeed);
       }
     } catch (error) {
       console.error('Error fetching team:', error);
@@ -235,7 +239,7 @@ export function About() {
                 100% { transform: translateX(-50%); }
               }
               .fastoosh-marquee-track {
-                animation: fastoosh-marquee 28s linear infinite;
+                animation: fastoosh-marquee ${marqueeSpeed}s linear infinite;
                 display: flex;
                 width: max-content;
               }
