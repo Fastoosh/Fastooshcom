@@ -353,9 +353,9 @@ const normalizeTool = (tool: Record<string, any>): Record<string, any> => {
         v.color = parts[1] || parts[0] || '';
       }
       // Decode includedFeatureIds: ✅ featureId entries
-      const includedEntries = v.features.filter((f: string) => typeof f === 'string' && f.startsWith('✅ '));
-      if (includedEntries.length > 0) {
-        v.includedFeatureIds = includedEntries.map((f: string) => f.replace('✅ ', ''));
+      const featureIdEntries = v.features.filter((f: string) => typeof f === 'string' && f.startsWith('✅ '));
+      if (featureIdEntries.length > 0) {
+        v.includedFeatureIds = featureIdEntries.map((f: string) => f.replace('✅ ', ''));
       }
       // Remove the raw features array after decoding
       delete v.features;
