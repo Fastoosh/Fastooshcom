@@ -369,6 +369,18 @@ const normalizeTool = (tool: Record<string, any>): Record<string, any> => {
           v.inheritanceLabel = body;
         }
       }
+      // Decode empty-delta behavior: 💡 <mode>|<message>
+      //   mode ∈ 'message' | 'hide' | 'showAll'
+      //   message is optional; relevant only when mode = 'message'
+      const emptyEntry = v.features.find((f: string) => typeof f === 'string' && f.startsWith('💡 '));
+      if (emptyEntry) {
+        const body = (emptyEntry as string).replace('💡 ', '');
+        const [mode, ...rest] = body.split('|');
+        if (mode === 'message' || mode === 'hide' || mode === 'showAll') {
+          v.emptyDeltaMode = mode;
+          if (mode === 'message') v.emptyDeltaMessage = rest.join('|');
+        }
+      }
       // Remove the raw features array after decoding
       delete v.features;
       return v;
@@ -3374,10 +3386,17 @@ app.post("/make-server-e07959ec/tools", requireAuth, async (c) => {
             : v.inheritanceLabelEnabled === true && typeof v.inheritanceLabel === 'string' && v.inheritanceLabel.length > 0
               ? [`⬆️ ${v.inheritanceLabel}`]
               : [];
+        const emptyDeltaSentinel =
+          v.emptyDeltaMode === 'hide' || v.emptyDeltaMode === 'showAll'
+            ? [`💡 ${v.emptyDeltaMode}`]
+            : v.emptyDeltaMode === 'message' && typeof v.emptyDeltaMessage === 'string'
+              ? [`💡 message|${v.emptyDeltaMessage}`]
+              : [];
         const enrichedFeatures = [
           `💰 ${priceSentinel}`,
           ...(v.color ? [`🖌️ color|${v.color}`] : []),
           ...inheritanceSentinel,
+          ...emptyDeltaSentinel,
           ...((v.whatsIncluded ?? []) as string[]).filter(Boolean).map((item: string) => `📦 ${item}`),
           ...((v.activationSteps ?? []) as string[]).filter(Boolean).map((step: string) => `🔑 ${step}`),
           ...((v.includedFeatureIds ?? []) as string[]).filter(Boolean).map((fid: string) => `✅ ${fid}`),
@@ -3503,10 +3522,17 @@ app.put("/make-server-e07959ec/tools/:id", requireAuth, async (c) => {
             : v.inheritanceLabelEnabled === true && typeof v.inheritanceLabel === 'string' && v.inheritanceLabel.length > 0
               ? [`⬆️ ${v.inheritanceLabel}`]
               : [];
+        const emptyDeltaSentinel =
+          v.emptyDeltaMode === 'hide' || v.emptyDeltaMode === 'showAll'
+            ? [`💡 ${v.emptyDeltaMode}`]
+            : v.emptyDeltaMode === 'message' && typeof v.emptyDeltaMessage === 'string'
+              ? [`💡 message|${v.emptyDeltaMessage}`]
+              : [];
         const enrichedFeatures = [
           `💰 ${priceSentinel}`,
           ...(v.color ? [`🖌️ color|${v.color}`] : []),
           ...inheritanceSentinel,
+          ...emptyDeltaSentinel,
           ...((v.whatsIncluded ?? []) as string[]).filter(Boolean).map((item: string) => `📦 ${item}`),
           ...((v.activationSteps ?? []) as string[]).filter(Boolean).map((step: string) => `🔑 ${step}`),
           ...((v.includedFeatureIds ?? []) as string[]).filter(Boolean).map((fid: string) => `✅ ${fid}`),

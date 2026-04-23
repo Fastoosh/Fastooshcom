@@ -66,6 +66,8 @@ interface ToolVersion {
   includedFeatureIds?: string[];  // IDs from tool.richFeatures included in this version
   inheritanceLabelEnabled?: boolean;
   inheritanceLabel?: string;
+  emptyDeltaMode?: 'message' | 'hide' | 'showAll';
+  emptyDeltaMessage?: string;
 }
 
 interface Tool {
@@ -612,11 +614,20 @@ function PricingCard({
   const prevVersion = tool?.versions && index > 0 ? tool.versions[index - 1] : null;
   const prevIncludedIds = new Set<string>(prevVersion?.includedFeatureIds ?? []);
   const richFeatures = tool?.richFeatures ?? [];
-  const deltaFeatures = index > 0
+  const rawDelta = index > 0
     ? richFeatures
         .filter(rf => (version.includedFeatureIds ?? []).includes(rf.id) && !prevIncludedIds.has(rf.id))
         .map(rf => ({ title: rf.title.trim(), included: true }))
     : allFeatures.filter(f => f.included);
+
+  // Decide what to render when delta is empty (tiers > 0 only):
+  //   'message'  → show italic custom text (default)
+  //   'hide'     → render nothing (label + CTA only)
+  //   'showAll'  → fall back to all features included in this version
+  const emptyMode = version.emptyDeltaMode ?? 'message';
+  const emptyMessage = version.emptyDeltaMessage ?? 'Same features as previous tier';
+  const showAllFallback = index > 0 && rawDelta.length === 0 && emptyMode === 'showAll';
+  const deltaFeatures = showAllFallback ? allFeatures.filter(f => f.included) : rawDelta;
 
   // Resolve inheritance label with {{previousTier}} template
   const showInheritanceLabel = index > 0 && (version.inheritanceLabelEnabled ?? true);
@@ -879,8 +890,8 @@ function PricingCard({
                 </li>
               ))}
             </ul>
-          ) : index > 0 ? (
-            <p className="text-sm text-white/40 italic">Same features as previous tier</p>
+          ) : index > 0 && emptyMode === 'message' ? (
+            <p className="text-sm text-white/40 italic">{emptyMessage}</p>
           ) : null}
         </div>
 
