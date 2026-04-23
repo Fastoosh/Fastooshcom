@@ -648,20 +648,20 @@ function PricingCard({
 
         {/* Feature list */}
         {allFeatures.length > 0 && (
-          <ul className="space-y-2.5 flex-grow mb-7">
+          <ul className="space-y-2 flex-grow mb-7">
             {allFeatures.map((item, i) => (
-              <li key={i} className={`flex items-start gap-2.5 ${!item.included ? 'opacity-40' : ''}`}>
+              <li key={i} className={`flex items-start gap-2.5 ${!item.included ? 'opacity-35' : ''}`}>
                 {item.included ? (
                   <Check
                     className="w-3.5 h-3.5 mt-0.5 flex-shrink-0"
                     style={{ color: isFree ? '#34d399' : isLifetimeActive ? '#fbbf24' : versionColor }}
                   />
                 ) : (
-                  <svg className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  <svg className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-white/20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14" />
                   </svg>
                 )}
-                <span className={`text-sm leading-snug ${item.included ? 'text-white/60' : 'text-white/30 line-through'}`}>
+                <span className={`text-sm leading-snug ${item.included ? 'text-white/70' : 'text-white/25'}`}>
                   {item.title}
                 </span>
               </li>
