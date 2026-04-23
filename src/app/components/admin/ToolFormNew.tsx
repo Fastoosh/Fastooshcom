@@ -1929,6 +1929,9 @@ function FeatureTransfer({
 }) {
   const [leftSel,  setLeftSel]  = useState<Set<string>>(new Set());
   const [rightSel, setRightSel] = useState<Set<string>>(new Set());
+  // Last clicked id per side — used for range selection (Shift+click)
+  const [leftAnchor,  setLeftAnchor]  = useState<string | null>(null);
+  const [rightAnchor, setRightAnchor] = useState<string | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState<string | null>(null);
 
@@ -1937,14 +1940,10 @@ function FeatureTransfer({
   const included   = includedIds.map(id => allFeatures.find(f => f.id === id)).filter(Boolean) as RichFeature[];
 
   // Build groups for the left column: group available features by which other versions use them.
-  // A feature goes into the group of the first (lowest-index) version that includes it.
-  // Features not used in any other version go into "Unused".
   const otherVersions = allVersions.filter(v => v.id !== currentVersionId);
-
   type Group = { label: string; color?: string; ids: string[] };
   const groups: Group[] = [];
   const assignedToGroup = new Set<string>();
-
   for (const v of otherVersions) {
     const vIds = (v.includedFeatureIds ?? []).filter(id => {
       const f = allFeatures.find(f => f.id === id);
@@ -1955,41 +1954,98 @@ function FeatureTransfer({
       vIds.forEach(id => assignedToGroup.add(id));
     }
   }
-
   const unusedIds = available.filter(f => !assignedToGroup.has(f.id)).map(f => f.id);
   const hasGroups = groups.length > 0;
 
+  // Flat ordered id arrays for range selection — order matches visual render
+  const leftOrder  = available.map(f => f.id);
+  const rightOrder = included.map(f => f.id);
+
   const toggle = (id: string, side: 'left' | 'right', e: React.MouseEvent) => {
-    const setter = side === 'left' ? setLeftSel : setRightSel;
-    setter(prev => {
-      const next = new Set(prev);
-      if (e.shiftKey) {
-        next.has(id) ? next.delete(id) : next.add(id);
-      } else {
-        if (next.size === 1 && next.has(id)) { next.clear(); }
-        else { next.clear(); next.add(id); }
+    const list   = side === 'left' ? leftOrder  : rightOrder;
+    const setSel = side === 'left' ? setLeftSel : setRightSel;
+    const anchor = side === 'left' ? leftAnchor : rightAnchor;
+    const setAnchor = side === 'left' ? setLeftAnchor : setRightAnchor;
+
+    if (e.shiftKey && anchor) {
+      // Range selection: select everything between anchor and this item
+      const a = list.indexOf(anchor);
+      const b = list.indexOf(id);
+      if (a !== -1 && b !== -1) {
+        const [lo, hi] = a < b ? [a, b] : [b, a];
+        const rangeIds = list.slice(lo, hi + 1);
+        setSel(prev => {
+          const next = new Set(prev);
+          rangeIds.forEach(rid => next.add(rid));
+          return next;
+        });
+        // Don't update anchor on range extension
+        if (side === 'left') setRightSel(new Set());
+        else setLeftSel(new Set());
+        return;
       }
+    }
+
+    // Normal click
+    setSel(prev => {
+      const next = new Set(prev);
+      if (next.size === 1 && next.has(id)) { next.clear(); }
+      else { next.clear(); next.add(id); }
       return next;
     });
-    if (side === 'left') setRightSel(new Set());
-    else setLeftSel(new Set());
+    setAnchor(id);
+    if (side === 'left') { setRightSel(new Set()); setRightAnchor(null); }
+    else                 { setLeftSel(new Set());  setLeftAnchor(null);  }
   };
 
+  const allLeftSelected  = available.length > 0 && available.every(f => leftSel.has(f.id));
+  const allRightSelected = included.length  > 0 && included.every(f => rightSel.has(f.id));
+
+  const selectAllLeft  = () => { setLeftSel(new Set(available.map(f => f.id))); setRightSel(new Set()); };
+  const selectAllRight = () => { setRightSel(new Set(included.map(f => f.id))); setLeftSel(new Set()); };
+  const clearLeft      = () => { setLeftSel(new Set()); setLeftAnchor(null); };
+  const clearRight     = () => { setRightSel(new Set()); setRightAnchor(null); };
+
   const selectGroup = (ids: string[]) => {
-    setLeftSel(new Set(ids));
+    setLeftSel(prev => { const n = new Set(prev); ids.forEach(id => n.add(id)); return n; });
     setRightSel(new Set());
   };
+  const deselectGroup = (ids: string[]) => {
+    setLeftSel(prev => { const n = new Set(prev); ids.forEach(id => n.delete(id)); return n; });
+  };
+
+  // Ctrl+A — select all in the column that was last interacted with
+  const [focusedCol, setFocusedCol] = useState<'left' | 'right' | null>(null);
+  React.useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key === 'a' && focusedCol) {
+        e.preventDefault();
+        if (focusedCol === 'left')  allLeftSelected  ? clearLeft()  : selectAllLeft();
+        if (focusedCol === 'right') allRightSelected ? clearRight() : selectAllRight();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusedCol, allLeftSelected, allRightSelected, available, included]);
 
   const moveRight = () => {
     if (leftSel.size === 0) return;
-    onChange([...includedIds, ...Array.from(leftSel)]);
-    setLeftSel(new Set());
+    onChange([...includedIds, ...Array.from(leftSel).filter(id => !includedSet.has(id))]);
+    setLeftSel(new Set()); setLeftAnchor(null);
   };
-
   const moveLeft = () => {
     if (rightSel.size === 0) return;
     onChange(includedIds.filter(id => !rightSel.has(id)));
-    setRightSel(new Set());
+    setRightSel(new Set()); setRightAnchor(null);
+  };
+  const moveAllRight = () => {
+    onChange([...includedIds, ...available.map(f => f.id)]);
+    setLeftSel(new Set()); setLeftAnchor(null);
+  };
+  const moveAllLeft = () => {
+    onChange([]);
+    setRightSel(new Set()); setRightAnchor(null);
   };
 
   // Drag-to-reorder within the right column
@@ -2022,20 +2078,24 @@ function FeatureTransfer({
   }
 
   const colClass = "flex-1 min-w-0 rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden flex flex-col";
-  const headerClass = "px-3 py-2 bg-white/5 border-b border-white/10 text-xs font-semibold text-white/50 uppercase tracking-wider flex items-center justify-between";
+  const headerClass = "px-3 py-2 bg-white/5 border-b border-white/10 text-xs font-semibold text-white/50 uppercase tracking-wider flex items-center gap-2";
   const itemBase = "px-3 py-2 text-sm cursor-pointer select-none transition-colors duration-100 rounded-md mx-1 my-0.5";
+  const btnClass = "w-7 h-7 flex items-center justify-center rounded-lg border border-white/15 transition-all disabled:opacity-20 disabled:cursor-not-allowed";
 
-  const renderFeatureItem = (f: RichFeature, sel: boolean) => (
-    <div
-      key={f.id}
-      onClick={e => toggle(f.id, 'left', e)}
-      className={`${itemBase} flex items-center gap-2 ${
-        sel ? 'bg-purple-500/20 text-white' : 'text-white/50 hover:bg-white/5 hover:text-white/80'
-      }`}
-    >
-      <span className="truncate">{f.title || <em className="text-white/20">Untitled</em>}</span>
-    </div>
-  );
+  const renderLeftItem = (f: RichFeature) => {
+    const sel = leftSel.has(f.id);
+    return (
+      <div
+        key={f.id}
+        onClick={e => { setFocusedCol('left'); toggle(f.id, 'left', e); }}
+        className={`${itemBase} flex items-center gap-2 ${
+          sel ? 'bg-purple-500/20 text-white' : 'text-white/50 hover:bg-white/5 hover:text-white/80'
+        }`}
+      >
+        <span className="truncate">{f.title || <em className="text-white/20">Untitled</em>}</span>
+      </div>
+    );
+  };
 
   return (
     <div>
@@ -2045,10 +2105,19 @@ function FeatureTransfer({
       <div className="flex gap-2 items-stretch">
 
         {/* Left — available, grouped by version usage */}
-        <div className={colClass}>
+        <div className={colClass} onMouseEnter={() => setFocusedCol('left')}>
           <div className={headerClass}>
-            <span>Available</span>
+            <span className="flex-1">Available</span>
             <span className="text-white/30 font-normal normal-case tracking-normal">{available.length}</span>
+            <button
+              type="button"
+              onClick={() => allLeftSelected ? clearLeft() : selectAllLeft()}
+              disabled={available.length === 0}
+              className="text-[10px] text-white/25 hover:text-purple-400 transition-colors font-normal normal-case tracking-normal disabled:opacity-30"
+              title="Select all (Ctrl+A)"
+            >
+              {allLeftSelected ? 'deselect all' : 'select all'}
+            </button>
           </div>
           <div className="flex-1 overflow-y-auto py-1" style={{ minHeight: '120px', maxHeight: '260px' }}>
             {available.length === 0 ? (
@@ -2057,30 +2126,21 @@ function FeatureTransfer({
               <>
                 {groups.map(group => {
                   const groupFeatures = group.ids.map(id => allFeatures.find(f => f.id === id)).filter(Boolean) as RichFeature[];
-                  const allGroupSelected = groupFeatures.every(f => leftSel.has(f.id));
+                  const allGroupSel = groupFeatures.every(f => leftSel.has(f.id));
                   return (
                     <div key={group.label} className="mb-1">
-                      {/* Group header */}
                       <div className="flex items-center gap-1.5 px-2 pt-2 pb-1">
-                        <span
-                          className="w-2 h-2 rounded-full flex-shrink-0"
-                          style={{ backgroundColor: group.color || '#a855f7' }}
-                        />
-                        <span className="text-xs font-semibold text-white/35 uppercase tracking-wider truncate flex-1">
-                          {group.label}
-                        </span>
+                        <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: group.color || '#a855f7' }} />
+                        <span className="text-xs font-semibold text-white/35 uppercase tracking-wider truncate flex-1">{group.label}</span>
                         <button
                           type="button"
-                          onClick={() => allGroupSelected
-                            ? setLeftSel(prev => { const n = new Set(prev); groupFeatures.forEach(f => n.delete(f.id)); return n; })
-                            : selectGroup(groupFeatures.map(f => f.id))
-                          }
+                          onClick={() => allGroupSel ? deselectGroup(groupFeatures.map(f => f.id)) : selectGroup(groupFeatures.map(f => f.id))}
                           className="text-[10px] text-white/25 hover:text-purple-400 transition-colors flex-shrink-0"
                         >
-                          {allGroupSelected ? 'deselect' : 'select all'}
+                          {allGroupSel ? 'deselect' : 'select all'}
                         </button>
                       </div>
-                      {groupFeatures.map(f => renderFeatureItem(f, leftSel.has(f.id)))}
+                      {groupFeatures.map(f => renderLeftItem(f))}
                     </div>
                   );
                 })}
@@ -2090,51 +2150,56 @@ function FeatureTransfer({
                       <span className="w-2 h-2 rounded-full flex-shrink-0 bg-white/15" />
                       <span className="text-xs font-semibold text-white/25 uppercase tracking-wider flex-1">Unused</span>
                     </div>
-                    {unusedIds.map(id => {
-                      const f = allFeatures.find(f => f.id === id);
-                      return f ? renderFeatureItem(f, leftSel.has(f.id)) : null;
-                    })}
+                    {unusedIds.map(id => { const f = allFeatures.find(f => f.id === id); return f ? renderLeftItem(f) : null; })}
                   </div>
                 )}
               </>
-            ) : (
-              // No other versions — flat list
-              available.map(f => renderFeatureItem(f, leftSel.has(f.id)))
-            )}
+            ) : available.map(f => renderLeftItem(f))}
           </div>
         </div>
 
         {/* Arrow buttons */}
-        <div className="flex flex-col items-center justify-center gap-2 flex-shrink-0">
-          <button
-            type="button"
-            onClick={moveRight}
-            disabled={leftSel.size === 0}
-            title="Add selected to this version"
-            className="w-7 h-7 flex items-center justify-center rounded-lg border border-white/15
-              text-white/40 hover:text-white hover:bg-purple-500/20 hover:border-purple-400/40
-              disabled:opacity-20 disabled:cursor-not-allowed transition-all"
-          >
+        <div className="flex flex-col items-center justify-center gap-1.5 flex-shrink-0">
+          {/* Move all right */}
+          <button type="button" onClick={moveAllRight} disabled={available.length === 0}
+            title="Move all to included"
+            className={`${btnClass} text-white/30 hover:text-white hover:bg-purple-500/20 hover:border-purple-400/40`}>
+            <ChevronRight className="w-3 h-3 -mr-1" /><ChevronRight className="w-3 h-3" />
+          </button>
+          {/* Move selected right */}
+          <button type="button" onClick={moveRight} disabled={leftSel.size === 0}
+            title="Move selected to included"
+            className={`${btnClass} text-white/40 hover:text-white hover:bg-purple-500/20 hover:border-purple-400/40`}>
             <ChevronRight className="w-4 h-4" />
           </button>
-          <button
-            type="button"
-            onClick={moveLeft}
-            disabled={rightSel.size === 0}
-            title="Remove selected from this version"
-            className="w-7 h-7 flex items-center justify-center rounded-lg border border-white/15
-              text-white/40 hover:text-white hover:bg-red-500/20 hover:border-red-400/40
-              disabled:opacity-20 disabled:cursor-not-allowed transition-all"
-          >
+          {/* Move selected left */}
+          <button type="button" onClick={moveLeft} disabled={rightSel.size === 0}
+            title="Remove selected from included"
+            className={`${btnClass} text-white/40 hover:text-white hover:bg-red-500/20 hover:border-red-400/40`}>
             <ChevronLeft className="w-4 h-4" />
+          </button>
+          {/* Move all left */}
+          <button type="button" onClick={moveAllLeft} disabled={included.length === 0}
+            title="Remove all from included"
+            className={`${btnClass} text-white/30 hover:text-white hover:bg-red-500/20 hover:border-red-400/40`}>
+            <ChevronLeft className="w-3 h-3" /><ChevronLeft className="w-3 h-3 -ml-1" />
           </button>
         </div>
 
         {/* Right — included */}
-        <div className={colClass}>
+        <div className={colClass} onMouseEnter={() => setFocusedCol('right')}>
           <div className={headerClass}>
-            <span>Included</span>
+            <span className="flex-1">Included</span>
             <span className="text-white/30 font-normal normal-case tracking-normal">{included.length}</span>
+            <button
+              type="button"
+              onClick={() => allRightSelected ? clearRight() : selectAllRight()}
+              disabled={included.length === 0}
+              className="text-[10px] text-white/25 hover:text-purple-400 transition-colors font-normal normal-case tracking-normal disabled:opacity-30"
+              title="Select all (Ctrl+A)"
+            >
+              {allRightSelected ? 'deselect all' : 'select all'}
+            </button>
           </div>
           <div className="flex-1 overflow-y-auto py-1" style={{ minHeight: '120px', maxHeight: '260px' }}>
             {included.length === 0 ? (
@@ -2151,15 +2216,11 @@ function FeatureTransfer({
                   onDragOver={e => e.preventDefault()}
                   onDrop={() => handleDrop(f.id)}
                   onDragEnd={() => { setDragging(null); setDragOver(null); }}
-                  onClick={e => toggle(f.id, 'right', e)}
+                  onClick={e => { setFocusedCol('right'); toggle(f.id, 'right', e); }}
                   className={`${itemBase} flex items-center gap-2 ${
-                    isOver   ? 'border-t-2 border-purple-400/60' : ''
-                  } ${
-                    dragging === f.id ? 'opacity-40' : ''
-                  } ${
-                    sel
-                      ? 'bg-purple-500/20 text-white'
-                      : 'text-white/70 hover:bg-white/5 hover:text-white'
+                    isOver ? 'border-t-2 border-purple-400/60' : ''
+                  } ${dragging === f.id ? 'opacity-40' : ''} ${
+                    sel ? 'bg-purple-500/20 text-white' : 'text-white/70 hover:bg-white/5 hover:text-white'
                   }`}
                 >
                   <GripVertical className="w-3 h-3 text-white/20 flex-shrink-0 cursor-grab" />
@@ -2171,13 +2232,11 @@ function FeatureTransfer({
         </div>
 
       </div>
-      {(leftSel.size > 0 || rightSel.size > 0) && (
-        <p className="text-white/25 text-xs mt-1.5">
-          {leftSel.size > 0 && `${leftSel.size} selected — click › to include`}
-          {rightSel.size > 0 && `${rightSel.size} selected — click ‹ to remove`}
-          {' · '}Shift+click to select multiple
-        </p>
-      )}
+      <p className="text-white/20 text-xs mt-1.5">
+        {leftSel.size > 0 && `${leftSel.size} selected · `}
+        {rightSel.size > 0 && `${rightSel.size} selected · `}
+        Click to select · Shift+click to range select · Ctrl+A to select all
+      </p>
     </div>
   );
 }
