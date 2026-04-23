@@ -1763,6 +1763,7 @@ export function ToolFormNew({
                     onUpdateDemoUrl={(url) => setFormData(prev => ({ ...prev, demoUrl: url }))}
                     toolName={formData.name}
                     toolRichFeatures={formData.richFeatures || []}
+                    allVersions={formData.versions}
                     onRegenerate={() => handleRegenerateVersion(version.id)}
                     isRegenerating={generatingVersionId === version.id}
                     highlightedFields={highlightedFields}
@@ -1910,17 +1911,21 @@ export function ToolFormNew({
 }
 
 // ── FeatureTransfer ───────────────────────────────────────────────────────────
-// Two-column picker: left = available, right = included.
-// Click to select (highlighted), arrow buttons to move. Right column is sortable via drag.
+// Two-column picker: left = available (grouped by which versions use them),
+// right = included. Click to select, arrow buttons to move, drag to reorder right column.
 
 function FeatureTransfer({
   allFeatures,
   includedIds,
   onChange,
+  allVersions = [],
+  currentVersionId,
 }: {
   allFeatures: RichFeature[];
   includedIds: string[];
   onChange: (ids: string[]) => void;
+  allVersions?: ToolVersion[];
+  currentVersionId?: string;
 }) {
   const [leftSel,  setLeftSel]  = useState<Set<string>>(new Set());
   const [rightSel, setRightSel] = useState<Set<string>>(new Set());
@@ -1931,23 +1936,48 @@ function FeatureTransfer({
   const available  = allFeatures.filter(f => !includedSet.has(f.id));
   const included   = includedIds.map(id => allFeatures.find(f => f.id === id)).filter(Boolean) as RichFeature[];
 
+  // Build groups for the left column: group available features by which other versions use them.
+  // A feature goes into the group of the first (lowest-index) version that includes it.
+  // Features not used in any other version go into "Unused".
+  const otherVersions = allVersions.filter(v => v.id !== currentVersionId);
+
+  type Group = { label: string; color?: string; ids: string[] };
+  const groups: Group[] = [];
+  const assignedToGroup = new Set<string>();
+
+  for (const v of otherVersions) {
+    const vIds = (v.includedFeatureIds ?? []).filter(id => {
+      const f = allFeatures.find(f => f.id === id);
+      return f && !includedSet.has(id) && !assignedToGroup.has(id);
+    });
+    if (vIds.length > 0) {
+      groups.push({ label: v.versionType || 'Version', color: v.color, ids: vIds });
+      vIds.forEach(id => assignedToGroup.add(id));
+    }
+  }
+
+  const unusedIds = available.filter(f => !assignedToGroup.has(f.id)).map(f => f.id);
+  const hasGroups = groups.length > 0;
+
   const toggle = (id: string, side: 'left' | 'right', e: React.MouseEvent) => {
     const setter = side === 'left' ? setLeftSel : setRightSel;
     setter(prev => {
       const next = new Set(prev);
       if (e.shiftKey) {
-        // Shift: toggle without clearing others
         next.has(id) ? next.delete(id) : next.add(id);
       } else {
-        // Single click: select only this, or deselect if already the only one
         if (next.size === 1 && next.has(id)) { next.clear(); }
         else { next.clear(); next.add(id); }
       }
       return next;
     });
-    // Clear the other side's selection
     if (side === 'left') setRightSel(new Set());
     else setLeftSel(new Set());
+  };
+
+  const selectGroup = (ids: string[]) => {
+    setLeftSel(new Set(ids));
+    setRightSel(new Set());
   };
 
   const moveRight = () => {
@@ -1992,8 +2022,20 @@ function FeatureTransfer({
   }
 
   const colClass = "flex-1 min-w-0 rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden flex flex-col";
-  const headerClass = "px-3 py-2 bg-white/5 border-b border-white/8 text-xs font-semibold text-white/50 uppercase tracking-wider flex items-center justify-between";
+  const headerClass = "px-3 py-2 bg-white/5 border-b border-white/10 text-xs font-semibold text-white/50 uppercase tracking-wider flex items-center justify-between";
   const itemBase = "px-3 py-2 text-sm cursor-pointer select-none transition-colors duration-100 rounded-md mx-1 my-0.5";
+
+  const renderFeatureItem = (f: RichFeature, sel: boolean) => (
+    <div
+      key={f.id}
+      onClick={e => toggle(f.id, 'left', e)}
+      className={`${itemBase} flex items-center gap-2 ${
+        sel ? 'bg-purple-500/20 text-white' : 'text-white/50 hover:bg-white/5 hover:text-white/80'
+      }`}
+    >
+      <span className="truncate">{f.title || <em className="text-white/20">Untitled</em>}</span>
+    </div>
+  );
 
   return (
     <div>
@@ -2002,32 +2044,63 @@ function FeatureTransfer({
       </p>
       <div className="flex gap-2 items-stretch">
 
-        {/* Left — available */}
+        {/* Left — available, grouped by version usage */}
         <div className={colClass}>
           <div className={headerClass}>
             <span>Available</span>
             <span className="text-white/30 font-normal normal-case tracking-normal">{available.length}</span>
           </div>
-          <div className="flex-1 overflow-y-auto py-1" style={{ minHeight: '120px', maxHeight: '220px' }}>
+          <div className="flex-1 overflow-y-auto py-1" style={{ minHeight: '120px', maxHeight: '260px' }}>
             {available.length === 0 ? (
               <p className="text-white/20 text-xs text-center py-6 italic">All features included</p>
-            ) : available.map(f => {
-              const sel = leftSel.has(f.id);
-              return (
-                <div
-                  key={f.id}
-                  onClick={e => toggle(f.id, 'left', e)}
-                  className={`${itemBase} flex items-center gap-2 ${
-                    sel
-                      ? 'bg-purple-500/20 text-white'
-                      : 'text-white/50 hover:bg-white/5 hover:text-white/80'
-                  }`}
-                >
-                  {f.featured && <span className="w-1.5 h-1.5 rounded-full bg-purple-400/60 flex-shrink-0" />}
-                  <span className="truncate">{f.title || <em className="text-white/20">Untitled</em>}</span>
-                </div>
-              );
-            })}
+            ) : hasGroups ? (
+              <>
+                {groups.map(group => {
+                  const groupFeatures = group.ids.map(id => allFeatures.find(f => f.id === id)).filter(Boolean) as RichFeature[];
+                  const allGroupSelected = groupFeatures.every(f => leftSel.has(f.id));
+                  return (
+                    <div key={group.label} className="mb-1">
+                      {/* Group header */}
+                      <div className="flex items-center gap-1.5 px-2 pt-2 pb-1">
+                        <span
+                          className="w-2 h-2 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: group.color || '#a855f7' }}
+                        />
+                        <span className="text-xs font-semibold text-white/35 uppercase tracking-wider truncate flex-1">
+                          {group.label}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => allGroupSelected
+                            ? setLeftSel(prev => { const n = new Set(prev); groupFeatures.forEach(f => n.delete(f.id)); return n; })
+                            : selectGroup(groupFeatures.map(f => f.id))
+                          }
+                          className="text-[10px] text-white/25 hover:text-purple-400 transition-colors flex-shrink-0"
+                        >
+                          {allGroupSelected ? 'deselect' : 'select all'}
+                        </button>
+                      </div>
+                      {groupFeatures.map(f => renderFeatureItem(f, leftSel.has(f.id)))}
+                    </div>
+                  );
+                })}
+                {unusedIds.length > 0 && (
+                  <div className="mb-1">
+                    <div className="flex items-center gap-1.5 px-2 pt-2 pb-1">
+                      <span className="w-2 h-2 rounded-full flex-shrink-0 bg-white/15" />
+                      <span className="text-xs font-semibold text-white/25 uppercase tracking-wider flex-1">Unused</span>
+                    </div>
+                    {unusedIds.map(id => {
+                      const f = allFeatures.find(f => f.id === id);
+                      return f ? renderFeatureItem(f, leftSel.has(f.id)) : null;
+                    })}
+                  </div>
+                )}
+              </>
+            ) : (
+              // No other versions — flat list
+              available.map(f => renderFeatureItem(f, leftSel.has(f.id)))
+            )}
           </div>
         </div>
 
@@ -2063,7 +2136,7 @@ function FeatureTransfer({
             <span>Included</span>
             <span className="text-white/30 font-normal normal-case tracking-normal">{included.length}</span>
           </div>
-          <div className="flex-1 overflow-y-auto py-1" style={{ minHeight: '120px', maxHeight: '220px' }}>
+          <div className="flex-1 overflow-y-auto py-1" style={{ minHeight: '120px', maxHeight: '260px' }}>
             {included.length === 0 ? (
               <p className="text-white/20 text-xs text-center py-6 italic">None yet</p>
             ) : included.map(f => {
@@ -2090,7 +2163,6 @@ function FeatureTransfer({
                   }`}
                 >
                   <GripVertical className="w-3 h-3 text-white/20 flex-shrink-0 cursor-grab" />
-                  {f.featured && <span className="w-1.5 h-1.5 rounded-full bg-purple-400/60 flex-shrink-0" />}
                   <span className="truncate">{f.title || <em className="text-white/20">Untitled</em>}</span>
                 </div>
               );
@@ -2103,7 +2175,6 @@ function FeatureTransfer({
         <p className="text-white/25 text-xs mt-1.5">
           {leftSel.size > 0 && `${leftSel.size} selected — click › to include`}
           {rightSel.size > 0 && `${rightSel.size} selected — click ‹ to remove`}
-          {leftSel.size === 0 && rightSel.size === 0 && ''}
           {' · '}Shift+click to select multiple
         </p>
       )}
@@ -2121,6 +2192,7 @@ function VersionEditor({
   onUpdateDemoUrl,
   toolName: _toolName,
   toolRichFeatures = [],
+  allVersions = [],
   onRegenerate,
   isRegenerating = false,
   highlightedFields = new Set<string>(),
@@ -2134,6 +2206,7 @@ function VersionEditor({
   onUpdateDemoUrl: (url: string) => void;
   toolName: string;
   toolRichFeatures?: RichFeature[];
+  allVersions?: ToolVersion[];
   onRegenerate?: () => void;
   isRegenerating?: boolean;
   highlightedFields?: Set<string>;
@@ -2390,6 +2463,8 @@ function VersionEditor({
         allFeatures={toolRichFeatures}
         includedIds={version.includedFeatureIds ?? []}
         onChange={ids => onUpdate({ includedFeatureIds: ids })}
+        allVersions={allVersions}
+        currentVersionId={version.id}
       />
 
       {/* What's Included */}
