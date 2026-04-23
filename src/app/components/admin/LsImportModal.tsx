@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, ChevronDown, ChevronRight, Download, Loader2, RefreshCw } from 'lucide-react';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 
@@ -135,7 +136,7 @@ export function LsImportModal({ open, onImport, onClose }: Props) {
     return { text: 'Sub', cls: 'bg-purple-500/15 text-purple-300 border-purple-500/25' };
   };
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"
       onClick={onClose}
@@ -311,6 +312,7 @@ export function LsImportModal({ open, onImport, onClose }: Props) {
           <p className="text-white/20 text-xs text-center">Each variant creates a separate version · Click monthly &amp; yearly separately for distinct pricing tiers</p>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
