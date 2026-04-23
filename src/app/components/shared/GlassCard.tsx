@@ -1,9 +1,10 @@
 import { motion } from "motion/react";
-import { ReactNode } from "react";
+import React, { ReactNode } from "react";
 
 interface GlassCardProps {
   children: ReactNode;
   className?: string;
+  style?: React.CSSProperties;
   hover?: boolean;
   neonBorder?: boolean;
   amberBorder?: boolean;
@@ -11,7 +12,7 @@ interface GlassCardProps {
   onClick?: () => void;
 }
 
-export function GlassCard({ children, className = "", hover = false, neonBorder = false, amberBorder = false, darkBg = false, onClick }: GlassCardProps) {
+export function GlassCard({ children, className = "", style, hover = false, neonBorder = false, amberBorder = false, darkBg = false, onClick }: GlassCardProps) {
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const hasSyntheticBorder = neonBorder || amberBorder;
 
@@ -24,6 +25,7 @@ export function GlassCard({ children, className = "", hover = false, neonBorder 
         backgroundColor: (neonBorder || amberBorder || darkBg)
           ? 'var(--fastoosh-card-dark, rgba(0,0,0,0.95))'
           : 'var(--fastoosh-card-bg, rgba(255,255,255,0.02))',
+        ...style,
       }}
       initial={false}
       whileHover={hover && !reduceMotion ? { 

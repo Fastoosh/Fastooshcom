@@ -656,6 +656,14 @@ function PricingCard({
           )}
         </div>
 
+        {/* Tier inheritance label */}
+        {index > 0 && tool?.versions && tool.versions[index - 1] && allFeatures.length > 0 && (
+          <p className="text-xs text-white/30 mb-3 flex items-center gap-1.5">
+            <span className="inline-block w-3 h-px bg-white/20" />
+            Everything in <span className="text-white/50 font-medium">{tool.versions[index - 1].versionType}</span>, plus:
+          </p>
+        )}
+
         {/* Feature list */}
         {allFeatures.length > 0 && (
           <div className="flex-grow mb-7">
@@ -681,7 +689,7 @@ function PricingCard({
             {hasMore && (
               <button
                 type="button"
-                onClick={() => setFeaturesExpanded(e => !e)}
+                onClick={(e) => { e.stopPropagation(); setFeaturesExpanded(e => !e); }}
                 className="mt-3 flex items-center gap-1.5 text-xs text-white/35 hover:text-white/60 transition-colors"
               >
                 <svg className={`w-3 h-3 transition-transform ${featuresExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
