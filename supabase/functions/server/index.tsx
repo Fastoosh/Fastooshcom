@@ -3353,44 +3353,34 @@ app.post("/make-server-e07959ec/tools", requireAuth, async (c) => {
     // Insert versions if provided
     if (versions && Array.isArray(versions) && versions.length > 0) {
       const versionsWithToolId = versions.map(v => {
-        // Strip all frontend-only / non-DB fields from each version
-        const {
-          id: _vId,
-          pricingModel,
-          monthlyPrice,
-          yearlyPrice,
-          lifetimePrice,
-          lifetimeBuyUrl,
-          color,
-          whatsIncluded,
-          activationSteps,
-          richFeatures: _oldRichFeatures,
-          includedFeatureIds,
-          demoUrl: _vDemoUrl,
-          pricingDisplay: _pd,
-          ...vRest
-        } = v;
-
-        const priceSentinel =
-          pricingModel === 'subscription'
-            ? `subscription|${monthlyPrice ?? ''}|${yearlyPrice ?? ''}`
-            : `lifetime|${lifetimePrice ?? ''}|${lifetimeBuyUrl ?? ''}`;
-
+        const priceSentinel = v.pricingModel === 'subscription'
+          ? `subscription|${v.monthlyPrice ?? ''}|${v.yearlyPrice ?? ''}`
+          : `lifetime|${v.lifetimePrice ?? ''}|${v.lifetimeBuyUrl ?? ''}`;
         const enrichedFeatures = [
-          ...(priceSentinel ? [`💰 ${priceSentinel}`] : []),
-          ...(color ? [`🖌️ color|${color}`] : []),
-          ...((whatsIncluded ?? []) as string[]).filter(Boolean).map((item: string) => `📦 ${item}`),
-          ...((activationSteps ?? []) as string[]).filter(Boolean).map((step: string) => `🔑 ${step}`),
-          ...((includedFeatureIds ?? []) as string[]).filter(Boolean).map((id: string) => `✅ ${id}`),
+          `💰 ${priceSentinel}`,
+          ...(v.color ? [`🖌️ color|${v.color}`] : []),
+          ...((v.whatsIncluded ?? []) as string[]).filter(Boolean).map((item: string) => `📦 ${item}`),
+          ...((v.activationSteps ?? []) as string[]).filter(Boolean).map((step: string) => `🔑 ${step}`),
+          ...((v.includedFeatureIds ?? []) as string[]).filter(Boolean).map((fid: string) => `✅ ${fid}`),
         ];
-
-        return { ...toDbRow(vRest), features: enrichedFeatures, tool_id: tool.id };
+        return {
+          tool_id:                  tool.id,
+          version_type:             v.versionType ?? '',
+          tagline:                  v.tagline ?? null,
+          features:                 enrichedFeatures,
+          how_it_works:             v.howItWorks ?? null,
+          system_requirements:      v.systemRequirements ?? null,
+          lemon_squeezy_product_id: v.lemonSqueezyProductId ?? null,
+          lemon_squeezy_variant_id: v.lemonSqueezyVariantId ?? null,
+          download_url:             v.downloadUrl ?? '',
+          order_index:              v.orderIndex ?? 0,
+        };
       });
-      
+
       const { error: versionsError } = await supabase
         .from('tool_versions')
         .insert(versionsWithToolId);
-      
+
       if (versionsError) {
         console.log(`Error creating tool versions: ${versionsError.message}`);
         // Roll back — delete the tool so we don't have orphaned records
@@ -3485,38 +3475,28 @@ app.put("/make-server-e07959ec/tools/:id", requireAuth, async (c) => {
     // cycle entirely to avoid silently wiping existing version rows.
     if (versions && Array.isArray(versions) && versions.length > 0) {
       const versionsWithToolId = versions.map(v => {
-        // Strip all frontend-only / non-DB fields from each version
-        const {
-          id: _vId,
-          pricingModel,
-          monthlyPrice,
-          yearlyPrice,
-          lifetimePrice,
-          lifetimeBuyUrl,
-          color,
-          whatsIncluded,
-          activationSteps,
-          richFeatures: _oldRichFeatures,
-          includedFeatureIds,
-          demoUrl: _vDemoUrl,
-          pricingDisplay: _pd,
-          ...vRest
-        } = v;
-
-        const priceSentinel =
-          pricingModel === 'subscription'
-            ? `subscription|${monthlyPrice ?? ''}|${yearlyPrice ?? ''}`
-            : `lifetime|${lifetimePrice ?? ''}|${lifetimeBuyUrl ?? ''}`;
-
+        const priceSentinel = v.pricingModel === 'subscription'
+          ? `subscription|${v.monthlyPrice ?? ''}|${v.yearlyPrice ?? ''}`
+          : `lifetime|${v.lifetimePrice ?? ''}|${v.lifetimeBuyUrl ?? ''}`;
         const enrichedFeatures = [
-          ...(priceSentinel ? [`💰 ${priceSentinel}`] : []),
-          ...(color ? [`🖌️ color|${color}`] : []),
-          ...((whatsIncluded ?? []) as string[]).filter(Boolean).map((item: string) => `📦 ${item}`),
-          ...((activationSteps ?? []) as string[]).filter(Boolean).map((step: string) => `🔑 ${step}`),
-          ...((includedFeatureIds ?? []) as string[]).filter(Boolean).map((id: string) => `✅ ${id}`),
+          `💰 ${priceSentinel}`,
+          ...(v.color ? [`🖌️ color|${v.color}`] : []),
+          ...((v.whatsIncluded ?? []) as string[]).filter(Boolean).map((item: string) => `📦 ${item}`),
+          ...((v.activationSteps ?? []) as string[]).filter(Boolean).map((step: string) => `🔑 ${step}`),
+          ...((v.includedFeatureIds ?? []) as string[]).filter(Boolean).map((fid: string) => `✅ ${fid}`),
         ];
-
-        return { ...toDbRow(vRest), features: enrichedFeatures, tool_id: id };
+        return {
+          tool_id:                  id,
+          version_type:             v.versionType ?? '',
+          tagline:                  v.tagline ?? null,
+          features:                 enrichedFeatures,
+          how_it_works:             v.howItWorks ?? null,
+          system_requirements:      v.systemRequirements ?? null,
+          lemon_squeezy_product_id: v.lemonSqueezyProductId ?? null,
+          lemon_squeezy_variant_id: v.lemonSqueezyVariantId ?? null,
+          download_url:             v.downloadUrl ?? '',
+          order_index:              v.orderIndex ?? 0,
+        };
       });
 
       // Snapshot existing version IDs before touching anything.
