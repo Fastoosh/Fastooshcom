@@ -851,7 +851,27 @@ export function ToolFormNew({
   };
 
   const handleLsImportAll = (payloads: LsImportPayload[]) => {
-    payloads.forEach(p => handleLsImport(p));
+    const base = formData.versions || [];
+    const newVersions: ToolVersion[] = payloads.map((p, i) => ({
+      id: `version-${Date.now()}-${i}`,
+      versionType:           p.versionName,
+      pricingModel:          p.pricingModel,
+      color:                 VERSION_COLORS[(base.length + i) % VERSION_COLORS.length],
+      monthlyPrice:          p.monthlyPrice  ?? '',
+      yearlyPrice:           p.yearlyPrice   ?? '',
+      lifetimePrice:         p.lifetimePrice ?? '',
+      lifetimeBuyUrl:        p.buyNowUrl,
+      downloadUrl:           p.buyNowUrl,
+      lemonSqueezyVariantId: p.variantId,
+      lemonSqueezyProductId: p.productId,
+      whatsIncluded:         [],
+      activationSteps:       [],
+      includedFeatureIds:    [],
+      demoUrl:               '',
+    }));
+    const updated = [...base, ...newVersions];
+    setFormData(prev => ({ ...prev, versions: updated }));
+    if (newVersions.length > 0) setActiveVersionTab(newVersions[newVersions.length - 1].id);
   };
 
   const deleteVersion = (versionId: string) => {
