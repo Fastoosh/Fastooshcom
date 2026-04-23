@@ -413,7 +413,17 @@ function PricingCard({
 }) {
   const { t, i18n } = useTranslation();
   const { mainPrice, period, subLabel, ctaPrice, allFeatures } = parsePricing(version, tool?.richFeatures ?? [], billingCycle ?? 'monthly');
-  
+  const [featuresExpanded, setFeaturesExpanded] = useState(false);
+
+  const FEATURES_PREVIEW = 5;
+  const includedFeatures = allFeatures.filter(f => f.included);
+  const excludedFeatures = allFeatures.filter(f => !f.included);
+  const visibleFeatures = featuresExpanded
+    ? allFeatures
+    : includedFeatures.slice(0, FEATURES_PREVIEW);
+  const hiddenIncludedCount = Math.max(0, includedFeatures.length - FEATURES_PREVIEW);
+  const hasMore = hiddenIncludedCount > 0 || excludedFeatures.length > 0;
+
   // Detect free version by prices, not name
   const { monthlyPrice, yearlyPrice, lifetimePrice } = version;
   const isFree = !monthlyPrice?.trim() && !yearlyPrice?.trim() && !lifetimePrice?.trim();
@@ -648,25 +658,41 @@ function PricingCard({
 
         {/* Feature list */}
         {allFeatures.length > 0 && (
-          <ul className="space-y-2 flex-grow mb-7">
-            {allFeatures.map((item, i) => (
-              <li key={i} className={`flex items-start gap-2.5 ${!item.included ? 'opacity-35' : ''}`}>
-                {item.included ? (
-                  <Check
-                    className="w-3.5 h-3.5 mt-0.5 flex-shrink-0"
-                    style={{ color: isFree ? '#34d399' : isLifetimeActive ? '#fbbf24' : versionColor }}
-                  />
-                ) : (
-                  <svg className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-white/20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14" />
-                  </svg>
-                )}
-                <span className={`text-sm leading-snug ${item.included ? 'text-white/70' : 'text-white/25'}`}>
-                  {item.title}
-                </span>
-              </li>
-            ))}
-          </ul>
+          <div className="flex-grow mb-7">
+            <ul className="space-y-2">
+              {visibleFeatures.map((item, i) => (
+                <li key={i} className={`flex items-start gap-2.5 ${!item.included ? 'opacity-35' : ''}`}>
+                  {item.included ? (
+                    <Check
+                      className="w-3.5 h-3.5 mt-0.5 flex-shrink-0"
+                      style={{ color: isFree ? '#34d399' : isLifetimeActive ? '#fbbf24' : versionColor }}
+                    />
+                  ) : (
+                    <svg className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-white/20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14" />
+                    </svg>
+                  )}
+                  <span className={`text-sm leading-snug ${item.included ? 'text-white/70' : 'text-white/25'}`}>
+                    {item.title}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            {hasMore && (
+              <button
+                type="button"
+                onClick={() => setFeaturesExpanded(e => !e)}
+                className="mt-3 flex items-center gap-1.5 text-xs text-white/35 hover:text-white/60 transition-colors"
+              >
+                <svg className={`w-3 h-3 transition-transform ${featuresExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+                {featuresExpanded
+                  ? 'Show less'
+                  : `+${hiddenIncludedCount + excludedFeatures.length} more features`}
+              </button>
+            )}
+          </div>
         )}
 
         {/* CTA */}
