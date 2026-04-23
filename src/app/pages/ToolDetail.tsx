@@ -1817,6 +1817,7 @@ export function ToolDetail() {
                     key={v.id}
                     version={v}
                     index={i}
+                    tool={tool}
                     user={user}
                     userPurchasedProductNames={userPurchasedProductNames}
                     onSignInRequired={openAuthModal}
