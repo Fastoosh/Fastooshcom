@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
@@ -69,11 +69,6 @@ export const CTA_ICON_OPTIONS = [
   'Rocket',
 ];
 
-// Convert icon options to SelectOption format for AdminSelect
-const CTA_ICON_SELECT_OPTIONS = [
-  { value: '', label: '— Default —' },
-  ...CTA_ICON_OPTIONS.map(icon => ({ value: icon, label: icon }))
-];
 
 interface ToolVersion {
   id: string;
@@ -331,39 +326,6 @@ export function ToolFormNew({
     }
   };
 
-  const handleGuideRetheme = async () => {
-    const slug = formData.slug || tool.slug;
-    if (!slug) return;
-    setGuideUploading(true);
-    setGuideMsg(null);
-    try {
-      const adminToken = localStorage.getItem('admin_token') ?? '';
-      const res = await fetch(`${API_BASE}/tools/${encodeURIComponent(slug)}/guide-retheme`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${publicAnonKey}`,
-          'X-Admin-Token': adminToken,
-        },
-      });
-      const data = await res.json();
-      if (data.success) {
-        setGuideMsg({ type: 'ok', text: 'Guide re-themed with AI successfully.' });
-        if (data.themedHtml) {
-          setGuideEditorHtml(data.themedHtml);
-          setGuideEditorOpen(true);
-          setGuideEditorTab('preview');
-        }
-      } else {
-        setGuideMsg({ type: 'err', text: data.error ?? 'Re-theming failed.' });
-      }
-    } catch (err) {
-      setGuideMsg({ type: 'err', text: `Re-theme error: ${String(err)}` });
-    } finally {
-      setGuideUploading(false);
-    }
-  };
-
   const handleGuideDelete = async () => {
     const slug = formData.slug || tool.slug;
     const id   = tool.id;
@@ -599,7 +561,7 @@ export function ToolFormNew({
           versions: (formData.versions || []).map(v => ({
             id: v.id,
             versionType: v.versionType,
-            features: v.features,
+            richFeatures: v.richFeatures,
             whatsIncluded: v.whatsIncluded,
             activationSteps: v.activationSteps,
           })),
@@ -668,9 +630,9 @@ export function ToolFormNew({
           const gv = data.versions.find((x: any) => x.id === v.id);
           if (!gv) return v;
           const vUpdates: Partial<ToolVersion> = {};
-          if (gv.features && (improveExisting || !v.features || v.features.filter((f: string) => f.trim()).length === 0)) {
-            vUpdates.features = gv.features;
-            changedFields.push(`${v.id}:features`);
+          if (gv.richFeatures && (improveExisting || !v.richFeatures || v.richFeatures.filter((f: any) => f.title?.trim()).length === 0)) {
+            vUpdates.richFeatures = gv.richFeatures;
+            changedFields.push(`${v.id}:richFeatures`);
           }
           if (gv.whatsIncluded && (improveExisting || !v.whatsIncluded || v.whatsIncluded.filter((f: string) => f.trim()).length === 0)) {
             vUpdates.whatsIncluded = gv.whatsIncluded;
@@ -740,7 +702,7 @@ export function ToolFormNew({
       if (gv) {
         const vUpdates: Partial<ToolVersion> = {};
         const changedFields: string[] = [];
-        if (gv.features)        { vUpdates.features        = gv.features;        changedFields.push(`${versionId}:features`); }
+        if (gv.richFeatures)    { vUpdates.richFeatures    = gv.richFeatures;    changedFields.push(`${versionId}:richFeatures`); }
         if (gv.whatsIncluded)   { vUpdates.whatsIncluded   = gv.whatsIncluded;   changedFields.push(`${versionId}:whatsIncluded`); }
         if (gv.activationSteps) { vUpdates.activationSteps = gv.activationSteps; changedFields.push(`${versionId}:activationSteps`); }
         updateVersion(versionId, vUpdates);
@@ -2248,7 +2210,7 @@ function VersionEditor({
 // ── FeaturesEditor ────────────────────────────────────────────────────────────
 
 function FeaturesEditor({
-  versionId,
+  versionId: _versionId,
   versionType,
   toolName,
   richFeatures,
@@ -2607,6 +2569,21 @@ function FeaturesEditor({
           </div>
         ))}
       </div>
+
+      {/* Bottom add-feature button — only when there's already at least one feature */}
+      {richFeatures.length > 0 && (
+        <button
+          type="button"
+          onClick={addFeature}
+          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl
+            border border-dashed border-white/15 text-white/40
+            hover:border-purple-400/40 hover:text-purple-300 hover:bg-purple-500/5
+            active:scale-[0.99] transition-all duration-150 text-xs font-semibold"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          Add Feature
+        </button>
+      )}
 
       {/* Preview lightbox */}
       {previewUrl && (
