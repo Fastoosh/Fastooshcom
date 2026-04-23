@@ -89,6 +89,8 @@ interface ToolVersion {
   activationSteps?: string[];
   includedFeatureIds?: string[];  // IDs from tool.richFeatures that are included in this version
   demoUrl?: string;
+  inheritanceLabelEnabled?: boolean;  // Show "Everything in X, plus:" label above features
+  inheritanceLabel?: string;  // Template supports {{previousTier}}
 }
 
 interface Tool {
@@ -2267,6 +2269,71 @@ function FeatureTransfer({
   );
 }
 
+// ── Inheritance Label Editor ────────────────────────────────────────────────
+// Per-version label shown above the features on the pricing card, e.g.
+// "Everything in Free, plus:". Supports {{previousTier}} template which
+// auto-renders the previous version's name at display time.
+function InheritanceLabelEditor({
+  version,
+  allVersions,
+  onUpdate,
+}: {
+  version: ToolVersion;
+  allVersions: ToolVersion[];
+  onUpdate: (updates: Partial<ToolVersion>) => void;
+}) {
+  const idx = allVersions.findIndex(v => v.id === version.id);
+  const prevVersion = idx > 0 ? allVersions[idx - 1] : null;
+  const prevTierName = prevVersion?.versionType || '';
+
+  // Default: enabled for non-first versions
+  const enabled = version.inheritanceLabelEnabled ?? idx > 0;
+  const labelValue = version.inheritanceLabel ?? (idx > 0 ? `Everything in {{previousTier}}, plus:` : '');
+
+  // Live preview (resolve template)
+  const preview = labelValue.replace(/\{\{previousTier\}\}/g, prevTierName || '—');
+
+  return (
+    <div className="p-4 rounded-lg bg-white/3 border border-white/8 space-y-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <label className="text-sm font-medium text-gray-300 flex items-center gap-2">
+            <Tag className="w-3.5 h-3.5 text-white/40" />
+            Inheritance label
+          </label>
+          <p className="text-xs text-white/35 mt-0.5">Shown above this version's features</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => onUpdate({ inheritanceLabelEnabled: !enabled })}
+          className={`relative w-10 h-5 rounded-full transition-colors ${enabled ? 'bg-purple-500' : 'bg-white/10'}`}
+          aria-label={enabled ? 'Disable label' : 'Enable label'}
+        >
+          <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${enabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
+        </button>
+      </div>
+
+      {enabled && (
+        <>
+          <Input
+            value={labelValue}
+            onChange={(e) => onUpdate({ inheritanceLabel: e.target.value })}
+            placeholder="Everything in {{previousTier}}, plus:"
+            className="bg-black/50 border-white/20 text-white text-sm"
+          />
+          <div className="flex items-start gap-2 text-xs">
+            <span className="text-white/30 shrink-0 mt-0.5">Preview:</span>
+            <span className="text-white/60 italic">— {preview || '(empty)'}</span>
+          </div>
+          <p className="text-xs text-white/25 leading-relaxed">
+            Use <code className="text-purple-300 bg-purple-500/10 px-1 py-0.5 rounded text-[10px]">{'{{previousTier}}'}</code> to auto-insert the previous version's name. Updates automatically when versions are reordered.
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
 // Version Editor Component
 function VersionEditor({
   version,
@@ -2550,6 +2617,13 @@ function VersionEditor({
         onChange={ids => onUpdate({ includedFeatureIds: ids })}
         allVersions={allVersions}
         currentVersionId={version.id}
+      />
+
+      {/* Inheritance label */}
+      <InheritanceLabelEditor
+        version={version}
+        allVersions={allVersions}
+        onUpdate={onUpdate}
       />
 
       {/* What's Included */}

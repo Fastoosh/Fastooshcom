@@ -14,6 +14,7 @@ import {
   Heart, Rocket, LucideIcon, Tag, Wrench, AlertTriangle,
 } from 'lucide-react';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import useEmblaCarousel from 'embla-carousel-react';
 import { useTracker } from '../hooks/useTracker';
@@ -63,6 +64,8 @@ interface ToolVersion {
   downloadUrl: string;
   lemonSqueezyVariantId?: string;
   includedFeatureIds?: string[];  // IDs from tool.richFeatures included in this version
+  inheritanceLabelEnabled?: boolean;
+  inheritanceLabel?: string;
 }
 
 interface Tool {
@@ -382,6 +385,195 @@ function DemoPlayer({ url, toolId, toolName, toolSlug }: { url: string; toolId: 
   );
 }
 
+// ── ComparisonModal ───────────────────────────────────────────────────────────
+// Slide-up modal showing full feature matrix across all tiers. Respects the
+// currently-selected billing cycle so prices/CTAs match what's on the page.
+
+function ComparisonModal({
+  open,
+  onClose,
+  tool,
+  billingCycle,
+  user,
+  onFreeDownload,
+  onBuyClick,
+  onSignInRequired,
+}: {
+  open: boolean;
+  onClose: () => void;
+  tool: Tool;
+  billingCycle: 'monthly' | 'yearly' | 'lifetime';
+  user: ReturnType<typeof useUserAuth>['user'];
+  onFreeDownload: (v: ToolVersion) => void;
+  onBuyClick?: (v: ToolVersion) => void;
+  onSignInRequired: (msg?: string) => void;
+}) {
+  const { t } = useTranslation();
+
+  // ESC to close
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
+  // Lock body scroll while open
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [open]);
+
+  if (!open) return null;
+
+  const versions = tool.versions ?? [];
+  const features = (tool.richFeatures ?? []).filter(f => f.title?.trim());
+
+  const isVersionFree = (v: ToolVersion) =>
+    !v.monthlyPrice?.trim() && !v.yearlyPrice?.trim() && !v.lifetimePrice?.trim();
+
+  const handleCta = (v: ToolVersion) => {
+    onClose();
+    if (isVersionFree(v)) {
+      if (!user) { onSignInRequired('Sign in to download free tools.'); return; }
+      onFreeDownload(v);
+    } else {
+      onBuyClick?.(v);
+    }
+  };
+
+  return createPortal(
+    <AnimatePresence>
+      <motion.div
+        key="backdrop"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.2 }}
+        className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center"
+        onClick={onClose}
+      >
+        <motion.div
+          key="sheet"
+          initial={{ y: '100%', opacity: 0.5 }}
+          animate={{ y: 0, opacity: 1 }}
+          exit={{ y: '100%', opacity: 0 }}
+          transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+          onClick={(e) => e.stopPropagation()}
+          className="w-full sm:max-w-5xl bg-[#0d0d0f] border-t sm:border border-white/12 sm:rounded-2xl max-h-[90vh] flex flex-col shadow-2xl"
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between px-5 sm:px-6 py-4 border-b border-white/8 shrink-0">
+            <div>
+              <h3 className="text-base font-bold text-white">Compare all plans</h3>
+              <p className="text-xs text-white/40 mt-0.5">{tool.name}</p>
+            </div>
+            <button
+              onClick={onClose}
+              className="p-2 rounded-lg hover:bg-white/8 text-white/40 hover:text-white/70 transition-colors"
+              aria-label="Close"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Table */}
+          <div className="flex-1 overflow-auto">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-[#0d0d0f] z-10">
+                <tr className="border-b border-white/10">
+                  <th className="text-left text-xs font-medium text-white/40 px-5 sm:px-6 py-3 min-w-[180px]">
+                    Features
+                  </th>
+                  {versions.map(v => (
+                    <th key={v.id} className="text-center px-4 py-3 min-w-[120px]">
+                      <div className="flex items-center justify-center gap-1.5">
+                        <span
+                          className="inline-block w-1.5 h-1.5 rounded-full"
+                          style={{ backgroundColor: v.color || '#a855f7' }}
+                        />
+                        <span className="text-xs font-semibold text-white uppercase tracking-wide">
+                          {v.versionType}
+                        </span>
+                      </div>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {features.map((feat, i) => (
+                  <tr
+                    key={feat.id}
+                    className={`border-b border-white/5 hover:bg-white/3 transition-colors ${i % 2 === 1 ? 'bg-white/[0.015]' : ''}`}
+                  >
+                    <td className="text-left text-white/70 px-5 sm:px-6 py-3">{feat.title}</td>
+                    {versions.map(v => {
+                      const included = (v.includedFeatureIds ?? []).includes(feat.id);
+                      return (
+                        <td key={v.id} className="text-center px-4 py-3">
+                          {included ? (
+                            <Check
+                              className="w-4 h-4 mx-auto"
+                              style={{ color: v.color || '#a855f7' }}
+                            />
+                          ) : (
+                            <svg className="w-3.5 h-3.5 mx-auto text-white/20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14" />
+                            </svg>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* CTAs */}
+          <div className="border-t border-white/8 p-4 sm:p-5 shrink-0">
+            <div
+              className="grid gap-2"
+              style={{ gridTemplateColumns: `minmax(180px, 1fr) repeat(${versions.length}, minmax(120px, 1fr))` }}
+            >
+              <div className="hidden sm:block" />
+              {versions.map(v => {
+                const { mainPrice, period, ctaPrice } = parsePricing(v, tool.richFeatures ?? [], billingCycle);
+                const free = isVersionFree(v);
+                return (
+                  <div key={v.id} className="flex flex-col items-center gap-2">
+                    <div className="text-center">
+                      <div className="text-lg font-bold text-white leading-tight">{mainPrice}</div>
+                      {period && <div className="text-[10px] text-white/40">{period}</div>}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleCta(v)}
+                      className={`w-full px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+                        free
+                          ? 'bg-white/8 hover:bg-white/12 border border-emerald-500/30 text-emerald-300'
+                          : 'bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-fuchsia-500 text-white'
+                      }`}
+                    >
+                      {free ? (tool.freeCtaText || t('tools.detail.downloadFree')) : (tool.paidCtaText || t('tools.detail.buyNow'))}
+                      {!free && ctaPrice && <span className="ml-1 opacity-70">{ctaPrice}</span>}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>,
+    document.body
+  );
+}
+
 // ── PricingCard ───────────────────────────────────────────────────────────────
 
 function PricingCard({
@@ -397,6 +589,7 @@ function PricingCard({
   isBestValue,
   isMostPopular,
   tool,
+  onCompare,
 }: {
   version: ToolVersion;
   index: number;
@@ -410,19 +603,25 @@ function PricingCard({
   isBestValue?: boolean;
   isMostPopular?: boolean;
   tool?: Tool;
+  onCompare?: () => void;
 }) {
   const { t, i18n } = useTranslation();
   const { mainPrice, period, subLabel, ctaPrice, allFeatures } = parsePricing(version, tool?.richFeatures ?? [], billingCycle ?? 'monthly');
-  const [featuresExpanded, setFeaturesExpanded] = useState(false);
 
-  const FEATURES_PREVIEW = 5;
-  const includedFeatures = allFeatures.filter(f => f.included);
-  const excludedFeatures = allFeatures.filter(f => !f.included);
-  const visibleFeatures = featuresExpanded
-    ? allFeatures
-    : includedFeatures.slice(0, FEATURES_PREVIEW);
-  const hiddenIncludedCount = Math.max(0, includedFeatures.length - FEATURES_PREVIEW);
-  const hasMore = hiddenIncludedCount > 0 || excludedFeatures.length > 0;
+  // Pattern A: show only this tier's NEW features (not in the previous tier)
+  const prevVersion = tool?.versions && index > 0 ? tool.versions[index - 1] : null;
+  const prevIncludedIds = new Set<string>(prevVersion?.includedFeatureIds ?? []);
+  const richFeatures = tool?.richFeatures ?? [];
+  const deltaFeatures = index > 0
+    ? richFeatures
+        .filter(rf => (version.includedFeatureIds ?? []).includes(rf.id) && !prevIncludedIds.has(rf.id))
+        .map(rf => ({ title: rf.title.trim(), included: true }))
+    : allFeatures.filter(f => f.included);
+
+  // Resolve inheritance label with {{previousTier}} template
+  const showInheritanceLabel = index > 0 && (version.inheritanceLabelEnabled ?? true);
+  const rawLabel = version.inheritanceLabel ?? `Everything in {{previousTier}}, plus:`;
+  const resolvedLabel = rawLabel.replace(/\{\{previousTier\}\}/g, prevVersion?.versionType ?? '');
 
   // Detect free version by prices, not name
   const { monthlyPrice, yearlyPrice, lifetimePrice } = version;
@@ -657,50 +856,46 @@ function PricingCard({
         </div>
 
         {/* Tier inheritance label */}
-        {index > 0 && tool?.versions && tool.versions[index - 1] && allFeatures.length > 0 && (
-          <p className="text-xs text-white/30 mb-3 flex items-center gap-1.5">
+        {showInheritanceLabel && resolvedLabel.trim() && (
+          <p className="text-xs text-white/40 mb-3 flex items-center gap-1.5">
             <span className="inline-block w-3 h-px bg-white/20" />
-            Everything in <span className="text-white/50 font-medium">{tool.versions[index - 1].versionType}</span>, plus:
+            <span>{resolvedLabel}</span>
           </p>
         )}
 
-        {/* Feature list */}
-        {allFeatures.length > 0 && (
-          <div className="flex-grow mb-7">
+        {/* Feature list — delta only for tiers > 0, all included for tier 0 */}
+        <div className="flex-grow mb-5">
+          {deltaFeatures.length > 0 ? (
             <ul className="space-y-2">
-              {visibleFeatures.map((item, i) => (
-                <li key={i} className={`flex items-start gap-2.5 ${!item.included ? 'opacity-35' : ''}`}>
-                  {item.included ? (
-                    <Check
-                      className="w-3.5 h-3.5 mt-0.5 flex-shrink-0"
-                      style={{ color: isFree ? '#34d399' : isLifetimeActive ? '#fbbf24' : versionColor }}
-                    />
-                  ) : (
-                    <svg className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-white/20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14" />
-                    </svg>
-                  )}
-                  <span className={`text-sm leading-snug ${item.included ? 'text-white/70' : 'text-white/25'}`}>
+              {deltaFeatures.map((item, i) => (
+                <li key={i} className="flex items-start gap-2.5">
+                  <Check
+                    className="w-3.5 h-3.5 mt-0.5 flex-shrink-0"
+                    style={{ color: isFree ? '#34d399' : isLifetimeActive ? '#fbbf24' : versionColor }}
+                  />
+                  <span className="text-sm leading-snug text-white/70">
                     {item.title}
                   </span>
                 </li>
               ))}
             </ul>
-            {hasMore && (
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); setFeaturesExpanded(e => !e); }}
-                className="mt-3 flex items-center gap-1.5 text-xs text-white/35 hover:text-white/60 transition-colors"
-              >
-                <svg className={`w-3 h-3 transition-transform ${featuresExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                </svg>
-                {featuresExpanded
-                  ? 'Show less'
-                  : `+${hiddenIncludedCount + excludedFeatures.length} more features`}
-              </button>
-            )}
-          </div>
+          ) : index > 0 ? (
+            <p className="text-sm text-white/40 italic">Same features as previous tier</p>
+          ) : null}
+        </div>
+
+        {/* Compare all plans link */}
+        {onCompare && allFeatures.length > 0 && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onCompare(); }}
+            className="mb-4 flex items-center justify-center gap-1.5 text-xs text-white/40 hover:text-white/70 transition-colors mx-auto"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+            </svg>
+            See full Comparison
+          </button>
         )}
 
         {/* CTA */}
@@ -1274,6 +1469,7 @@ export function ToolDetail() {
   const [reviews, setReviews] = useState<any[]>([]);
   // Billing cycle toggle — monthly/yearly for subscriptions; lifetime when any version has lifetimePrice
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly' | 'lifetime'>('yearly');
+  const [compareOpen, setCompareOpen] = useState(false);
   // CMS category translations for tool status badges { "New": "Nouveau", ... }
   const [cmsStatusTrans, setCmsStatusTrans] = useState<Record<string, string>>({});
   // Whether this tool has an uploaded user guide
@@ -1864,6 +2060,7 @@ export function ToolDetail() {
                     billingCycle={billingCycle}
                     isBestValue={v.id === bestValueVersionId}
                     isMostPopular={v.id === mostPopularVersionId}
+                    onCompare={() => setCompareOpen(true)}
                   />
                 ));
               })()}
@@ -2129,6 +2326,23 @@ export function ToolDetail() {
       {/* ── Tool support modal ──────────────────────────────────────────────── */}
       {supportOpen && tool && (
         <ToolSupportModal toolName={tool.name} onClose={() => setSupportOpen(false)} />
+      )}
+
+      {/* ── Compare all plans modal ─────────────────────────────────────────── */}
+      {tool && (
+        <ComparisonModal
+          open={compareOpen}
+          onClose={() => setCompareOpen(false)}
+          tool={tool}
+          billingCycle={billingCycle}
+          user={user}
+          onFreeDownload={handleFreeDownload}
+          onSignInRequired={openAuthModal}
+          onBuyClick={(ver) => track('buy_click', {
+            toolId: tool.id, toolName: tool.name, toolSlug: tool.slug ?? '',
+            versionType: ver.versionType, price: parsePricing(ver).ctaPrice,
+          })}
+        />
       )}
 
       {/* ── Auth modal ──────────────────────────────────────────────────────── */}

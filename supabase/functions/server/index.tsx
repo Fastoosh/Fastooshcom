@@ -357,6 +357,18 @@ const normalizeTool = (tool: Record<string, any>): Record<string, any> => {
       if (featureIdEntries.length > 0) {
         v.includedFeatureIds = featureIdEntries.map((f: string) => f.replace('✅ ', ''));
       }
+      // Decode inheritance label: ⬆️ <text> (enabled) or ⬆️ off (disabled)
+      const inheritEntry = v.features.find((f: string) => typeof f === 'string' && f.startsWith('⬆️ '));
+      if (inheritEntry) {
+        const body = (inheritEntry as string).replace('⬆️ ', '');
+        if (body === 'off') {
+          v.inheritanceLabelEnabled = false;
+          v.inheritanceLabel = '';
+        } else {
+          v.inheritanceLabelEnabled = true;
+          v.inheritanceLabel = body;
+        }
+      }
       // Remove the raw features array after decoding
       delete v.features;
       return v;
@@ -3356,9 +3368,16 @@ app.post("/make-server-e07959ec/tools", requireAuth, async (c) => {
         const priceSentinel = v.pricingModel === 'subscription'
           ? `subscription|${v.monthlyPrice ?? ''}|${v.yearlyPrice ?? ''}`
           : `lifetime|${v.lifetimePrice ?? ''}|${v.lifetimeBuyUrl ?? ''}`;
+        const inheritanceSentinel =
+          v.inheritanceLabelEnabled === false
+            ? [`⬆️ off`]
+            : v.inheritanceLabelEnabled === true && typeof v.inheritanceLabel === 'string' && v.inheritanceLabel.length > 0
+              ? [`⬆️ ${v.inheritanceLabel}`]
+              : [];
         const enrichedFeatures = [
           `💰 ${priceSentinel}`,
           ...(v.color ? [`🖌️ color|${v.color}`] : []),
+          ...inheritanceSentinel,
           ...((v.whatsIncluded ?? []) as string[]).filter(Boolean).map((item: string) => `📦 ${item}`),
           ...((v.activationSteps ?? []) as string[]).filter(Boolean).map((step: string) => `🔑 ${step}`),
           ...((v.includedFeatureIds ?? []) as string[]).filter(Boolean).map((fid: string) => `✅ ${fid}`),
@@ -3478,9 +3497,16 @@ app.put("/make-server-e07959ec/tools/:id", requireAuth, async (c) => {
         const priceSentinel = v.pricingModel === 'subscription'
           ? `subscription|${v.monthlyPrice ?? ''}|${v.yearlyPrice ?? ''}`
           : `lifetime|${v.lifetimePrice ?? ''}|${v.lifetimeBuyUrl ?? ''}`;
+        const inheritanceSentinel =
+          v.inheritanceLabelEnabled === false
+            ? [`⬆️ off`]
+            : v.inheritanceLabelEnabled === true && typeof v.inheritanceLabel === 'string' && v.inheritanceLabel.length > 0
+              ? [`⬆️ ${v.inheritanceLabel}`]
+              : [];
         const enrichedFeatures = [
           `💰 ${priceSentinel}`,
           ...(v.color ? [`🖌️ color|${v.color}`] : []),
+          ...inheritanceSentinel,
           ...((v.whatsIncluded ?? []) as string[]).filter(Boolean).map((item: string) => `📦 ${item}`),
           ...((v.activationSteps ?? []) as string[]).filter(Boolean).map((step: string) => `🔑 ${step}`),
           ...((v.includedFeatureIds ?? []) as string[]).filter(Boolean).map((fid: string) => `✅ ${fid}`),
