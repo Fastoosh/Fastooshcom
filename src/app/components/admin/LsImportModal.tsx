@@ -109,17 +109,12 @@ export function LsImportModal({ open, onImport, onImportAll, onClose }: Props) {
     onImport(buildPayload(product, variant));
   };
 
-  const handleImportAll = () => {
-    const payloads: LsImportPayload[] = [];
-    for (const product of products) {
-      for (const variant of product.variants) {
-        if (variant.status === 'published') payloads.push(buildPayload(product, variant));
-      }
-    }
+  const handleImportAllForProduct = (product: LsProduct) => {
+    const payloads = product.variants
+      .filter(v => v.status === 'published')
+      .map(v => buildPayload(product, v));
     if (payloads.length > 0) { onImportAll(payloads); onClose(); }
   };
-
-  const totalVariants = products.reduce((n, p) => n + p.variants.filter(v => v.status === 'published').length, 0);
 
   const intervalLabel = (v: LsVariant) => {
     if (!v.isSubscription) return 'One-time';
@@ -255,6 +250,16 @@ export function LsImportModal({ open, onImport, onImportAll, onClose }: Props) {
                   {product.variants.length === 0 && (
                     <p className="px-4 py-3 text-xs text-white/30 italic">No variants found for this product.</p>
                   )}
+                  {product.variants.filter(v => v.status === 'published').length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => handleImportAllForProduct(product)}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-500/8 hover:bg-amber-500/15 text-amber-300/80 hover:text-amber-300 text-xs font-semibold transition-colors"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      Import all {product.variants.filter(v => v.status === 'published').length} variants
+                    </button>
+                  )}
                   {product.variants.map(variant => {
                     const badge = intervalBadge(variant);
                     const isPending = variant.status !== 'published';
@@ -303,16 +308,6 @@ export function LsImportModal({ open, onImport, onImportAll, onClose }: Props) {
 
         {/* Footer */}
         <div className="px-5 py-3 border-t border-white/8 space-y-2">
-          {!loading && totalVariants > 0 && (
-            <button
-              type="button"
-              onClick={handleImportAll}
-              className="w-full flex items-center justify-center gap-2 py-2 px-4 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 hover:border-amber-500/50 text-amber-300 text-sm font-semibold transition-all"
-            >
-              <Download className="w-4 h-4" />
-              Import All ({totalVariants} variant{totalVariants !== 1 ? 's' : ''})
-            </button>
-          )}
           <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/25">
             <span className="text-amber-400 text-xs mt-0.5 flex-shrink-0">⚠</span>
             <p className="text-amber-300/80 text-xs leading-relaxed">
