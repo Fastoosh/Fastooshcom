@@ -339,13 +339,12 @@ const normalizeTool = (tool: Record<string, any>): Record<string, any> => {
         v.activationSteps = stepEntries.map((f: string) => f.replace('🔑 ', ''));
       }
       // Decode rich features with screenshots (🎨 JSON)
+      // Decode old-style 🎨 full-feature JSON (kept for migration — normalizeTool promotes these to tool level)
       const richFeatEntries = v.features.filter((f: string) => typeof f === 'string' && f.startsWith('🎨 '));
-      console.log(`[DECODE] Version "${v.name}" richFeatEntries:`, richFeatEntries);
       if (richFeatEntries.length > 0) {
         v.richFeatures = richFeatEntries.map((f: string) => {
           try { return JSON.parse(f.replace('🎨 ', '')); } catch { return null; }
         }).filter(Boolean);
-        console.log(`[DECODE] Version "${v.name}" parsed richFeatures:`, v.richFeatures);
       }
       // Decode version accent color: 🖌️ color|#hex
       const colorEntry = v.features.find((f: string) => typeof f === 'string' && f.startsWith('🖌️ '));
@@ -353,10 +352,40 @@ const normalizeTool = (tool: Record<string, any>): Record<string, any> => {
         const parts = (colorEntry as string).replace('🖌️ ', '').split('|');
         v.color = parts[1] || parts[0] || '';
       }
-      // No more plain features - remove the features field after decoding sentinels
+      // Decode includedFeatureIds: ✅ featureId entries
+      const includedEntries = v.features.filter((f: string) => typeof f === 'string' && f.startsWith('✅ '));
+      if (includedEntries.length > 0) {
+        v.includedFeatureIds = includedEntries.map((f: string) => f.replace('✅ ', ''));
+      }
+      // Remove the raw features array after decoding
       delete v.features;
       return v;
     });
+  }
+
+  // Decode tool-level rich_features (stored as JSONB array in tools.rich_features)
+  if (Array.isArray(t.richFeatures)) {
+    // already camelCased by fromDbRow — nothing to do
+  }
+
+  // ── Migration: if tool has no richFeatures but versions have old 🎨 data,
+  // promote them to tool level and derive includedFeatureIds per version.
+  if ((!t.richFeatures || t.richFeatures.length === 0) && Array.isArray(t.versions)) {
+    const seen = new Set<string>();
+    const pool: any[] = [];
+    for (const v of t.versions) {
+      for (const f of (v.richFeatures ?? [])) {
+        if (f.id && !seen.has(f.id)) { seen.add(f.id); pool.push(f); }
+      }
+    }
+    if (pool.length > 0) {
+      t.richFeatures = pool;
+      for (const v of t.versions) {
+        const oldIds = new Set((v.richFeatures ?? []).map((f: any) => f.id));
+        v.includedFeatureIds = pool.filter(f => oldIds.has(f.id)).map(f => f.id);
+        delete v.richFeatures;
+      }
+    }
   }
 
   return t;
@@ -3288,6 +3317,7 @@ app.post("/make-server-e07959ec/tools", requireAuth, async (c) => {
       paidCtaText: toolPaidCtaText,
       paidCtaIcon: toolPaidCtaIcon,
       showcasePaidCtaText: toolShowcasePaidCtaText,
+      richFeatures: toolRichFeatures,
       ...toolRest
     } = body;
 
@@ -3306,8 +3336,8 @@ app.post("/make-server-e07959ec/tools", requireAuth, async (c) => {
       ...(toolShowcasePaidCtaText ? [{ question: '🎯', answer: toolShowcasePaidCtaText }]    : []),
       ...(toolRest.faqs ?? []),
     ];
-    const toolDbRow = toDbRow({ ...toolRest, faqs: toolFaqs });
-    
+    const toolDbRow = toDbRow({ ...toolRest, faqs: toolFaqs, richFeatures: toolRichFeatures ?? [] });
+
     // Insert tool
     const { data: tool, error: toolError } = await supabase
       .from('tools')
@@ -3334,31 +3364,25 @@ app.post("/make-server-e07959ec/tools", requireAuth, async (c) => {
           color,
           whatsIncluded,
           activationSteps,
-          richFeatures,
+          richFeatures: _oldRichFeatures,
+          includedFeatureIds,
           demoUrl: _vDemoUrl,
           pricingDisplay: _pd,
           ...vRest
         } = v;
 
-        // Encode pricing as the first 💰 feature in an unambiguous pipe-delimited format:
-        //   Subscription       → "subscription|<monthly>|<yearly>"
-        //   Lifetime / Free    → "lifetime|<price>|<buyUrl>"  (free = empty price)
         const priceSentinel =
           pricingModel === 'subscription'
             ? `subscription|${monthlyPrice ?? ''}|${yearlyPrice ?? ''}`
             : `lifetime|${lifetimePrice ?? ''}|${lifetimeBuyUrl ?? ''}`;
 
-        // Store all version metadata as sentinels in features column
-        // No more plain features - only richFeatures (encoded as 🎨 JSON)
-        console.log(`[CREATE] Version "${v.name}" richFeatures:`, richFeatures);
         const enrichedFeatures = [
           ...(priceSentinel ? [`💰 ${priceSentinel}`] : []),
           ...(color ? [`🖌️ color|${color}`] : []),
           ...((whatsIncluded ?? []) as string[]).filter(Boolean).map((item: string) => `📦 ${item}`),
           ...((activationSteps ?? []) as string[]).filter(Boolean).map((step: string) => `🔑 ${step}`),
-          ...((richFeatures ?? []) as any[]).filter(Boolean).map((f: any) => `🎨 ${JSON.stringify(f)}`),
+          ...((includedFeatureIds ?? []) as string[]).filter(Boolean).map((id: string) => `✅ ${id}`),
         ];
-        console.log(`[CREATE] Version "${v.name}" enriched:`, enrichedFeatures);
 
         return { ...toDbRow(vRest), features: enrichedFeatures, tool_id: tool.id };
       });
@@ -3421,6 +3445,7 @@ app.put("/make-server-e07959ec/tools/:id", requireAuth, async (c) => {
       paidCtaText: toolPaidCtaText,
       paidCtaIcon: toolPaidCtaIcon,
       showcasePaidCtaText: toolShowcasePaidCtaText,
+      richFeatures: toolRichFeatures,
       ...toolRest
     } = body;
 
@@ -3439,8 +3464,8 @@ app.put("/make-server-e07959ec/tools/:id", requireAuth, async (c) => {
       ...(toolShowcasePaidCtaText ? [{ question: '🎯', answer: toolShowcasePaidCtaText }]    : []),
       ...(toolRest.faqs ?? []),
     ];
-    const toolDbRow = toDbRow({ ...toolRest, faqs: toolFaqs });
-    
+    const toolDbRow = toDbRow({ ...toolRest, faqs: toolFaqs, richFeatures: toolRichFeatures ?? [] });
+
     // Update tool
     const { data: tool, error: toolError } = await supabase
       .from('tools')
@@ -3484,29 +3509,25 @@ app.put("/make-server-e07959ec/tools/:id", requireAuth, async (c) => {
             color,
             whatsIncluded,
             activationSteps,
-            richFeatures,
+            richFeatures: _oldRichFeatures,
+            includedFeatureIds,
             demoUrl: _vDemoUrl,
             pricingDisplay: _pd,
             ...vRest
           } = v;
 
-          // Encode pricing as the first 💰 feature in an unambiguous pipe-delimited format:
-          //   Subscription    → "subscription|<monthly>|<yearly>"
-          //   Lifetime / Free → "lifetime|<price>|<buyUrl>"  (free = empty price)
           const priceSentinel =
             pricingModel === 'subscription'
               ? `subscription|${monthlyPrice ?? ''}|${yearlyPrice ?? ''}`
               : `lifetime|${lifetimePrice ?? ''}|${lifetimeBuyUrl ?? ''}`;
 
-          console.log(`[UPDATE] Version "${v.name}" richFeatures:`, richFeatures);
           const enrichedFeatures = [
             ...(priceSentinel ? [`💰 ${priceSentinel}`] : []),
             ...(color ? [`🖌️ color|${color}`] : []),
             ...((whatsIncluded ?? []) as string[]).filter(Boolean).map((item: string) => `📦 ${item}`),
             ...((activationSteps ?? []) as string[]).filter(Boolean).map((step: string) => `🔑 ${step}`),
-            ...((richFeatures ?? []) as any[]).filter(Boolean).map((f: any) => `🎨 ${JSON.stringify(f)}`),
+            ...((includedFeatureIds ?? []) as string[]).filter(Boolean).map((id: string) => `✅ ${id}`),
           ];
-          console.log(`[UPDATE] Version "${v.name}" enriched:`, enrichedFeatures);
 
           return { ...toDbRow(vRest), features: enrichedFeatures, tool_id: id };
         });

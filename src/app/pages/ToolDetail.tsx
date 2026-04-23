@@ -51,18 +51,18 @@ interface RichFeature {
 
 interface ToolVersion {
   id: string;
-  versionType: string;  // Dynamic name like "Starter", "Pro", "Agency" (will be translated via CMS)
-  versionTypeOriginal?: string; // Store original before translation
-  color?: string;       // Hex color for badges and accents
+  versionType: string;
+  versionTypeOriginal?: string;
+  color?: string;
   pricingModel?: 'subscription' | 'lifetime';
   monthlyPrice?: string;
   yearlyPrice?: string;
   lifetimePrice?: string;
   lifetimeBuyUrl?: string;
-  pricingDisplay?: string; // Server-computed display string (legacy / fallback)
+  pricingDisplay?: string;
   downloadUrl: string;
   lemonSqueezyVariantId?: string;
-  richFeatures?: RichFeature[];  // Only richFeatures now - used for both pricing cards and detail section
+  includedFeatureIds?: string[];  // IDs from tool.richFeatures included in this version
 }
 
 interface Tool {
@@ -79,6 +79,7 @@ interface Tool {
   howItWorks?: Array<{ title: string; description: string }>;
   faqs?: Array<{ question: string; answer: string }>;
   versions?: ToolVersion[];
+  richFeatures?: RichFeature[];  // Tool-level feature pool
   // CTA customization
   freeCtaText?: string;
   freeCtaIcon?: string;
@@ -125,22 +126,19 @@ function parseYouTube(url: string): { embedUrl: string; videoId: string } | null
 }
 
 interface ParsedPricing {
-  /** Big number shown in the card, e.g. "$9", "$49", "Free" */
   mainPrice: string;
-  /** Period shown inline next to mainPrice, e.g. "/ mo", "/ yr", "" */
   period: string;
-  /** Small muted line below the price */
   subLabel: string;
-  /** Compact string for the CTA button, e.g. "$9 / mo" */
   ctaPrice: string;
-  cleanFeatures: string[];
+  /** All tool features with included flag for this version */
+  allFeatures: { title: string; included: boolean }[];
 }
 
-function parsePricing(version: ToolVersion, billingCycle: 'monthly' | 'yearly' | 'lifetime' = 'monthly'): ParsedPricing {
-  // NEW: Extract feature titles from richFeatures instead of plain features array
-  const cleanFeatures = (version.richFeatures ?? [])
-    .map(f => f.title?.trim())
-    .filter(Boolean) as string[];
+function parsePricing(version: ToolVersion, toolRichFeatures: RichFeature[] = [], billingCycle: 'monthly' | 'yearly' | 'lifetime' = 'monthly'): ParsedPricing {
+  const includedIds = new Set(version.includedFeatureIds ?? []);
+  const allFeatures = toolRichFeatures
+    .filter(f => f.title?.trim())
+    .map(f => ({ title: f.title.trim(), included: includedIds.has(f.id) }));
 
   // Add $ prefix if value is a bare number (admin may omit currency symbol)
   const fmt = (s: string): string => {
@@ -162,14 +160,14 @@ function parsePricing(version: ToolVersion, billingCycle: 'monthly' | 'yearly' |
   // ── Free (detect by empty prices, not name) ──
   const isFreeVersion = !hasMo && !hasYr && !lifetime.trim();
   if (isFreeVersion) {
-    return { mainPrice: 'Free', period: '', subLabel: 'forever free', ctaPrice: 'Free', cleanFeatures };
+    return { mainPrice: 'Free', period: '', subLabel: 'forever free', ctaPrice: 'Free', allFeatures };
   }
 
   // ── Lifetime billing tab selected ──
   if (billingCycle === 'lifetime') {
     if (lifetime.trim()) {
       const price = fmt(lifetime) || '—';
-      return { mainPrice: price, period: '', subLabel: 'one-time payment', ctaPrice: price, cleanFeatures };
+      return { mainPrice: price, period: '', subLabel: 'one-time payment', ctaPrice: price, allFeatures };
     }
     // No lifetime price on this version — show yearly billing info (same as yearly tab)
     if (hasMo && hasYr) {
@@ -177,16 +175,16 @@ function parsePricing(version: ToolVersion, billingCycle: 'monthly' | 'yearly' |
       const fmtYr = fmt(yearly);
       const perMonth = yrNum / 12;
       const perMonthStr = perMonth % 1 === 0 ? `$${perMonth}` : `$${perMonth.toFixed(2)}`;
-      return { mainPrice: perMonthStr, period: '/ mo', subLabel: `billed ${fmtYr} / yr`, ctaPrice: fmtYr, cleanFeatures };
+      return { mainPrice: perMonthStr, period: '/ mo', subLabel: `billed ${fmtYr} / yr`, ctaPrice: fmtYr, allFeatures };
     }
     if (hasYr) {
       const yrNum = toNum(yearly);
       const fmtYr = fmt(yearly);
       const perMonth = yrNum / 12;
       const perMonthStr = perMonth % 1 === 0 ? `$${perMonth}` : `$${perMonth.toFixed(2)}`;
-      return { mainPrice: perMonthStr, period: '/ mo', subLabel: `billed ${fmtYr} / yr`, ctaPrice: fmtYr, cleanFeatures };
+      return { mainPrice: perMonthStr, period: '/ mo', subLabel: `billed ${fmtYr} / yr`, ctaPrice: fmtYr, allFeatures };
     }
-    if (hasMo) return { mainPrice: fmt(monthly), period: '/ mo', subLabel: 'billed monthly', ctaPrice: fmt(monthly), cleanFeatures };
+    if (hasMo) return { mainPrice: fmt(monthly), period: '/ mo', subLabel: 'billed monthly', ctaPrice: fmt(monthly), allFeatures };
   }
 
   // ── Lifetime-only model ──
@@ -197,7 +195,7 @@ function parsePricing(version: ToolVersion, billingCycle: 'monthly' | 'yearly' |
       period: '',
       subLabel: 'one-time payment',
       ctaPrice: price,
-      cleanFeatures,
+      allFeatures,
     };
   }
 
@@ -217,7 +215,7 @@ function parsePricing(version: ToolVersion, billingCycle: 'monthly' | 'yearly' |
         period: '/ yr',
         subLabel: 'billed annually',
         ctaPrice: fmtYr,
-        cleanFeatures,
+        allFeatures,
       };
     }
 
@@ -227,7 +225,7 @@ function parsePricing(version: ToolVersion, billingCycle: 'monthly' | 'yearly' |
       period: '/ mo',
       subLabel: 'billed monthly',
       ctaPrice: `${fmtMo} / mo`,
-      cleanFeatures,
+      allFeatures,
     };
   }
   if (hasMo) {
@@ -244,10 +242,10 @@ function parsePricing(version: ToolVersion, billingCycle: 'monthly' | 'yearly' |
         period: '/ yr', 
         subLabel: `${fmtMo} / mo • billed monthly`, 
         ctaPrice: fmtYr, 
-        cleanFeatures 
+        allFeatures 
       };
     }
-    return { mainPrice: fmtMo, period: '/ mo', subLabel: 'billed monthly', ctaPrice: `${fmtMo} / mo`, cleanFeatures };
+    return { mainPrice: fmtMo, period: '/ mo', subLabel: 'billed monthly', ctaPrice: `${fmtMo} / mo`, allFeatures };
   }
   if (hasYr) {
     const fmtYr = fmt(yearly);
@@ -263,20 +261,20 @@ function parsePricing(version: ToolVersion, billingCycle: 'monthly' | 'yearly' |
         period: '/ mo', 
         subLabel: `${fmtYr} / yr • billed annually`, 
         ctaPrice: perMonthStr, 
-        cleanFeatures 
+        allFeatures 
       };
     }
-    return { mainPrice: fmtYr, period: '/ yr', subLabel: 'billed annually', ctaPrice: `${fmtYr} / yr`, cleanFeatures };
+    return { mainPrice: fmtYr, period: '/ yr', subLabel: 'billed annually', ctaPrice: `${fmtYr} / yr`, allFeatures };
   }
 
   // Legacy fallback: server set pricingDisplay from old plain-text sentinel
   // but didn't set pricingModel / individual price fields.
   if (version.pricingDisplay && version.pricingDisplay !== 'Free') {
     const display = fmt(version.pricingDisplay);
-    return { mainPrice: display, period: '', subLabel: 'one-time payment', ctaPrice: display, cleanFeatures };
+    return { mainPrice: display, period: '', subLabel: 'one-time payment', ctaPrice: display, allFeatures };
   }
 
-  return { mainPrice: '—', period: '', subLabel: '', ctaPrice: '', cleanFeatures };
+  return { mainPrice: '—', period: '', subLabel: '', ctaPrice: '', allFeatures };
 }
 
 // ── DemoPlayer ────────────────────────────────────────────────────────────────
@@ -414,7 +412,7 @@ function PricingCard({
   tool?: Tool;
 }) {
   const { t, i18n } = useTranslation();
-  const { mainPrice, period, subLabel, ctaPrice, cleanFeatures } = parsePricing(version, billingCycle ?? 'monthly');
+  const { mainPrice, period, subLabel, ctaPrice, allFeatures } = parsePricing(version, tool?.richFeatures ?? [], billingCycle ?? 'monthly');
   
   // Detect free version by prices, not name
   const { monthlyPrice, yearlyPrice, lifetimePrice } = version;
@@ -464,9 +462,6 @@ function PricingCard({
     translatedSubLabel = translatedSubLabel.replace('/ yr', '/ سنة').replace('/ mo', '/ شهر');
   }
   
-  // Use richFeatures titles for pricing card features (same source as detail section)
-  const displayFeatures = cleanFeatures;
-
   // Use boolean checks instead of string matching to avoid translation issues
   // True when this card is actively showing its lifetime price (not a subscription fallback)
   const isLifetimeActive = !isFree && billingCycle === 'lifetime' && !!version.lifetimePrice?.trim();
@@ -652,17 +647,23 @@ function PricingCard({
         </div>
 
         {/* Feature list */}
-        {displayFeatures.length > 0 && (
+        {allFeatures.length > 0 && (
           <ul className="space-y-2.5 flex-grow mb-7">
-            {displayFeatures.map((item, i) => (
-              <li key={i} className="flex items-start gap-2.5">
-                <Check 
-                  className="w-3.5 h-3.5 mt-0.5 flex-shrink-0"
-                  style={{ 
-                    color: isFree ? '#34d399' : isLifetimeActive ? '#fbbf24' : versionColor 
-                  }}
-                />
-                <span className="text-white/60 text-sm leading-snug">{item}</span>
+            {allFeatures.map((item, i) => (
+              <li key={i} className={`flex items-start gap-2.5 ${!item.included ? 'opacity-40' : ''}`}>
+                {item.included ? (
+                  <Check
+                    className="w-3.5 h-3.5 mt-0.5 flex-shrink-0"
+                    style={{ color: isFree ? '#34d399' : isLifetimeActive ? '#fbbf24' : versionColor }}
+                  />
+                ) : (
+                  <svg className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                )}
+                <span className={`text-sm leading-snug ${item.included ? 'text-white/60' : 'text-white/30 line-through'}`}>
+                  {item.title}
+                </span>
               </li>
             ))}
           </ul>
@@ -897,53 +898,26 @@ function FeaturesShowcase({
   const FreeCtaIcon = getIconComponent(tool.freeCtaIcon, Download);
   const PaidCtaIcon = getIconComponent(tool.paidCtaIcon, ShoppingCart);
   
-  // Find version priorities for ordering
-  const versionWithFeatures = versions.find(v => 
-    v.richFeatures?.some(f => f.featured === true && f.title?.trim())
-  );
-  const paidVersion = versions.find(v => 
-    v.monthlyPrice?.trim() || v.yearlyPrice?.trim() || v.lifetimePrice?.trim()
-  );
-  const freeVersion = versions.find(v => 
-    !v.monthlyPrice?.trim() && !v.yearlyPrice?.trim() && !v.lifetimePrice?.trim()
-  );
-  
-  // Collect all featured richFeatures from all versions, deduplicating by title
-  const allFeaturedRichFeatures: RichFeature[] = [];
-  const seenTitles = new Set<string>();
-  
-  // Process versions in priority order to keep the best version of each feature
-  const orderedVersions = [
-    versionWithFeatures,
-    paidVersion,
-    freeVersion,
-    ...versions.filter(v => v !== versionWithFeatures && v !== paidVersion && v !== freeVersion)
-  ].filter(Boolean) as ToolVersion[];
-  
-  // Track which version each feature came from
-  const featureToVersionMap = new Map<string, ToolVersion>();
-  
-  for (const version of orderedVersions) {
-    const featuredFeatures = (version.richFeatures ?? [])
-      .filter(f => f.title?.trim() && f.featured === true);
-    
-    for (const feature of featuredFeatures) {
-      const normalizedTitle = feature.title.toLowerCase().trim();
-      if (!seenTitles.has(normalizedTitle)) {
-        seenTitles.add(normalizedTitle);
-        allFeaturedRichFeatures.push(feature);
-        featureToVersionMap.set(feature.id ?? feature.title, version);
-      }
-    }
-  }
-  
-  const displayRichFeatures = allFeaturedRichFeatures;
-  
+  // Featured features come from the tool-level pool, filtered to featured=true
+  const displayRichFeatures = (tool.richFeatures ?? []).filter(f => f.featured && f.title?.trim());
+
   // Hide section if no featured rich features exist
   if (displayRichFeatures.length === 0) return null;
 
-  // Use the first version with features for color/styling
-  const primaryVersion = versionWithFeatures ?? paidVersion ?? freeVersion ?? versions[0];
+  const paidVersion = versions.find(v =>
+    v.monthlyPrice?.trim() || v.yearlyPrice?.trim() || v.lifetimePrice?.trim()
+  );
+  const freeVersion = versions.find(v =>
+    !v.monthlyPrice?.trim() && !v.yearlyPrice?.trim() && !v.lifetimePrice?.trim()
+  );
+
+  // For CTA: map each feature to the most relevant version (paid preferred)
+  const featureToVersionMap = new Map<string, ToolVersion>();
+  for (const f of displayRichFeatures) {
+    featureToVersionMap.set(f.id, paidVersion ?? freeVersion ?? versions[0]);
+  }
+
+  const primaryVersion = paidVersion ?? freeVersion ?? versions[0];
   
   const isFree = !primaryVersion?.monthlyPrice?.trim() && 
                  !primaryVersion?.yearlyPrice?.trim() && 

@@ -86,7 +86,7 @@ interface ToolVersion {
   lemonSqueezyProductId?: string;
   whatsIncluded?: string[];
   activationSteps?: string[];
-  richFeatures?: RichFeature[];  // Only richFeatures - used for both pricing cards and detail section
+  includedFeatureIds?: string[];  // IDs from tool.richFeatures that are included in this version
   demoUrl?: string;
 }
 
@@ -105,12 +105,39 @@ interface Tool {
   howItWorks?: Array<{ title: string; description: string }>;
   faqs?: Array<{ question: string; answer: string }>;
   versions?: ToolVersion[];
+  richFeatures?: RichFeature[];  // Tool-level feature pool
   // CTA customization
   freeCtaText?: string;       // Default: "Download Free"
   freeCtaIcon?: string;       // Default: "Download" - lucide icon name
   paidCtaText?: string;       // Default: "Buy Now" (pricing cards) / "View Pricing" (showcase)
   paidCtaIcon?: string;       // Default: "ShoppingCart"
   showcasePaidCtaText?: string; // Specific text for showcase section, default: "View Pricing"
+}
+
+// If a tool has no tool-level richFeatures yet but versions have old-style richFeatures,
+// collect all unique features from versions into the tool-level pool (migration).
+function migrateToolFeatures(tool: Tool): RichFeature[] {
+  if ((tool.richFeatures ?? []).length > 0) return tool.richFeatures!;
+  const seen = new Set<string>();
+  const pool: RichFeature[] = [];
+  for (const v of tool.versions ?? []) {
+    for (const f of (v as any).richFeatures ?? []) {
+      if (f.id && !seen.has(f.id)) { seen.add(f.id); pool.push(f); }
+    }
+  }
+  return pool;
+}
+
+// For a version, derive includedFeatureIds from its old richFeatures if not already set.
+function migrateVersion(v: ToolVersion, toolFeatures: RichFeature[]): ToolVersion {
+  if ((v.includedFeatureIds ?? []).length > 0) return v;
+  const oldRich: RichFeature[] = (v as any).richFeatures ?? [];
+  if (oldRich.length === 0) {
+    // No old data — default to all tool-level features included
+    return { ...v, includedFeatureIds: toolFeatures.map(f => f.id) };
+  }
+  const oldIds = new Set(oldRich.map(f => f.id));
+  return { ...v, includedFeatureIds: toolFeatures.filter(f => oldIds.has(f.id)).map(f => f.id) };
 }
 
 export function ToolFormNew({
@@ -140,7 +167,8 @@ export function ToolFormNew({
     featured: tool.featured || false,
     howItWorks: tool.howItWorks || [],
     faqs: tool.faqs || [],
-    versions: tool.versions || [],
+    versions: (tool.versions || []).map(v => migrateVersion(v, tool.richFeatures || [])),
+    richFeatures: migrateToolFeatures(tool),
     freeCtaText: tool.freeCtaText || '',
     freeCtaIcon: tool.freeCtaIcon || '',
     paidCtaText: tool.paidCtaText || '',
@@ -561,7 +589,6 @@ export function ToolFormNew({
           versions: (formData.versions || []).map(v => ({
             id: v.id,
             versionType: v.versionType,
-            richFeatures: v.richFeatures,
             whatsIncluded: v.whatsIncluded,
             activationSteps: v.activationSteps,
           })),
@@ -630,10 +657,6 @@ export function ToolFormNew({
           const gv = data.versions.find((x: any) => x.id === v.id);
           if (!gv) return v;
           const vUpdates: Partial<ToolVersion> = {};
-          if (gv.richFeatures && (improveExisting || !v.richFeatures || v.richFeatures.filter((f: any) => f.title?.trim()).length === 0)) {
-            vUpdates.richFeatures = gv.richFeatures;
-            changedFields.push(`${v.id}:richFeatures`);
-          }
           if (gv.whatsIncluded && (improveExisting || !v.whatsIncluded || v.whatsIncluded.filter((f: string) => f.trim()).length === 0)) {
             vUpdates.whatsIncluded = gv.whatsIncluded;
             changedFields.push(`${v.id}:whatsIncluded`);
@@ -702,7 +725,6 @@ export function ToolFormNew({
       if (gv) {
         const vUpdates: Partial<ToolVersion> = {};
         const changedFields: string[] = [];
-        if (gv.richFeatures)    { vUpdates.richFeatures    = gv.richFeatures;    changedFields.push(`${versionId}:richFeatures`); }
         if (gv.whatsIncluded)   { vUpdates.whatsIncluded   = gv.whatsIncluded;   changedFields.push(`${versionId}:whatsIncluded`); }
         if (gv.activationSteps) { vUpdates.activationSteps = gv.activationSteps; changedFields.push(`${versionId}:activationSteps`); }
         updateVersion(versionId, vUpdates);
@@ -724,21 +746,11 @@ export function ToolFormNew({
       const cleanedData = {
         ...formData,
         faqs: (formData.faqs || []).filter(faq => faq.question || faq.answer),
-        versions: (formData.versions || []).map(v => ({
-          ...v,
-          richFeatures: (v.richFeatures || []).map(f => ({
-            ...f,
-            screenshots: (f.screenshots || []).filter(Boolean), // Remove empty screenshot URLs
-          })),
+        richFeatures: (formData.richFeatures || []).map((f: RichFeature) => ({
+          ...f,
+          screenshots: (f.screenshots || []).filter(Boolean),
         })),
       };
-      console.log('Saving tool with versions:', cleanedData.versions);
-      cleanedData.versions?.forEach((v: any, i: number) => {
-        console.log(`Version ${i} richFeatures:`, v.richFeatures);
-        v.richFeatures?.forEach((f: any, j: number) => {
-          console.log(`  Feature ${j}: title="${f.title}", featured=${f.featured}, screenshots=`, f.screenshots);
-        });
-      });
       const result = await onSave(cleanedData);
       setSaving(false);
       setFormMessage({ type: result.success ? 'success' : 'error', text: result.message });
@@ -762,7 +774,7 @@ export function ToolFormNew({
       lemonSqueezyProductId: '',
       whatsIncluded: [],
       activationSteps: [],
-      richFeatures: [],  // Only richFeatures - used for both pricing cards and detail section
+      includedFeatureIds: [],
       demoUrl: '',
       monthlyPrice: '',
       yearlyPrice: '',
@@ -1655,6 +1667,23 @@ export function ToolFormNew({
         <ChangelogTab toolSlug={formData.slug || tool.slug || ''} toolId={tool.id || ''} />
       </div>
 
+      {/* FEATURES SECTION — tool-level pool */}
+      <div className="space-y-4 mb-8 pb-8 border-b border-white/10">
+        <div className="flex items-center gap-2.5">
+          <Sparkles className="w-4 h-4 text-purple-400" />
+          <h4 className="text-base font-semibold text-white">Features</h4>
+          <span className="text-white/30 text-xs">Define all features here — then select which appear per version below</span>
+        </div>
+        <FeaturesEditor
+          versionId=""
+          versionType=""
+          toolName={formData.name}
+          richFeatures={formData.richFeatures || []}
+          onChange={(rf) => setFormData(prev => ({ ...prev, richFeatures: rf }))}
+          highlightClass=""
+        />
+      </div>
+
       {/* VERSIONS SECTION */}
       <div className="space-y-6">
         <div className="flex justify-between items-center">
@@ -1733,6 +1762,7 @@ export function ToolFormNew({
                     toolDemoUrl={formData.demoUrl || ''}
                     onUpdateDemoUrl={(url) => setFormData(prev => ({ ...prev, demoUrl: url }))}
                     toolName={formData.name}
+                    toolRichFeatures={formData.richFeatures || []}
                     onRegenerate={() => handleRegenerateVersion(version.id)}
                     isRegenerating={generatingVersionId === version.id}
                     highlightedFields={highlightedFields}
@@ -1887,7 +1917,8 @@ function VersionEditor({
   onDelete,
   toolDemoUrl,
   onUpdateDemoUrl,
-  toolName,
+  toolName: _toolName,
+  toolRichFeatures = [],
   onRegenerate,
   isRegenerating = false,
   highlightedFields = new Set<string>(),
@@ -1900,6 +1931,7 @@ function VersionEditor({
   toolDemoUrl: string;
   onUpdateDemoUrl: (url: string) => void;
   toolName: string;
+  toolRichFeatures?: RichFeature[];
   onRegenerate?: () => void;
   isRegenerating?: boolean;
   highlightedFields?: Set<string>;
@@ -2151,15 +2183,58 @@ function VersionEditor({
         />
       </div>
 
-      {/* Rich Features Editor */}
-      <FeaturesEditor
-        versionId={version.id}
-        versionType={version.versionType}
-        toolName={toolName}
-        richFeatures={version.richFeatures || []}
-        onChange={(rf) => onUpdate({ richFeatures: rf })}
-        highlightClass={vhl('richFeatures')}
-      />
+      {/* Features included in this version */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <label className="block text-sm font-medium text-gray-300">
+            Features in this version
+            <span className="text-white/30 font-normal ml-1">(shown in pricing table)</span>
+          </label>
+        </div>
+        {toolRichFeatures.length === 0 ? (
+          <p className="text-white/30 text-sm italic py-3 px-4 bg-white/5 rounded-lg border border-white/10">
+            No features defined yet — add them in the Features section above the versions.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {toolRichFeatures.map(f => {
+              const included = (version.includedFeatureIds ?? []).includes(f.id);
+              return (
+                <label
+                  key={f.id}
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-lg border cursor-pointer transition-all select-none
+                    hover:bg-white/5
+                    border-white/10 bg-white/[0.02]"
+                >
+                  <input
+                    type="checkbox"
+                    checked={included}
+                    onChange={e => {
+                      const ids = version.includedFeatureIds ?? [];
+                      onUpdate({
+                        includedFeatureIds: e.target.checked
+                          ? [...ids, f.id]
+                          : ids.filter(id => id !== f.id),
+                      });
+                    }}
+                    className="w-4 h-4 rounded bg-black/40 border border-white/20
+                      checked:bg-purple-500 checked:border-purple-400
+                      focus:ring-2 focus:ring-purple-500/50 transition-all cursor-pointer flex-shrink-0"
+                  />
+                  <span className={`text-sm leading-snug ${included ? 'text-white' : 'text-white/40'}`}>
+                    {f.title || <span className="italic text-white/20">Untitled feature</span>}
+                  </span>
+                  {f.featured && (
+                    <span className="ml-auto text-[10px] text-purple-400/60 font-semibold uppercase tracking-wide flex-shrink-0">
+                      Showcase
+                    </span>
+                  )}
+                </label>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       {/* What's Included */}
       <div>
