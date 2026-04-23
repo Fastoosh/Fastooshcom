@@ -88,11 +88,13 @@ interface Tool {
   slug?: string;
   faqs?: Array<{ question: string; answer: string }>;
   versions?: ToolVersion[];
+  richFeatures?: Array<{ id: string; title: string; description: string; screenshots: string[]; featured?: boolean }>;
+  [key: string]: any; // allow extra fields from API (tagline, demoUrl, etc.)
 }
 
 interface ToolVersion {
   id: string;
-  versionType: 'Free' | 'Pro' | 'Studio';
+  versionType: string;
   pricingModel: 'subscription' | 'lifetime';
   monthlyPrice?: string;
   yearlyPrice?: string;
@@ -104,6 +106,9 @@ interface ToolVersion {
   howItWorks?: Array<{ title: string; description: string }>;
   systemRequirements?: string;
   demoUrl?: string;
+  color?: string;
+  includedFeatureIds?: string[];
+  [key: string]: any;
 }
 
 interface TeamMember {
