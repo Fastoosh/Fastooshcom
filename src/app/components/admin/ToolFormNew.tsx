@@ -1909,6 +1909,208 @@ export function ToolFormNew({
   );
 }
 
+// ── FeatureTransfer ───────────────────────────────────────────────────────────
+// Two-column picker: left = available, right = included.
+// Click to select (highlighted), arrow buttons to move. Right column is sortable via drag.
+
+function FeatureTransfer({
+  allFeatures,
+  includedIds,
+  onChange,
+}: {
+  allFeatures: RichFeature[];
+  includedIds: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  const [leftSel,  setLeftSel]  = useState<Set<string>>(new Set());
+  const [rightSel, setRightSel] = useState<Set<string>>(new Set());
+  const [dragging, setDragging] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState<string | null>(null);
+
+  const includedSet = new Set(includedIds);
+  const available  = allFeatures.filter(f => !includedSet.has(f.id));
+  const included   = includedIds.map(id => allFeatures.find(f => f.id === id)).filter(Boolean) as RichFeature[];
+
+  const toggle = (id: string, side: 'left' | 'right', e: React.MouseEvent) => {
+    const setter = side === 'left' ? setLeftSel : setRightSel;
+    setter(prev => {
+      const next = new Set(prev);
+      if (e.shiftKey) {
+        // Shift: toggle without clearing others
+        next.has(id) ? next.delete(id) : next.add(id);
+      } else {
+        // Single click: select only this, or deselect if already the only one
+        if (next.size === 1 && next.has(id)) { next.clear(); }
+        else { next.clear(); next.add(id); }
+      }
+      return next;
+    });
+    // Clear the other side's selection
+    if (side === 'left') setRightSel(new Set());
+    else setLeftSel(new Set());
+  };
+
+  const moveRight = () => {
+    if (leftSel.size === 0) return;
+    onChange([...includedIds, ...Array.from(leftSel)]);
+    setLeftSel(new Set());
+  };
+
+  const moveLeft = () => {
+    if (rightSel.size === 0) return;
+    onChange(includedIds.filter(id => !rightSel.has(id)));
+    setRightSel(new Set());
+  };
+
+  // Drag-to-reorder within the right column
+  const handleDragStart = (id: string) => setDragging(id);
+  const handleDragEnter = (id: string) => setDragOver(id);
+  const handleDrop = (targetId: string) => {
+    if (!dragging || dragging === targetId) { setDragging(null); setDragOver(null); return; }
+    const next = [...includedIds];
+    const from = next.indexOf(dragging);
+    const to   = next.indexOf(targetId);
+    if (from === -1 || to === -1) { setDragging(null); setDragOver(null); return; }
+    next.splice(from, 1);
+    next.splice(to, 0, dragging);
+    onChange(next);
+    setDragging(null);
+    setDragOver(null);
+  };
+
+  if (allFeatures.length === 0) {
+    return (
+      <div>
+        <p className="text-xs font-semibold text-gray-300 mb-2">
+          Features in this version <span className="text-white/30 font-normal">(shown in pricing table)</span>
+        </p>
+        <p className="text-white/30 text-sm italic py-3 px-4 bg-white/5 rounded-lg border border-white/10">
+          No features defined yet — add them in the Features section above.
+        </p>
+      </div>
+    );
+  }
+
+  const colClass = "flex-1 min-w-0 rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden flex flex-col";
+  const headerClass = "px-3 py-2 bg-white/5 border-b border-white/8 text-xs font-semibold text-white/50 uppercase tracking-wider flex items-center justify-between";
+  const itemBase = "px-3 py-2 text-sm cursor-pointer select-none transition-colors duration-100 rounded-md mx-1 my-0.5";
+
+  return (
+    <div>
+      <p className="text-xs font-semibold text-gray-300 mb-3">
+        Features in this version <span className="text-white/30 font-normal">(shown in pricing table)</span>
+      </p>
+      <div className="flex gap-2 items-stretch">
+
+        {/* Left — available */}
+        <div className={colClass}>
+          <div className={headerClass}>
+            <span>Available</span>
+            <span className="text-white/30 font-normal normal-case tracking-normal">{available.length}</span>
+          </div>
+          <div className="flex-1 overflow-y-auto py-1" style={{ minHeight: '120px', maxHeight: '220px' }}>
+            {available.length === 0 ? (
+              <p className="text-white/20 text-xs text-center py-6 italic">All features included</p>
+            ) : available.map(f => {
+              const sel = leftSel.has(f.id);
+              return (
+                <div
+                  key={f.id}
+                  onClick={e => toggle(f.id, 'left', e)}
+                  className={`${itemBase} flex items-center gap-2 ${
+                    sel
+                      ? 'bg-purple-500/20 text-white'
+                      : 'text-white/50 hover:bg-white/5 hover:text-white/80'
+                  }`}
+                >
+                  {f.featured && <span className="w-1.5 h-1.5 rounded-full bg-purple-400/60 flex-shrink-0" />}
+                  <span className="truncate">{f.title || <em className="text-white/20">Untitled</em>}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Arrow buttons */}
+        <div className="flex flex-col items-center justify-center gap-2 flex-shrink-0">
+          <button
+            type="button"
+            onClick={moveRight}
+            disabled={leftSel.size === 0}
+            title="Add selected to this version"
+            className="w-7 h-7 flex items-center justify-center rounded-lg border border-white/15
+              text-white/40 hover:text-white hover:bg-purple-500/20 hover:border-purple-400/40
+              disabled:opacity-20 disabled:cursor-not-allowed transition-all"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
+            onClick={moveLeft}
+            disabled={rightSel.size === 0}
+            title="Remove selected from this version"
+            className="w-7 h-7 flex items-center justify-center rounded-lg border border-white/15
+              text-white/40 hover:text-white hover:bg-red-500/20 hover:border-red-400/40
+              disabled:opacity-20 disabled:cursor-not-allowed transition-all"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Right — included */}
+        <div className={colClass}>
+          <div className={headerClass}>
+            <span>Included</span>
+            <span className="text-white/30 font-normal normal-case tracking-normal">{included.length}</span>
+          </div>
+          <div className="flex-1 overflow-y-auto py-1" style={{ minHeight: '120px', maxHeight: '220px' }}>
+            {included.length === 0 ? (
+              <p className="text-white/20 text-xs text-center py-6 italic">None yet</p>
+            ) : included.map(f => {
+              const sel = rightSel.has(f.id);
+              const isOver = dragOver === f.id && dragging !== f.id;
+              return (
+                <div
+                  key={f.id}
+                  draggable
+                  onDragStart={() => handleDragStart(f.id)}
+                  onDragEnter={() => handleDragEnter(f.id)}
+                  onDragOver={e => e.preventDefault()}
+                  onDrop={() => handleDrop(f.id)}
+                  onDragEnd={() => { setDragging(null); setDragOver(null); }}
+                  onClick={e => toggle(f.id, 'right', e)}
+                  className={`${itemBase} flex items-center gap-2 ${
+                    isOver   ? 'border-t-2 border-purple-400/60' : ''
+                  } ${
+                    dragging === f.id ? 'opacity-40' : ''
+                  } ${
+                    sel
+                      ? 'bg-purple-500/20 text-white'
+                      : 'text-white/70 hover:bg-white/5 hover:text-white'
+                  }`}
+                >
+                  <GripVertical className="w-3 h-3 text-white/20 flex-shrink-0 cursor-grab" />
+                  {f.featured && <span className="w-1.5 h-1.5 rounded-full bg-purple-400/60 flex-shrink-0" />}
+                  <span className="truncate">{f.title || <em className="text-white/20">Untitled</em>}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+      </div>
+      {(leftSel.size > 0 || rightSel.size > 0) && (
+        <p className="text-white/25 text-xs mt-1.5">
+          {leftSel.size > 0 && `${leftSel.size} selected — click › to include`}
+          {rightSel.size > 0 && `${rightSel.size} selected — click ‹ to remove`}
+          {leftSel.size === 0 && rightSel.size === 0 && ''}
+          {' · '}Shift+click to select multiple
+        </p>
+      )}
+    </div>
+  );
+}
+
 // Version Editor Component
 function VersionEditor({
   version,
@@ -2183,58 +2385,12 @@ function VersionEditor({
         />
       </div>
 
-      {/* Features included in this version */}
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <label className="block text-sm font-medium text-gray-300">
-            Features in this version
-            <span className="text-white/30 font-normal ml-1">(shown in pricing table)</span>
-          </label>
-        </div>
-        {toolRichFeatures.length === 0 ? (
-          <p className="text-white/30 text-sm italic py-3 px-4 bg-white/5 rounded-lg border border-white/10">
-            No features defined yet — add them in the Features section above the versions.
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {toolRichFeatures.map(f => {
-              const included = (version.includedFeatureIds ?? []).includes(f.id);
-              return (
-                <label
-                  key={f.id}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-lg border cursor-pointer transition-all select-none
-                    hover:bg-white/5
-                    border-white/10 bg-white/[0.02]"
-                >
-                  <input
-                    type="checkbox"
-                    checked={included}
-                    onChange={e => {
-                      const ids = version.includedFeatureIds ?? [];
-                      onUpdate({
-                        includedFeatureIds: e.target.checked
-                          ? [...ids, f.id]
-                          : ids.filter(id => id !== f.id),
-                      });
-                    }}
-                    className="w-4 h-4 rounded bg-black/40 border border-white/20
-                      checked:bg-purple-500 checked:border-purple-400
-                      focus:ring-2 focus:ring-purple-500/50 transition-all cursor-pointer flex-shrink-0"
-                  />
-                  <span className={`text-sm leading-snug ${included ? 'text-white' : 'text-white/40'}`}>
-                    {f.title || <span className="italic text-white/20">Untitled feature</span>}
-                  </span>
-                  {f.featured && (
-                    <span className="ml-auto text-[10px] text-purple-400/60 font-semibold uppercase tracking-wide flex-shrink-0">
-                      Showcase
-                    </span>
-                  )}
-                </label>
-              );
-            })}
-          </div>
-        )}
-      </div>
+      {/* Features transfer — two-column picker */}
+      <FeatureTransfer
+        allFeatures={toolRichFeatures}
+        includedIds={version.includedFeatureIds ?? []}
+        onChange={ids => onUpdate({ includedFeatureIds: ids })}
+      />
 
       {/* What's Included */}
       <div>
