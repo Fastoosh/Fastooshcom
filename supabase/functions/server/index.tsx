@@ -3484,62 +3484,62 @@ app.put("/make-server-e07959ec/tools/:id", requireAuth, async (c) => {
     // save-time (e.g. data hadn't loaded yet), so we skip the delete/insert
     // cycle entirely to avoid silently wiping existing version rows.
     if (versions && Array.isArray(versions) && versions.length > 0) {
-      // Delete existing versions
-      const { error: deleteError } = await supabase
+      const versionsWithToolId = versions.map(v => {
+        // Strip all frontend-only / non-DB fields from each version
+        const {
+          id: _vId,
+          pricingModel,
+          monthlyPrice,
+          yearlyPrice,
+          lifetimePrice,
+          lifetimeBuyUrl,
+          color,
+          whatsIncluded,
+          activationSteps,
+          richFeatures: _oldRichFeatures,
+          includedFeatureIds,
+          demoUrl: _vDemoUrl,
+          pricingDisplay: _pd,
+          ...vRest
+        } = v;
+
+        const priceSentinel =
+          pricingModel === 'subscription'
+            ? `subscription|${monthlyPrice ?? ''}|${yearlyPrice ?? ''}`
+            : `lifetime|${lifetimePrice ?? ''}|${lifetimeBuyUrl ?? ''}`;
+
+        const enrichedFeatures = [
+          ...(priceSentinel ? [`💰 ${priceSentinel}`] : []),
+          ...(color ? [`🖌️ color|${color}`] : []),
+          ...((whatsIncluded ?? []) as string[]).filter(Boolean).map((item: string) => `📦 ${item}`),
+          ...((activationSteps ?? []) as string[]).filter(Boolean).map((step: string) => `🔑 ${step}`),
+          ...((includedFeatureIds ?? []) as string[]).filter(Boolean).map((id: string) => `✅ ${id}`),
+        ];
+
+        return { ...toDbRow(vRest), features: enrichedFeatures, tool_id: id };
+      });
+
+      // Snapshot existing version IDs before touching anything.
+      // Insert new rows first — only delete old ones if insert succeeds.
+      // This prevents data loss if the insert fails (e.g. a schema mismatch).
+      const { data: existingVersions } = await supabase
         .from('tool_versions')
-        .delete()
+        .select('id')
         .eq('tool_id', id);
+      const existingIds = (existingVersions ?? []).map((r: any) => r.id);
 
-      if (deleteError) {
-        console.log(`Error deleting old tool versions: ${deleteError.message}`);
-        return c.json({ success: false, error: `Failed to clear old versions: ${deleteError.message}` }, 400);
+      const { error: versionsError } = await supabase
+        .from('tool_versions')
+        .insert(versionsWithToolId);
+
+      if (versionsError) {
+        console.log(`Error inserting tool versions: ${versionsError.message}`);
+        return c.json({ success: false, error: `Version save failed: ${versionsError.message}` }, 400);
       }
-      
-      // Insert new versions
-      if (versions.length > 0) {
-        const versionsWithToolId = versions.map(v => {
-          // Strip all frontend-only / non-DB fields from each version
-          const {
-            id: _vId,
-            pricingModel,
-            monthlyPrice,
-            yearlyPrice,
-            lifetimePrice,
-            lifetimeBuyUrl,
-            color,
-            whatsIncluded,
-            activationSteps,
-            richFeatures: _oldRichFeatures,
-            includedFeatureIds,
-            demoUrl: _vDemoUrl,
-            pricingDisplay: _pd,
-            ...vRest
-          } = v;
 
-          const priceSentinel =
-            pricingModel === 'subscription'
-              ? `subscription|${monthlyPrice ?? ''}|${yearlyPrice ?? ''}`
-              : `lifetime|${lifetimePrice ?? ''}|${lifetimeBuyUrl ?? ''}`;
-
-          const enrichedFeatures = [
-            ...(priceSentinel ? [`💰 ${priceSentinel}`] : []),
-            ...(color ? [`🖌️ color|${color}`] : []),
-            ...((whatsIncluded ?? []) as string[]).filter(Boolean).map((item: string) => `📦 ${item}`),
-            ...((activationSteps ?? []) as string[]).filter(Boolean).map((step: string) => `🔑 ${step}`),
-            ...((includedFeatureIds ?? []) as string[]).filter(Boolean).map((id: string) => `✅ ${id}`),
-          ];
-
-          return { ...toDbRow(vRest), features: enrichedFeatures, tool_id: id };
-        });
-        
-        const { error: versionsError } = await supabase
-          .from('tool_versions')
-          .insert(versionsWithToolId);
-
-        if (versionsError) {
-          console.log(`Error inserting tool versions: ${versionsError.message}`);
-          return c.json({ success: false, error: `Version save failed: ${versionsError.message}` }, 400);
-        }
+      // Insert succeeded — now safe to remove the old rows by their snapshotted IDs
+      if (existingIds.length > 0) {
+        await supabase.from('tool_versions').delete().in('id', existingIds);
       }
     }
     
