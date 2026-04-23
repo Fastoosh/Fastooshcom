@@ -35,6 +35,7 @@ export interface LsImportPayload {
 interface Props {
   open: boolean;
   onImport: (payload: LsImportPayload) => void;
+  onImportAll: (payloads: LsImportPayload[]) => void;
   onClose: () => void;
 }
 
@@ -44,7 +45,7 @@ function fmtPrice(cents: number): string {
   return dollars % 1 === 0 ? `$${dollars}` : `$${dollars.toFixed(2)}`;
 }
 
-export function LsImportModal({ open, onImport, onClose }: Props) {
+export function LsImportModal({ open, onImport, onImportAll, onClose }: Props) {
   const [products, setProducts] = useState<LsProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -79,45 +80,46 @@ export function LsImportModal({ open, onImport, onClose }: Props) {
 
   if (!open) return null;
 
-  const handleSelectVariant = (product: LsProduct, variant: LsVariant) => {
-    // Check if variant is free (price is 0 or missing)
+  const buildPayload = (product: LsProduct, variant: LsVariant): LsImportPayload => {
     const isFree = !variant.price || variant.price === 0;
-    
-    // Each variant creates its OWN version - don't auto-merge monthly/yearly
     let pricingModel: 'subscription' | 'lifetime';
     let monthlyPrice: string | undefined;
     let yearlyPrice: string | undefined;
     let lifetimePrice: string | undefined;
     let versionName = variant.name || product.name;
 
-    // If price is 0 or missing, override name to "Free"
     if (isFree) {
       versionName = 'Free';
-      pricingModel = 'lifetime'; // Default to lifetime for free versions
+      pricingModel = 'lifetime';
     } else if (variant.isSubscription && variant.interval === 'month') {
       pricingModel = 'subscription';
       monthlyPrice = fmtPrice(variant.price);
-      // Do NOT look for yearly sibling - each variant is independent
     } else if (variant.isSubscription && variant.interval === 'year') {
       pricingModel = 'subscription';
       yearlyPrice = fmtPrice(variant.price);
-      // Do NOT look for monthly sibling - each variant is independent
     } else {
       pricingModel = 'lifetime';
       lifetimePrice = fmtPrice(variant.price);
     }
 
-    onImport({
-      versionName,
-      pricingModel,
-      monthlyPrice,
-      yearlyPrice,
-      lifetimePrice,
-      buyNowUrl: variant.buyNowUrl,
-      variantId: String(variant.id),
-      productId: String(product.id),
-    });
+    return { versionName, pricingModel, monthlyPrice, yearlyPrice, lifetimePrice, buyNowUrl: variant.buyNowUrl, variantId: String(variant.id), productId: String(product.id) };
   };
+
+  const handleSelectVariant = (product: LsProduct, variant: LsVariant) => {
+    onImport(buildPayload(product, variant));
+  };
+
+  const handleImportAll = () => {
+    const payloads: LsImportPayload[] = [];
+    for (const product of products) {
+      for (const variant of product.variants) {
+        if (variant.status === 'published') payloads.push(buildPayload(product, variant));
+      }
+    }
+    if (payloads.length > 0) { onImportAll(payloads); onClose(); }
+  };
+
+  const totalVariants = products.reduce((n, p) => n + p.variants.filter(v => v.status === 'published').length, 0);
 
   const intervalLabel = (v: LsVariant) => {
     if (!v.isSubscription) return 'One-time';
@@ -301,6 +303,16 @@ export function LsImportModal({ open, onImport, onClose }: Props) {
 
         {/* Footer */}
         <div className="px-5 py-3 border-t border-white/8 space-y-2">
+          {!loading && totalVariants > 0 && (
+            <button
+              type="button"
+              onClick={handleImportAll}
+              className="w-full flex items-center justify-center gap-2 py-2 px-4 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 hover:border-amber-500/50 text-amber-300 text-sm font-semibold transition-all"
+            >
+              <Download className="w-4 h-4" />
+              Import All ({totalVariants} variant{totalVariants !== 1 ? 's' : ''})
+            </button>
+          )}
           <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/25">
             <span className="text-amber-400 text-xs mt-0.5 flex-shrink-0">⚠</span>
             <p className="text-amber-300/80 text-xs leading-relaxed">

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
@@ -847,6 +848,10 @@ export function ToolFormNew({
       lemonSqueezyVariantId: payload.variantId,
       lemonSqueezyProductId: payload.productId,
     });
+  };
+
+  const handleLsImportAll = (payloads: LsImportPayload[]) => {
+    payloads.forEach(p => handleLsImport(p));
   };
 
   const deleteVersion = (versionId: string) => {
@@ -1822,10 +1827,11 @@ export function ToolFormNew({
         open={lsModalOpen}
         onClose={() => setLsModalOpen(false)}
         onImport={handleLsImport}
+        onImportAll={handleLsImportAll}
       />
 
       {/* Version Type Selection Modal */}
-      {versionTypeModalOpen && (
+      {versionTypeModalOpen ? createPortal(
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[9999] p-4">
           <div className="bg-[#0a0a0a] border border-white/10 rounded-xl shadow-2xl max-w-md w-full p-6">
             <div className="flex items-center justify-between mb-6">
@@ -1905,7 +1911,7 @@ export function ToolFormNew({
             </div>
           </div>
         </div>
-      )}
+      , document.body) : null}
     </div>
   );
 }
