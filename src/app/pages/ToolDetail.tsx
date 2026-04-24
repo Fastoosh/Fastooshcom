@@ -63,11 +63,8 @@ interface ToolVersion {
   pricingDisplay?: string;
   downloadUrl: string;
   lemonSqueezyVariantId?: string;
-  includedFeatureIds?: string[];  // IDs from tool.richFeatures included in this version
-  inheritanceLabelEnabled?: boolean;
-  inheritanceLabel?: string;
-  emptyDeltaMode?: 'message' | 'hide' | 'showAll' | 'deltaOnly';
-  emptyDeltaMessage?: string;
+  includedFeatureIds?: string[];
+  featureLabel?: string;
 }
 
 interface Tool {
@@ -610,34 +607,11 @@ function PricingCard({
   const { t, i18n } = useTranslation();
   const { mainPrice, period, subLabel, ctaPrice, allFeatures } = parsePricing(version, tool?.richFeatures ?? [], billingCycle ?? 'monthly');
 
-  const versions = tool?.versions ?? [];
   const richFeatures = tool?.richFeatures ?? [];
-  const tier0Version = versions[0] ?? null;
-  const prevVersion = index > 0 ? versions[index - 1] : null;
-
-  const emptyMode = version.emptyDeltaMode ?? 'message';
-  const emptyMessage = version.emptyDeltaMessage ?? 'Same features as previous tier';
-
-  // tier 0: show all its included features
-  // tier 1+: diff this tier vs tier 0 to get new features
-  const tier0Ids = new Set<string>(tier0Version?.includedFeatureIds ?? []);
   const thisIds = new Set<string>(version.includedFeatureIds ?? []);
-
-  const deltaFeatures: { title: string; included: boolean }[] = index === 0
-    ? richFeatures.filter(rf => thisIds.has(rf.id)).map(rf => ({ title: rf.title.trim(), included: true }))
-    : richFeatures.filter(rf => thisIds.has(rf.id) && !tier0Ids.has(rf.id)).map(rf => ({ title: rf.title.trim(), included: true }));
-
-  // when delta is empty on tier 1+, apply the chosen fallback mode
-  const displayFeatures: { title: string; included: boolean }[] = (() => {
-    if (index === 0 || deltaFeatures.length > 0) return deltaFeatures;
-    if (emptyMode === 'showAll') return richFeatures.filter(rf => thisIds.has(rf.id)).map(rf => ({ title: rf.title.trim(), included: true }));
-    return []; // 'message', 'hide', 'deltaOnly' — all render empty list; rendering below handles the difference
-  })();
-
-  // Resolve inheritance label with {{previousTier}} template
-  const showInheritanceLabel = index > 0 && (version.inheritanceLabelEnabled ?? true);
-  const rawLabel = version.inheritanceLabel ?? `Everything in {{previousTier}}, plus:`;
-  const resolvedLabel = rawLabel.replace(/\{\{previousTier\}\}/g, prevVersion?.versionType ?? '');
+  const displayFeatures = richFeatures
+    .filter(rf => thisIds.has(rf.id) && rf.title?.trim())
+    .map(rf => rf.title.trim());
 
   // Detect free version by prices, not name
   const { monthlyPrice, yearlyPrice, lifetimePrice } = version;
@@ -871,33 +845,29 @@ function PricingCard({
           )}
         </div>
 
-        {/* Tier inheritance label */}
-        {showInheritanceLabel && resolvedLabel.trim() && (
+        {/* Optional feature label (e.g. "All free features, plus:") */}
+        {version.featureLabel?.trim() && (
           <p className="text-xs text-white/40 mb-3 flex items-center gap-1.5">
             <span className="inline-block w-3 h-px bg-white/20" />
-            <span>{resolvedLabel}</span>
+            <span>{version.featureLabel.trim()}</span>
           </p>
         )}
 
-        {/* Feature list */}
+        {/* Feature list — exactly what admin checked in includedFeatureIds */}
         <div className="flex-grow mb-5">
-          {displayFeatures.length > 0 ? (
+          {displayFeatures.length > 0 && (
             <ul className="space-y-2">
-              {displayFeatures.map((item, i) => (
+              {displayFeatures.map((title, i) => (
                 <li key={i} className="flex items-start gap-2.5">
                   <Check
                     className="w-3.5 h-3.5 mt-0.5 flex-shrink-0"
                     style={{ color: isFree ? '#34d399' : isLifetimeActive ? '#fbbf24' : versionColor }}
                   />
-                  <span className="text-sm leading-snug text-white/70">
-                    {item.title}
-                  </span>
+                  <span className="text-sm leading-snug text-white/70">{title}</span>
                 </li>
               ))}
             </ul>
-          ) : index > 0 && emptyMode === 'message' ? (
-            <p className="text-sm text-white/40 italic">{emptyMessage}</p>
-          ) : null}
+          )}
         </div>
 
         {/* Compare all plans link */}

@@ -357,29 +357,10 @@ const normalizeTool = (tool: Record<string, any>): Record<string, any> => {
       if (featureIdEntries.length > 0) {
         v.includedFeatureIds = featureIdEntries.map((f: string) => f.replace('✅ ', ''));
       }
-      // Decode inheritance label: ⬆️ <text> (enabled) or ⬆️ off (disabled)
-      const inheritEntry = v.features.find((f: string) => typeof f === 'string' && f.startsWith('⬆️ '));
-      if (inheritEntry) {
-        const body = (inheritEntry as string).replace('⬆️ ', '');
-        if (body === 'off') {
-          v.inheritanceLabelEnabled = false;
-          v.inheritanceLabel = '';
-        } else {
-          v.inheritanceLabelEnabled = true;
-          v.inheritanceLabel = body;
-        }
-      }
-      // Decode empty-delta behavior: 💡 <mode>|<message>
-      //   mode ∈ 'message' | 'hide' | 'showAll' | 'deltaOnly'
-      //   message is optional; relevant only when mode = 'message'
-      const emptyEntry = v.features.find((f: string) => typeof f === 'string' && f.startsWith('💡 '));
-      if (emptyEntry) {
-        const body = (emptyEntry as string).replace('💡 ', '');
-        const [mode, ...rest] = body.split('|');
-        if (mode === 'message' || mode === 'hide' || mode === 'showAll' || mode === 'deltaOnly') {
-          v.emptyDeltaMode = mode;
-          if (mode === 'message') v.emptyDeltaMessage = rest.join('|');
-        }
+      // Decode feature label: 📝 <text>
+      const featureLabelEntry = v.features.find((f: string) => typeof f === 'string' && f.startsWith('📝 '));
+      if (featureLabelEntry) {
+        v.featureLabel = (featureLabelEntry as string).replace('📝 ', '');
       }
       // Remove the raw features array after decoding
       delete v.features;
@@ -3380,20 +3361,10 @@ app.post("/make-server-e07959ec/tools", requireAuth, async (c) => {
         const priceSentinel = v.pricingModel === 'subscription'
           ? `subscription|${v.monthlyPrice ?? ''}|${v.yearlyPrice ?? ''}`
           : `lifetime|${v.lifetimePrice ?? ''}|${v.lifetimeBuyUrl ?? ''}`;
-        const inheritanceSentinel =
-          v.inheritanceLabelEnabled === false
-            ? [`⬆️ off`]
-            : v.inheritanceLabelEnabled === true && typeof v.inheritanceLabel === 'string' && v.inheritanceLabel.length > 0
-              ? [`⬆️ ${v.inheritanceLabel}`]
-              : [];
-        const emptyDeltaSentinel = v.emptyDeltaMode
-          ? [`💡 ${v.emptyDeltaMode}${v.emptyDeltaMode === 'message' && v.emptyDeltaMessage ? `|${v.emptyDeltaMessage}` : ''}`]
-          : [];
         const enrichedFeatures = [
           `💰 ${priceSentinel}`,
           ...(v.color ? [`🖌️ color|${v.color}`] : []),
-          ...inheritanceSentinel,
-          ...emptyDeltaSentinel,
+          ...(v.featureLabel ? [`📝 ${v.featureLabel}`] : []),
           ...((v.whatsIncluded ?? []) as string[]).filter(Boolean).map((item: string) => `📦 ${item}`),
           ...((v.activationSteps ?? []) as string[]).filter(Boolean).map((step: string) => `🔑 ${step}`),
           ...((v.includedFeatureIds ?? []) as string[]).filter(Boolean).map((fid: string) => `✅ ${fid}`),
@@ -3513,20 +3484,10 @@ app.put("/make-server-e07959ec/tools/:id", requireAuth, async (c) => {
         const priceSentinel = v.pricingModel === 'subscription'
           ? `subscription|${v.monthlyPrice ?? ''}|${v.yearlyPrice ?? ''}`
           : `lifetime|${v.lifetimePrice ?? ''}|${v.lifetimeBuyUrl ?? ''}`;
-        const inheritanceSentinel =
-          v.inheritanceLabelEnabled === false
-            ? [`⬆️ off`]
-            : v.inheritanceLabelEnabled === true && typeof v.inheritanceLabel === 'string' && v.inheritanceLabel.length > 0
-              ? [`⬆️ ${v.inheritanceLabel}`]
-              : [];
-        const emptyDeltaSentinel = v.emptyDeltaMode
-          ? [`💡 ${v.emptyDeltaMode}${v.emptyDeltaMode === 'message' && v.emptyDeltaMessage ? `|${v.emptyDeltaMessage}` : ''}`]
-          : [];
         const enrichedFeatures = [
           `💰 ${priceSentinel}`,
           ...(v.color ? [`🖌️ color|${v.color}`] : []),
-          ...inheritanceSentinel,
-          ...emptyDeltaSentinel,
+          ...(v.featureLabel ? [`📝 ${v.featureLabel}`] : []),
           ...((v.whatsIncluded ?? []) as string[]).filter(Boolean).map((item: string) => `📦 ${item}`),
           ...((v.activationSteps ?? []) as string[]).filter(Boolean).map((step: string) => `🔑 ${step}`),
           ...((v.includedFeatureIds ?? []) as string[]).filter(Boolean).map((fid: string) => `✅ ${fid}`),

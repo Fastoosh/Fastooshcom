@@ -87,12 +87,9 @@ interface ToolVersion {
   lemonSqueezyProductId?: string;
   whatsIncluded?: string[];
   activationSteps?: string[];
-  includedFeatureIds?: string[];  // IDs from tool.richFeatures that are included in this version
+  includedFeatureIds?: string[];
+  featureLabel?: string;
   demoUrl?: string;
-  inheritanceLabelEnabled?: boolean;  // Show "Everything in X, plus:" label above features
-  inheritanceLabel?: string;  // Template supports {{previousTier}}
-  emptyDeltaMode?: 'message' | 'hide' | 'showAll' | 'deltaOnly';  // What to show when delta is empty
-  emptyDeltaMessage?: string;  // Custom message when mode is 'message'
 }
 
 interface Tool {
@@ -2276,119 +2273,45 @@ function FeatureTransfer({
   );
 }
 
-// ── Inheritance Label Editor ────────────────────────────────────────────────
-// Per-version settings for:
-//  (1) Inheritance label: "Everything in Free, plus:" shown above features
-//      Supports {{previousTier}} template (auto-renders previous version's name)
-//  (2) Empty delta mode: what to render when this tier has no NEW features
-//      vs. the previous tier — fallback message / hide list / show all features
-function InheritanceLabelEditor({
+// ── Feature Label Editor ────────────────────────────────────────────────────
+// Simple optional header shown above this version's feature list.
+// e.g. "All free features, plus:" or "Everything included:"
+function FeatureLabelEditor({
   version,
-  allVersions,
   onUpdate,
 }: {
   version: ToolVersion;
-  allVersions: ToolVersion[];
   onUpdate: (updates: Partial<ToolVersion>) => void;
 }) {
-  const idx = allVersions.findIndex(v => v.id === version.id);
-  const prevVersion = idx > 0 ? allVersions[idx - 1] : null;
-  const prevTierName = prevVersion?.versionType || '';
-
-  // Default: enabled for non-first versions
-  const enabled = version.inheritanceLabelEnabled ?? idx > 0;
-  const labelValue = version.inheritanceLabel ?? (idx > 0 ? `Everything in {{previousTier}}, plus:` : '');
-
-  // Empty-delta behavior defaults
-  const emptyMode = version.emptyDeltaMode ?? 'message';
-  const emptyMessage = version.emptyDeltaMessage ?? 'Same features as previous tier';
-
-  // Live preview (resolve template)
-  const preview = labelValue.replace(/\{\{previousTier\}\}/g, prevTierName || '—');
+  const hasLabel = !!version.featureLabel;
 
   return (
-    <div className="p-4 rounded-lg bg-white/3 border border-white/8 space-y-4">
-      {/* Inheritance label section */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <label className="text-sm font-medium text-gray-300 flex items-center gap-2">
-              <Tag className="w-3.5 h-3.5 text-white/40" />
-              Inheritance label
-            </label>
-            <p className="text-xs text-white/35 mt-0.5">Shown above this version's features</p>
-          </div>
-          <button
-            type="button"
-            onClick={() => onUpdate({ inheritanceLabelEnabled: !enabled })}
-            className={`relative w-10 h-5 rounded-full transition-colors ${enabled ? 'bg-purple-500' : 'bg-white/10'}`}
-            aria-label={enabled ? 'Disable label' : 'Enable label'}
-          >
-            <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${enabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
-          </button>
+    <div className="p-4 rounded-lg bg-white/3 border border-white/8 space-y-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <label className="text-sm font-medium text-gray-300 flex items-center gap-2">
+            <Tag className="w-3.5 h-3.5 text-white/40" />
+            Feature header label
+          </label>
+          <p className="text-xs text-white/35 mt-0.5">Optional text shown above the feature list</p>
         </div>
-
-        {enabled && (
-          <>
-            <Input
-              value={labelValue}
-              onChange={(e) => onUpdate({ inheritanceLabel: e.target.value })}
-              placeholder="Everything in {{previousTier}}, plus:"
-              className="bg-black/50 border-white/20 text-white text-sm"
-            />
-            <div className="flex items-start gap-2 text-xs">
-              <span className="text-white/30 shrink-0 mt-0.5">Preview:</span>
-              <span className="text-white/60 italic">— {preview || '(empty)'}</span>
-            </div>
-            <p className="text-xs text-white/25 leading-relaxed">
-              Use <code className="text-purple-300 bg-purple-500/10 px-1 py-0.5 rounded text-[10px]">{'{{previousTier}}'}</code> to auto-insert the previous version's name. Updates automatically when versions are reordered.
-            </p>
-          </>
-        )}
+        <button
+          type="button"
+          onClick={() => onUpdate({ featureLabel: hasLabel ? '' : 'All free features, plus:' })}
+          className={`relative w-10 h-5 rounded-full transition-colors ${hasLabel ? 'bg-purple-500' : 'bg-white/10'}`}
+          aria-label={hasLabel ? 'Remove label' : 'Add label'}
+        >
+          <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${hasLabel ? 'translate-x-5' : 'translate-x-0.5'}`} />
+        </button>
       </div>
 
-      {/* Empty-delta behavior (only relevant for tiers > 0) */}
-      {idx > 0 && (
-        <div className="pt-3 border-t border-white/5 space-y-2">
-          <label className="text-xs font-medium text-gray-300 block">
-            When this version has no new features vs. {prevTierName || 'previous tier'}
-          </label>
-          <div className="grid grid-cols-2 gap-1.5">
-            {([
-              { value: 'message', label: 'Show message' },
-              { value: 'hide', label: 'Hide list' },
-              { value: 'showAll', label: 'Show all included' },
-              { value: 'deltaOnly', label: 'Delta only (silent)' },
-            ] as const).map(opt => (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => onUpdate({ emptyDeltaMode: opt.value })}
-                className={`px-2 py-2 rounded-md text-[11px] font-medium transition-all border ${
-                  emptyMode === opt.value
-                    ? 'bg-purple-500/20 border-purple-400/40 text-purple-200'
-                    : 'bg-white/3 border-white/8 text-white/50 hover:text-white/80 hover:bg-white/6'
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-          {emptyMode === 'message' && (
-            <Input
-              value={emptyMessage}
-              onChange={(e) => onUpdate({ emptyDeltaMessage: e.target.value })}
-              placeholder="Same features as previous tier"
-              className="bg-black/50 border-white/20 text-white text-sm"
-            />
-          )}
-          <p className="text-xs text-white/25 leading-relaxed">
-            {emptyMode === 'message' && 'Shown as italic text where features would be listed.'}
-            {emptyMode === 'hide' && 'Feature list section is completely hidden (label + CTA only).'}
-            {emptyMode === 'showAll' && "Shows all features included in this tier (free + new). No message."}
-            {emptyMode === 'deltaOnly' && 'Shows only new features vs. previous tier. If none, list is empty — use the inheritance label above (e.g. "All free features, plus:") to provide context.'}
-          </p>
-        </div>
+      {hasLabel && (
+        <Input
+          value={version.featureLabel ?? ''}
+          onChange={(e) => onUpdate({ featureLabel: e.target.value })}
+          placeholder="All free features, plus:"
+          className="bg-black/50 border-white/20 text-white text-sm"
+        />
       )}
     </div>
   );
@@ -2679,10 +2602,9 @@ function VersionEditor({
         currentVersionId={version.id}
       />
 
-      {/* Inheritance label */}
-      <InheritanceLabelEditor
+      {/* Feature header label */}
+      <FeatureLabelEditor
         version={version}
-        allVersions={allVersions}
         onUpdate={onUpdate}
       />
 
