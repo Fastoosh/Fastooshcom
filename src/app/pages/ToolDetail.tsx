@@ -543,24 +543,64 @@ function ComparisonModal({
               {versions.map(v => {
                 const { mainPrice, period, ctaPrice } = parsePricing(v, tool.richFeatures ?? [], billingCycle);
                 const free = isVersionFree(v);
+                const isLifetimeActive = !free && billingCycle === 'lifetime' && !!v.lifetimePrice?.trim();
+                const FreeCtaIcon = getIconComponent(tool.freeCtaIcon, Download);
+                const PaidCtaIcon = getIconComponent(tool.paidCtaIcon, ShoppingCart);
+                const freeCtaText = tool.freeCtaText || t('tools.detail.downloadFree');
+                const paidCtaText = tool.paidCtaText || t('tools.detail.buyNow');
+
+                const buildUrl = () => {
+                  const baseUrl = (billingCycle === 'lifetime' && v.lifetimeBuyUrl?.trim())
+                    ? v.lifetimeBuyUrl
+                    : v.downloadUrl;
+                  if (!baseUrl) return '/work-with-us';
+                  try {
+                    const url = new URL(baseUrl);
+                    if (user?.email) url.searchParams.set('checkout[email]', user.email);
+                    if (user?.id)    url.searchParams.set('checkout[custom][user_id]', user.id);
+                    url.searchParams.set('checkout[custom][tool_version_id]', v.id);
+                    return url.toString();
+                  } catch { return v.downloadUrl; }
+                };
+
                 return (
                   <div key={v.id} className="flex flex-col items-center gap-2">
                     <div className="flex items-baseline gap-1">
                       <span className="text-lg font-bold text-white leading-tight">{mainPrice}</span>
                       {period && <span className="text-[10px] text-white/40">{period}</span>}
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => handleCta(v)}
-                      className={`w-full px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
-                        free
-                          ? 'bg-white/8 hover:bg-white/12 border border-emerald-500/30 text-emerald-300'
-                          : 'bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-fuchsia-500 text-white'
-                      }`}
-                    >
-                      {free ? (tool.freeCtaText || t('tools.detail.downloadFree')) : (tool.paidCtaText || t('tools.detail.buyNow'))}
-                      {!free && ctaPrice && <span className="ml-1 opacity-70">{ctaPrice}</span>}
-                    </button>
+                    {free ? (
+                      <button
+                        type="button"
+                        onClick={() => handleCta(v)}
+                        className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all
+                          bg-white/8 hover:bg-white/12 border border-emerald-500/30 hover:border-emerald-500/50 text-emerald-300"
+                      >
+                        <FreeCtaIcon className="w-3 h-3" />
+                        {freeCtaText}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onClose();
+                          if (!user) { onSignInRequired('Sign in to purchase and access your license key.'); return; }
+                          onBuyClick?.(v);
+                          const url = buildUrl();
+                          window.open(url, '_blank', 'noopener,noreferrer');
+                        }}
+                        className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all active:scale-[0.98]
+                          bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-fuchsia-500 text-white shadow-lg hover:shadow-purple-500/25"
+                        style={isLifetimeActive ? { background: 'linear-gradient(to right, #d97706, #b45309)' } : undefined}
+                      >
+                        {isLifetimeActive
+                          ? <Zap className="w-3 h-3 fill-current" />
+                          : <PaidCtaIcon className="w-3 h-3" />}
+                        {user
+                          ? `${paidCtaText}${ctaPrice ? ` · ${ctaPrice}` : ''}`
+                          : paidCtaText}
+                      </button>
+                    )}
                   </div>
                 );
               })}
