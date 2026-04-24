@@ -430,6 +430,19 @@ function ComparisonModal({
   const versions = tool.versions ?? [];
   const features = (tool.richFeatures ?? []).filter(f => f.title?.trim());
 
+  // Build cumulative included sets: a version implicitly includes everything
+  // any earlier (lower-index) version includes, so "All free features, plus:"
+  // is reflected in the matrix without requiring re-checking IDs in each tier.
+  const cumulativeIds: Set<string>[] = [];
+  for (let i = 0; i < versions.length; i++) {
+    const own = new Set<string>(versions[i].includedFeatureIds ?? []);
+    if (i === 0) {
+      cumulativeIds.push(own);
+    } else {
+      cumulativeIds.push(new Set([...cumulativeIds[i - 1], ...own]));
+    }
+  }
+
   const isVersionFree = (v: ToolVersion) =>
     !v.monthlyPrice?.trim() && !v.yearlyPrice?.trim() && !v.lifetimePrice?.trim();
 
@@ -510,14 +523,15 @@ function ComparisonModal({
                     className={`border-b border-white/5 hover:bg-white/3 transition-colors ${i % 2 === 1 ? 'bg-white/[0.015]' : ''}`}
                   >
                     <td className="text-left text-white/70 px-5 sm:px-6 py-3">{feat.title}</td>
-                    {versions.map(v => {
-                      const included = (v.includedFeatureIds ?? []).includes(feat.id);
+                    {versions.map((v, vIdx) => {
+                      const included = cumulativeIds[vIdx].has(feat.id);
+                      const ownIncluded = (v.includedFeatureIds ?? []).includes(feat.id);
                       return (
                         <td key={v.id} className="text-center px-4 py-3">
                           {included ? (
                             <Check
                               className="w-4 h-4 mx-auto"
-                              style={{ color: v.color || '#a855f7' }}
+                              style={{ color: ownIncluded ? (v.color || '#a855f7') : 'rgba(255,255,255,0.25)' }}
                             />
                           ) : (
                             <svg className="w-3.5 h-3.5 mx-auto text-white/20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
