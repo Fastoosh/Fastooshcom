@@ -545,9 +545,9 @@ function ComparisonModal({
                 const free = isVersionFree(v);
                 return (
                   <div key={v.id} className="flex flex-col items-center gap-2">
-                    <div className="text-center">
-                      <div className="text-lg font-bold text-white leading-tight">{mainPrice}</div>
-                      {period && <div className="text-[10px] text-white/40">{period}</div>}
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-lg font-bold text-white leading-tight">{mainPrice}</span>
+                      {period && <span className="text-[10px] text-white/40">{period}</span>}
                     </div>
                     <button
                       type="button"
