@@ -789,7 +789,7 @@ export function ToolFormNew({
     };
 
     const updatedVersions = [...(formData.versions || []), newVersion];
-    setFormData({ ...formData, versions: updatedVersions });
+    setFormData(prev => ({ ...prev, versions: updatedVersions }));
     setActiveVersionTab(newVersion.id);
   };
 
@@ -836,7 +836,7 @@ export function ToolFormNew({
       color: VERSION_COLORS[existingCount % VERSION_COLORS.length],
     };
     const updatedVersions = [...(formData.versions || []), newVersion];
-    setFormData({ ...formData, versions: updatedVersions });
+    setFormData(prev => ({ ...prev, versions: updatedVersions }));
     setActiveVersionTab(newVersion.id);
   };
 
@@ -882,7 +882,7 @@ export function ToolFormNew({
     if (!confirm('Are you sure you want to delete this version?')) return;
 
     const updatedVersions = (formData.versions || []).filter(v => v.id !== versionId);
-    setFormData({ ...formData, versions: updatedVersions });
+    setFormData(prev => ({ ...prev, versions: updatedVersions }));
 
     // Set active tab to first version if current was deleted
     if (activeVersionTab === versionId && updatedVersions.length > 0) {
@@ -1013,7 +1013,7 @@ export function ToolFormNew({
             onChange={(e) => {
               const name = e.target.value;
               const slug = createSlug(name);
-              setFormData({ ...formData, name, slug });
+              setFormData(prev => ({ ...prev, name, slug }));
               setErrors(prev => ({ ...prev, name: '' }));
             }}
             className={`bg-black/50 border-white/20 text-white ${errors.name ? 'border-red-500' : ''}`}
@@ -1026,7 +1026,7 @@ export function ToolFormNew({
         <div>
           <div className="flex items-center justify-between mb-2">
             <label className="block text-sm font-medium text-gray-300">Description *</label>
-            <button type="button" onClick={() => openToolAiModal('description', 'Description', formData.description || '', (v) => { setFormData(prev => ({ ...prev, description: v.slice(0, 250) })); setErrors(prev => ({ ...prev, description: '' })); })} className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-purple-300 hover:text-white bg-purple-500/10 hover:bg-purple-500/20 border border-purple-400/15 transition-all duration-150"><Sparkles className="w-3 h-3" />Improve</button>
+            <button type="button" onClick={() => openToolAiModal('description', 'Description', formData.description || '', (v) => { setFormData(prev => ({ ...prev, description: v.slice(0, 250) })); setErrors(prev => ({ ...prev, description: '' })); }))} className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-purple-300 hover:text-white bg-purple-500/10 hover:bg-purple-500/20 border border-purple-400/15 transition-all duration-150"><Sparkles className="w-3 h-3" />Improve</button>
           </div>
           <div className="relative">
             <Textarea
@@ -1034,7 +1034,7 @@ export function ToolFormNew({
               value={formData.description}
               onChange={(e) => {
                 if (e.target.value.length <= 250) {
-                  setFormData({ ...formData, description: e.target.value });
+                  setFormData(prev => ({ ...prev, description: e.target.value }));
                   setErrors(prev => ({ ...prev, description: '' }));
                 }
               }}
@@ -1054,7 +1054,7 @@ export function ToolFormNew({
                 if (newText.length > 250) {
                   newText = newText.substring(0, 250);
                   e.preventDefault();
-                  setFormData({ ...formData, description: newText });
+                  setFormData(prev => ({ ...prev, description: newText }));
                   setErrors(prev => ({ ...prev, description: '' }));
                   
                   // Set cursor position
@@ -1087,7 +1087,7 @@ export function ToolFormNew({
             </label>
             <AdminSelect
               value={formData.category}
-              onChange={(v) => setFormData({ ...formData, category: v })}
+              onChange={(v) => setFormData(prev => ({ ...prev, category: v }))}
               options={statuses.map((s) => ({ value: s, label: s }))}
             />
           </div>
@@ -1098,7 +1098,7 @@ export function ToolFormNew({
             </label>
             <AdminSelect
               value={formData.toolCategory}
-              onChange={(v) => setFormData({ ...formData, toolCategory: v })}
+              onChange={(v) => setFormData(prev => ({ ...prev, toolCategory: v }))}
               options={[
                 { value: '', label: '— None —' },
                 ...toolCategories.map((c) => ({ value: c, label: c })),
@@ -1113,7 +1113,7 @@ export function ToolFormNew({
             <Input
               placeholder="tool-slug"
               value={formData.slug || ''}
-              onChange={(e) => setFormData({ ...formData, slug: e.target.value })}
+              onChange={(e) => setFormData(prev => ({ ...prev, slug: e.target.value }))}
               className="bg-black/50 border-white/20 text-white"
             />
             <p className="text-xs text-white/40 mt-1">Used in URL: /tools/{formData.slug || 'tool-name'}</p>
@@ -1156,7 +1156,7 @@ export function ToolFormNew({
                 placeholder="Image URL"
                 value={formData.imageUrl}
                 onChange={(e) => {
-                  setFormData({ ...formData, imageUrl: e.target.value });
+                  setFormData(prev => ({ ...prev, imageUrl: e.target.value }));
                   setErrors(prev => ({ ...prev, imageUrl: '' }));
                 }}
                 className={`bg-black/50 border-white/20 text-white ${errors.imageUrl ? 'border-red-500' : ''}`}
@@ -1203,7 +1203,7 @@ export function ToolFormNew({
         <div>
           <div className="flex items-center justify-between mb-2">
             <label className="block text-sm font-medium text-gray-300">FAQs <span className="text-white/30 font-normal">(applies to all versions)</span></label>
-            <button type="button" onClick={() => openToolAiModal('faqs', 'FAQs', faqText, (v) => { setFaqText(v); setFormData(prev => ({ ...prev, faqs: parseFaqText(v) })); })} className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-purple-300 hover:text-white bg-purple-500/10 hover:bg-purple-500/20 border border-purple-400/15 transition-all duration-150"><Sparkles className="w-3 h-3" />Improve</button>
+            <button type="button" onClick={() => openToolAiModal('faqs', 'FAQs', faqText, (v) => { setFaqText(v); setFormData(prev => ({ ...prev, faqs: parseFaqText(v) })); }))} className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-purple-300 hover:text-white bg-purple-500/10 hover:bg-purple-500/20 border border-purple-400/15 transition-all duration-150"><Sparkles className="w-3 h-3" />Improve</button>
           </div>
           <Textarea
             placeholder="Q: Does it work with CC 2024?&#10;A: Yes, fully compatible with After Effects 2022-2024.&#10;&#10;Q: Can I use it for commercial projects?&#10;A: Absolutely. One license covers all your commercial work."
@@ -1211,7 +1211,7 @@ export function ToolFormNew({
             onChange={(e) => setFaqText(e.target.value)}
             onBlur={() => {
               const faqs = parseFaqText(faqText);
-              setFormData({ ...formData, faqs });
+              setFormData(prev => ({ ...prev, faqs }));
             }}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
@@ -1256,7 +1256,7 @@ export function ToolFormNew({
           <Input
             placeholder="Perfect for freelancers and small studios"
             value={formData.tagline || ''}
-            onChange={(e) => setFormData({ ...formData, tagline: e.target.value })}
+            onChange={(e) => setFormData(prev => ({ ...prev, tagline: e.target.value }))}
             className={`bg-black/50 border-white/20 text-white transition-all duration-700 ${hlClass('tagline')}`}
           />
         </div>
@@ -1270,7 +1270,7 @@ export function ToolFormNew({
           <Textarea
             placeholder="After Effects 2022 or later, macOS 11+ or Windows 10+"
             value={formData.systemRequirements || ''}
-            onChange={(e) => setFormData({ ...formData, systemRequirements: e.target.value })}
+            onChange={(e) => setFormData(prev => ({ ...prev, systemRequirements: e.target.value }))}
             className={`bg-black/50 border-white/20 text-white transition-all duration-700 ${hlClass('systemRequirements')}`}
             rows={3}
           />
@@ -1294,7 +1294,7 @@ export function ToolFormNew({
                 <Input
                   placeholder="Download Free"
                   value={formData.freeCtaText || ''}
-                  onChange={(e) => setFormData({ ...formData, freeCtaText: e.target.value })}
+                  onChange={(e) => setFormData(prev => ({ ...prev, freeCtaText: e.target.value }))}
                   className="bg-black/30 border-emerald-500/20 text-white text-sm"
                 />
                 <p className="text-[10px] text-white/30 mt-1">Leave empty to use default</p>
@@ -1304,7 +1304,7 @@ export function ToolFormNew({
                 <label className="block text-xs font-medium text-gray-300 mb-1.5">Icon</label>
                 <IconPicker
                   value={formData.freeCtaIcon || ''}
-                  onChange={(v) => setFormData({ ...formData, freeCtaIcon: v })}
+                  onChange={(v) => setFormData(prev => ({ ...prev, freeCtaIcon: v }))}
                   iconOptions={CTA_ICON_OPTIONS}
                   placeholder="Download (default)"
                   defaultIcon="Download"
@@ -1323,7 +1323,7 @@ export function ToolFormNew({
                 <Input
                   placeholder="Buy Now"
                   value={formData.paidCtaText || ''}
-                  onChange={(e) => setFormData({ ...formData, paidCtaText: e.target.value })}
+                  onChange={(e) => setFormData(prev => ({ ...prev, paidCtaText: e.target.value }))}
                   className="bg-black/30 border-purple-500/20 text-white text-sm"
                 />
                 <p className="text-[10px] text-white/30 mt-1">For pricing cards</p>
@@ -1334,7 +1334,7 @@ export function ToolFormNew({
                 <Input
                   placeholder="View Pricing"
                   value={formData.showcasePaidCtaText || ''}
-                  onChange={(e) => setFormData({ ...formData, showcasePaidCtaText: e.target.value })}
+                  onChange={(e) => setFormData(prev => ({ ...prev, showcasePaidCtaText: e.target.value }))}
                   className="bg-black/30 border-purple-500/20 text-white text-sm"
                 />
                 <p className="text-[10px] text-white/30 mt-1">For feature showcase section</p>
@@ -1344,7 +1344,7 @@ export function ToolFormNew({
                 <label className="block text-xs font-medium text-gray-300 mb-1.5">Icon</label>
                 <IconPicker
                   value={formData.paidCtaIcon || ''}
-                  onChange={(v) => setFormData({ ...formData, paidCtaIcon: v })}
+                  onChange={(v) => setFormData(prev => ({ ...prev, paidCtaIcon: v }))}
                   iconOptions={CTA_ICON_OPTIONS}
                   placeholder="ShoppingCart (default)"
                   defaultIcon="ShoppingCart"
@@ -1394,7 +1394,7 @@ export function ToolFormNew({
           <input
             type="checkbox"
             checked={formData.featured}
-            onChange={(e) => setFormData({ ...formData, featured: e.target.checked })}
+            onChange={(e) => setFormData(prev => ({ ...prev, featured: e.target.checked }))}
             className="w-4 h-4"
           />
           Featured Tool
