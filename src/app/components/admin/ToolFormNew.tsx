@@ -1026,7 +1026,7 @@ export function ToolFormNew({
         <div>
           <div className="flex items-center justify-between mb-2">
             <label className="block text-sm font-medium text-gray-300">Description *</label>
-            <button type="button" onClick={() => openToolAiModal('description', 'Description', formData.description || '', (v) => { setFormData(prev => ({ ...prev, description: v.slice(0, 250) })); setErrors(prev => ({ ...prev, description: '' })); }))} className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-purple-300 hover:text-white bg-purple-500/10 hover:bg-purple-500/20 border border-purple-400/15 transition-all duration-150"><Sparkles className="w-3 h-3" />Improve</button>
+            <button type="button" onClick={() => openToolAiModal('description', 'Description', formData.description || '', (v) => { setFormData(prev => ({ ...prev, description: v.slice(0, 250) })); setErrors(prev => ({ ...prev, description: '' })); })} className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-purple-300 hover:text-white bg-purple-500/10 hover:bg-purple-500/20 border border-purple-400/15 transition-all duration-150"><Sparkles className="w-3 h-3" />Improve</button>
           </div>
           <div className="relative">
             <Textarea
@@ -1203,7 +1203,7 @@ export function ToolFormNew({
         <div>
           <div className="flex items-center justify-between mb-2">
             <label className="block text-sm font-medium text-gray-300">FAQs <span className="text-white/30 font-normal">(applies to all versions)</span></label>
-            <button type="button" onClick={() => openToolAiModal('faqs', 'FAQs', faqText, (v) => { setFaqText(v); setFormData(prev => ({ ...prev, faqs: parseFaqText(v) })); }))} className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-purple-300 hover:text-white bg-purple-500/10 hover:bg-purple-500/20 border border-purple-400/15 transition-all duration-150"><Sparkles className="w-3 h-3" />Improve</button>
+            <button type="button" onClick={() => openToolAiModal('faqs', 'FAQs', faqText, (v) => { setFaqText(v); setFormData(prev => ({ ...prev, faqs: parseFaqText(v) })); })} className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-purple-300 hover:text-white bg-purple-500/10 hover:bg-purple-500/20 border border-purple-400/15 transition-all duration-150"><Sparkles className="w-3 h-3" />Improve</button>
           </div>
           <Textarea
             placeholder="Q: Does it work with CC 2024?&#10;A: Yes, fully compatible with After Effects 2022-2024.&#10;&#10;Q: Can I use it for commercial projects?&#10;A: Absolutely. One license covers all your commercial work."
