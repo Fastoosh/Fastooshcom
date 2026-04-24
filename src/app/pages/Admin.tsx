@@ -921,14 +921,17 @@ export function Admin() {
             <GuideTab />
           </TabsContent>
 
-          {/* PROJECTS TAB */}
+          {/* PROJECTS TAB — split pane */}
           <TabsContent value="projects">
-            <GlassCard className="p-6 mb-6">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-2xl font-bold text-white">Projects</h2>
-                <Button
-                  onClick={() =>
-                    setEditingProject({
+            <div className="flex gap-0 h-[calc(100vh-4rem)] -m-8">
+
+              {/* ── Left: list ── */}
+              <div className="w-80 flex-shrink-0 flex flex-col border-r border-white/8 overflow-y-auto">
+                {/* Header */}
+                <div className="flex items-center justify-between px-5 py-4 border-b border-white/8 sticky top-0 bg-black/80 z-10">
+                  <h2 className="text-base font-bold text-white">Projects</h2>
+                  <Button
+                    onClick={() => setEditingProject({
                       id: `project-${Date.now()}`,
                       title: '',
                       description: '',
@@ -944,120 +947,100 @@ export function Admin() {
                       deliverables: [],
                       outcome: '',
                       screenshots: [],
-                    })
-                  }
-                  className="cursor-pointer bg-violet-600 hover:bg-violet-500 text-white"
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Project
-                </Button>
-              </div>
-
-              {/* Show form at top only for new projects (temporary ID starting with 'project-') */}
-              {editingProject && editingProject.id.startsWith('project-') && (
-                <ProjectForm
-                  project={editingProject}
-                  onSave={saveProject}
-                  onCancel={() => setEditingProject(null)}
-                  categories={settings.projectCategories || ['Motion Design', 'Branding', '3D Animation', 'Video Editing', 'VFX', 'UI/UX Animation', 'Other']}
-                />
-              )}
-
-              {projects.length > 0 && (
-                <p className="text-sm text-white/50 mb-4">
-                  💡 Drag and drop to reorder projects. Changes are saved automatically.
-                </p>
-              )}
-
-              <DndProvider backend={HTML5Backend}>
-                <div className="space-y-3">
-                  {projects.map((project, index) => (
-                    <DraggableProjectCard
-                      key={project.id}
-                      project={project}
-                      index={index}
-                      moveProject={moveProject}
-                      onEdit={() => setEditingProject(project)}
-                      onDelete={() => deleteProject(project.id)}
-                      onDragEnd={reorderProjects}
-                      isExpanded={editingProject?.id === project.id}
-                      expandedContent={
-                        editingProject?.id === project.id ? (
-                          <ProjectForm
-                            project={editingProject}
-                            onSave={saveProject}
-                            onCancel={() => setEditingProject(null)}
-                            categories={settings.projectCategories || ['Motion Design', 'Branding', '3D Animation', 'Video Editing', 'VFX', 'UI/UX Animation', 'Other']}
-                          />
-                        ) : null
-                      }
-                    />
-                  ))}
-                </div>
-              </DndProvider>
-            </GlassCard>
-
-            {/* PROJECT CATEGORIES */}
-            <GlassCard className="p-6">
-              <h2 className="text-xl font-bold text-white mb-1">Project Categories</h2>
-              <p className="text-gray-400 text-sm mb-4">
-                These appear in the category dropdown when adding or editing a project.
-              </p>
-              <div className="flex flex-wrap gap-2 mb-4 min-h-[2rem]">
-                {(settings.projectCategories || []).length === 0 && (
-                  <p className="text-gray-500 text-sm italic">No categories yet — add one below.</p>
-                )}
-                {(settings.projectCategories || []).map((cat, index) => (
-                  <span
-                    key={cat}
-                    className="flex items-center gap-1 pl-3 pr-1.5 py-1 bg-purple-900/40 border border-purple-500/40 rounded-full text-sm text-white"
+                    })}
+                    className="cursor-pointer bg-violet-600 hover:bg-violet-500 text-white h-8 px-3 text-xs"
                   >
-                    {cat}
-                    <button
-                      type="button"
-                      onClick={() => removeProjectCategory(index)}
-                      disabled={catSaving}
-                      className="ml-1 w-4 h-4 flex items-center justify-center rounded-full text-white/50 hover:text-red-400 hover:bg-white/10 transition-colors disabled:opacity-40"
-                      title={`Remove "${cat}"`}
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </span>
-                ))}
-              </div>
-              <div className="flex gap-2">
-                <Input
-                  placeholder="e.g. Motion Design"
-                  value={newProjectCat}
-                  onChange={(e) => setNewProjectCat(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addProjectCategory(); } }}
-                  className="bg-black/50 border-white/20 text-white"
-                  disabled={catSaving}
-                />
-                <Button
-                  type="button"
-                  onClick={addProjectCategory}
-                  disabled={catSaving || !newProjectCat.trim()}
-                  className="cursor-pointer whitespace-nowrap bg-purple-600 hover:bg-purple-700 text-white disabled:opacity-50"
-                >
-                  {catSaving ? (
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  ) : (
-                    <><Plus className="w-4 h-4 mr-1" />Add</>
+                    <Plus className="w-3.5 h-3.5 mr-1" />
+                    Add Project
+                  </Button>
+                </div>
+
+                {/* Project list */}
+                <div className="flex-1 p-3 space-y-1">
+                  {projects.length > 0 && (
+                    <p className="text-xs text-white/30 px-2 pb-2">Drag to reorder</p>
                   )}
-                </Button>
+                  <DndProvider backend={HTML5Backend}>
+                    <div className="space-y-1">
+                      {projects.map((project, index) => (
+                        <DraggableProjectCard
+                          key={project.id}
+                          project={project}
+                          index={index}
+                          moveProject={moveProject}
+                          onEdit={() => setEditingProject(project)}
+                          onDelete={() => deleteProject(project.id)}
+                          onDragEnd={reorderProjects}
+                          isExpanded={editingProject?.id === project.id}
+                          expandedContent={null}
+                          compact
+                        />
+                      ))}
+                    </div>
+                  </DndProvider>
+                  {projects.length === 0 && (
+                    <p className="text-sm text-white/30 text-center py-8">No projects yet</p>
+                  )}
+                </div>
+
+                {/* Categories at bottom */}
+                <div className="border-t border-white/8 p-4 space-y-3">
+                  <p className="text-xs font-semibold text-white/40 uppercase tracking-wider">Categories</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(settings.projectCategories || []).map((cat, index) => (
+                      <span key={cat} className="flex items-center gap-1 pl-2 pr-1 py-0.5 bg-purple-900/40 border border-purple-500/40 rounded-full text-xs text-white">
+                        {cat}
+                        <button type="button" onClick={() => removeProjectCategory(index)} disabled={catSaving} className="w-3.5 h-3.5 flex items-center justify-center rounded-full text-white/40 hover:text-red-400 transition-colors">
+                          <X className="w-2.5 h-2.5" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                  <div className="flex gap-1.5">
+                    <Input placeholder="New category" value={newProjectCat} onChange={(e) => setNewProjectCat(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addProjectCategory(); } }} className="bg-black/50 border-white/20 text-white text-xs h-7" disabled={catSaving} />
+                    <Button type="button" onClick={addProjectCategory} disabled={catSaving || !newProjectCat.trim()} className="cursor-pointer bg-purple-600 hover:bg-purple-700 text-white h-7 px-2 text-xs">
+                      {catSaving ? <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Plus className="w-3 h-3" />}
+                    </Button>
+                  </div>
+                </div>
               </div>
-            </GlassCard>
+
+              {/* ── Right: form ── */}
+              <div className="flex-1 overflow-y-auto">
+                {editingProject ? (
+                  <div className="p-6">
+                    <ProjectForm
+                      key={editingProject.id}
+                      project={editingProject}
+                      onSave={saveProject}
+                      onCancel={() => setEditingProject(null)}
+                      categories={settings.projectCategories || ['Motion Design', 'Branding', '3D Animation', 'Video Editing', 'VFX', 'UI/UX Animation', 'Other']}
+                    />
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-full text-center p-8">
+                    <div className="w-14 h-14 rounded-2xl bg-white/4 border border-white/8 flex items-center justify-center mb-4">
+                      <Plus className="w-6 h-6 text-white/20" />
+                    </div>
+                    <p className="text-white/40 text-sm font-medium">Select a project to edit</p>
+                    <p className="text-white/20 text-xs mt-1">or click Add Project to create a new one</p>
+                  </div>
+                )}
+              </div>
+            </div>
           </TabsContent>
 
-          {/* TOOLS TAB */}
+          {/* TOOLS TAB — split pane */}
           <TabsContent value="tools">
-            <GlassCard className="p-6 mb-6">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-2xl font-bold text-white">Tools</h2>
-                <Button
-                  onClick={() =>
-                    setEditingTool({
+            <div className="flex gap-0 h-[calc(100vh-4rem)] -m-8">
+
+              {/* ── Left: list ── */}
+              <div className="w-80 flex-shrink-0 flex flex-col border-r border-white/8 overflow-y-auto">
+                {/* Header */}
+                <div className="flex items-center justify-between px-5 py-4 border-b border-white/8 sticky top-0 bg-black/80 z-10">
+                  <h2 className="text-base font-bold text-white">Tools</h2>
+                  <Button
+                    onClick={() => setEditingTool({
                       id: `tool-${Date.now()}`,
                       name: '',
                       description: '',
@@ -1067,183 +1050,120 @@ export function Admin() {
                       slug: '',
                       faqs: [],
                       versions: [],
-                    })
-                  }
-                  className="cursor-pointer bg-violet-600 hover:bg-violet-500 text-white"
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Tool
-                </Button>
-              </div>
-
-              {/* Show form at top only for new tools (temporary ID starting with 'tool-') */}
-              {editingTool && editingTool.id.startsWith('tool-') && (
-                <ToolFormNew
-                  tool={editingTool}
-                  onSave={saveTool}
-                  onCancel={() => setEditingTool(null)}
-                  statuses={(settings.toolStatuses || []).map(s => s.label)}
-                  toolCategories={settings.toolCategories || []}
-                />
-              )}
-
-              {tools.length > 0 && (
-                <p className="text-sm text-white/50 mb-4">
-                  💡 Drag and drop to reorder tools. Changes are saved automatically.
-                </p>
-              )}
-
-              <DndProvider backend={HTML5Backend}>
-                <div className="space-y-3">
-                  {tools.map((tool, index) => (
-                    <DraggableToolCard
-                      key={tool.id}
-                      tool={tool}
-                      index={index}
-                      moveTool={moveTool}
-                      onEdit={() => setEditingTool(tool)}
-                      onDelete={() => deleteTool(tool.id)}
-                      onDragEnd={reorderTools}
-                      isExpanded={editingTool?.id === tool.id}
-                      expandedContent={
-                        editingTool?.id === tool.id ? (
-                          <ToolFormNew
-                            tool={editingTool}
-                            onSave={saveTool}
-                            onCancel={() => setEditingTool(null)}
-                            statuses={(settings.toolStatuses || []).map(s => s.label)}
-                            toolCategories={settings.toolCategories || []}
-                          />
-                        ) : null
-                      }
-                    />
-                  ))}
-                </div>
-              </DndProvider>
-            </GlassCard>
-
-            {/* TOOL CATEGORIES */}
-            <GlassCard className="p-6">
-              <h2 className="text-xl font-bold text-white mb-1">Tool Categories</h2>
-              <p className="text-gray-400 text-sm mb-4">
-                These appear in the category dropdown when adding or editing a tool.
-              </p>
-              <div className="flex flex-wrap gap-2 mb-4 min-h-[2rem]">
-                {(settings.toolCategories || []).length === 0 && (
-                  <p className="text-gray-500 text-sm italic">No categories yet — add one below.</p>
-                )}
-                {(settings.toolCategories || []).map((cat, index) => (
-                  <span
-                    key={cat}
-                    className="flex items-center gap-1 pl-3 pr-1.5 py-1 bg-purple-900/40 border border-purple-500/40 rounded-full text-sm text-white"
+                    })}
+                    className="cursor-pointer bg-violet-600 hover:bg-violet-500 text-white h-8 px-3 text-xs"
                   >
-                    {cat}
-                    <button
-                      type="button"
-                      onClick={() => removeToolCategory(index)}
-                      disabled={catSaving}
-                      className="ml-1 w-4 h-4 flex items-center justify-center rounded-full text-white/50 hover:text-red-400 hover:bg-white/10 transition-colors disabled:opacity-40"
-                      title={`Remove "${cat}"`}
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </span>
-                ))}
-              </div>
-              <div className="flex gap-2">
-                <Input
-                  placeholder="e.g. Rendering"
-                  value={newToolCat}
-                  onChange={(e) => setNewToolCat(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addToolCategory(); } }}
-                  className="bg-black/50 border-white/20 text-white"
-                  disabled={catSaving}
-                />
-                <Button
-                  type="button"
-                  onClick={addToolCategory}
-                  disabled={catSaving || !newToolCat.trim()}
-                  className="cursor-pointer whitespace-nowrap bg-purple-600 hover:bg-purple-700 text-white disabled:opacity-50"
-                >
-                  {catSaving ? (
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  ) : (
-                    <><Plus className="w-4 h-4 mr-1" />Add</>
-                  )}
-                </Button>
-              </div>
-            </GlassCard>
-
-            {/* TOOL STATUSES */}
-            <GlassCard className="p-6">
-              <h2 className="text-xl font-bold text-white mb-1">Tool Statuses</h2>
-              <p className="text-gray-400 text-sm mb-4">
-                These appear as badge pills on tool cards. Pick a label and a color for each status.
-              </p>
-              <div className="flex flex-wrap gap-2 mb-4 min-h-[2rem]">
-                {(settings.toolStatuses || []).length === 0 && (
-                  <p className="text-gray-500 text-sm italic">No statuses yet — add one below.</p>
-                )}
-                {(settings.toolStatuses || []).map((status, index) => {
-                  const colorOption = STATUS_COLOR_OPTIONS.find(c => c.name === status.color);
-                  return (
-                    <span
-                      key={status.label}
-                      className={`flex items-center gap-1 pl-3 pr-1.5 py-1 bg-gradient-to-r ${colorOption?.classes || 'from-purple-500 to-violet-500'} rounded-full text-sm text-white font-medium`}
-                    >
-                      {status.label}
-                      <button
-                        type="button"
-                        onClick={() => removeToolStatus(index)}
-                        disabled={catSaving}
-                        className="ml-1 w-4 h-4 flex items-center justify-center rounded-full text-white/70 hover:text-white hover:bg-black/20 transition-colors disabled:opacity-40"
-                        title={`Remove "${status.label}"`}
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </span>
-                  );
-                })}
-              </div>
-              <div className="flex gap-2 items-center flex-wrap">
-                <Input
-                  placeholder="e.g. Hot Deal"
-                  value={newToolStatusLabel}
-                  onChange={(e) => setNewToolStatusLabel(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addToolStatus(); } }}
-                  className="bg-black/50 border-white/20 text-white flex-1 min-w-[140px]"
-                  disabled={catSaving}
-                />
-                {/* Color swatches */}
-                <div className="flex gap-1.5 items-center">
-                  {STATUS_COLOR_OPTIONS.map((color) => (
-                    <button
-                      key={color.name}
-                      type="button"
-                      onClick={() => setNewToolStatusColor(color.name)}
-                      title={color.label}
-                      className={`w-6 h-6 rounded-full bg-gradient-to-br ${color.classes} transition-all ${
-                        newToolStatusColor === color.name
-                          ? 'ring-2 ring-white ring-offset-2 ring-offset-black scale-110'
-                          : 'opacity-60 hover:opacity-100'
-                      }`}
-                    />
-                  ))}
+                    <Plus className="w-3.5 h-3.5 mr-1" />
+                    Add Tool
+                  </Button>
                 </div>
-                <Button
-                  type="button"
-                  onClick={addToolStatus}
-                  disabled={catSaving || !newToolStatusLabel.trim()}
-                  className="cursor-pointer whitespace-nowrap bg-purple-600 hover:bg-purple-700 text-white disabled:opacity-50"
-                >
-                  {catSaving ? (
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  ) : (
-                    <><Plus className="w-4 h-4 mr-1" />Add</>
+
+                {/* Tool list */}
+                <div className="flex-1 p-3 space-y-1">
+                  {tools.length > 0 && (
+                    <p className="text-xs text-white/30 px-2 pb-2">Drag to reorder</p>
                   )}
-                </Button>
+                  <DndProvider backend={HTML5Backend}>
+                    <div className="space-y-1">
+                      {tools.map((tool, index) => (
+                        <DraggableToolCard
+                          key={tool.id}
+                          tool={tool}
+                          index={index}
+                          moveTool={moveTool}
+                          onEdit={() => setEditingTool(tool)}
+                          onDelete={() => deleteTool(tool.id)}
+                          onDragEnd={reorderTools}
+                          isExpanded={editingTool?.id === tool.id}
+                          expandedContent={null}
+                          compact
+                        />
+                      ))}
+                    </div>
+                  </DndProvider>
+                  {tools.length === 0 && (
+                    <p className="text-sm text-white/30 text-center py-8">No tools yet</p>
+                  )}
+                </div>
+
+                {/* Categories & statuses at bottom */}
+                <div className="border-t border-white/8 p-4 space-y-5">
+                  {/* Categories */}
+                  <div>
+                    <p className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-2">Categories</p>
+                    <div className="flex flex-wrap gap-1.5 mb-2">
+                      {(settings.toolCategories || []).map((cat, index) => (
+                        <span key={cat} className="flex items-center gap-1 pl-2 pr-1 py-0.5 bg-purple-900/40 border border-purple-500/40 rounded-full text-xs text-white">
+                          {cat}
+                          <button type="button" onClick={() => removeToolCategory(index)} disabled={catSaving} className="w-3.5 h-3.5 flex items-center justify-center rounded-full text-white/40 hover:text-red-400 transition-colors">
+                            <X className="w-2.5 h-2.5" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                    <div className="flex gap-1.5">
+                      <Input placeholder="New category" value={newToolCat} onChange={(e) => setNewToolCat(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addToolCategory(); } }} className="bg-black/50 border-white/20 text-white text-xs h-7" disabled={catSaving} />
+                      <Button type="button" onClick={addToolCategory} disabled={catSaving || !newToolCat.trim()} className="cursor-pointer bg-purple-600 hover:bg-purple-700 text-white h-7 px-2 text-xs">
+                        {catSaving ? <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Plus className="w-3 h-3" />}
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Statuses */}
+                  <div>
+                    <p className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-2">Statuses</p>
+                    <div className="flex flex-wrap gap-1.5 mb-2">
+                      {(settings.toolStatuses || []).map((status, index) => {
+                        const colorOption = STATUS_COLOR_OPTIONS.find(c => c.name === status.color);
+                        return (
+                          <span key={status.label} className={`flex items-center gap-1 pl-2 pr-1 py-0.5 bg-gradient-to-r ${colorOption?.classes || 'from-purple-500 to-violet-500'} rounded-full text-xs text-white font-medium`}>
+                            {status.label}
+                            <button type="button" onClick={() => removeToolStatus(index)} disabled={catSaving} className="w-3.5 h-3.5 flex items-center justify-center rounded-full text-white/70 hover:text-white hover:bg-black/20 transition-colors">
+                              <X className="w-2.5 h-2.5" />
+                            </button>
+                          </span>
+                        );
+                      })}
+                    </div>
+                    <div className="flex gap-1.5 items-center flex-wrap">
+                      <Input placeholder="New status" value={newToolStatusLabel} onChange={(e) => setNewToolStatusLabel(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addToolStatus(); } }} className="bg-black/50 border-white/20 text-white text-xs h-7 flex-1 min-w-0" disabled={catSaving} />
+                      <div className="flex gap-1">
+                        {STATUS_COLOR_OPTIONS.map((color) => (
+                          <button key={color.name} type="button" onClick={() => setNewToolStatusColor(color.name)} title={color.label} className={`w-5 h-5 rounded-full bg-gradient-to-br ${color.classes} transition-all ${newToolStatusColor === color.name ? 'ring-2 ring-white ring-offset-1 ring-offset-black scale-110' : 'opacity-60 hover:opacity-100'}`} />
+                        ))}
+                      </div>
+                      <Button type="button" onClick={addToolStatus} disabled={catSaving || !newToolStatusLabel.trim()} className="cursor-pointer bg-purple-600 hover:bg-purple-700 text-white h-7 px-2 text-xs">
+                        {catSaving ? <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Plus className="w-3 h-3" />}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
               </div>
-            </GlassCard>
+
+              {/* ── Right: form ── */}
+              <div className="flex-1 overflow-y-auto">
+                {editingTool ? (
+                  <div className="p-6">
+                    <ToolFormNew
+                      key={editingTool.id}
+                      tool={editingTool}
+                      onSave={saveTool}
+                      onCancel={() => setEditingTool(null)}
+                      statuses={(settings.toolStatuses || []).map(s => s.label)}
+                      toolCategories={settings.toolCategories || []}
+                    />
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-full text-center p-8">
+                    <div className="w-14 h-14 rounded-2xl bg-white/4 border border-white/8 flex items-center justify-center mb-4">
+                      <Plus className="w-6 h-6 text-white/20" />
+                    </div>
+                    <p className="text-white/40 text-sm font-medium">Select a tool to edit</p>
+                    <p className="text-white/20 text-xs mt-1">or click Add Tool to create a new one</p>
+                  </div>
+                )}
+              </div>
+            </div>
           </TabsContent>
 
           {/* TEAM TAB */}
