@@ -610,34 +610,29 @@ function PricingCard({
   const { t, i18n } = useTranslation();
   const { mainPrice, period, subLabel, ctaPrice, allFeatures } = parsePricing(version, tool?.richFeatures ?? [], billingCycle ?? 'monthly');
 
-  // Pattern A: show only this tier's NEW features (not in the previous tier)
-  const prevVersion = tool?.versions && index > 0 ? tool.versions[index - 1] : null;
+  const versions = tool?.versions ?? [];
   const richFeatures = tool?.richFeatures ?? [];
+  const tier0Version = versions[0] ?? null;
+  const prevVersion = index > 0 ? versions[index - 1] : null;
 
   const emptyMode = version.emptyDeltaMode ?? 'message';
   const emptyMessage = version.emptyDeltaMessage ?? 'Same features as previous tier';
 
-  // For deltaOnly mode, always diff against tier 0 (Free) so that sibling tiers
-  // with identical feature sets (e.g. Pro Monthly vs Pro Yearly) still show their
-  // delta vs Free rather than showing nothing vs each other.
-  const baseVersion = emptyMode === 'deltaOnly' && index > 0
-    ? (tool?.versions?.[0] ?? null)
-    : prevVersion;
-  const baseIncludedIds = new Set<string>(baseVersion?.includedFeatureIds ?? []);
+  // tier 0: show all its included features
+  // tier 1+: diff this tier vs tier 0 to get new features
+  const tier0Ids = new Set<string>(tier0Version?.includedFeatureIds ?? []);
+  const thisIds = new Set<string>(version.includedFeatureIds ?? []);
 
-  const rawDelta = index > 0
-    ? richFeatures
-        .filter(rf => (version.includedFeatureIds ?? []).includes(rf.id) && !baseIncludedIds.has(rf.id))
-        .map(rf => ({ title: rf.title.trim(), included: true }))
-    : allFeatures.filter(f => f.included);
+  const deltaFeatures: { title: string; included: boolean }[] = index === 0
+    ? richFeatures.filter(rf => thisIds.has(rf.id)).map(rf => ({ title: rf.title.trim(), included: true }))
+    : richFeatures.filter(rf => thisIds.has(rf.id) && !tier0Ids.has(rf.id)).map(rf => ({ title: rf.title.trim(), included: true }));
 
-  // Decide what to render when delta is empty (tiers > 0 only):
-  //   'message'   → show italic custom text (default)
-  //   'hide'      → render nothing (label + CTA only)
-  //   'showAll'   → fall back to all features included in this version (free + new)
-  //   'deltaOnly' → diff vs tier 0; list stays empty silently if no new features
-  const showAllFallback = index > 0 && rawDelta.length === 0 && emptyMode === 'showAll';
-  const deltaFeatures = showAllFallback ? allFeatures.filter(f => f.included) : rawDelta;
+  // when delta is empty on tier 1+, apply the chosen fallback mode
+  const displayFeatures: { title: string; included: boolean }[] = (() => {
+    if (index === 0 || deltaFeatures.length > 0) return deltaFeatures;
+    if (emptyMode === 'showAll') return richFeatures.filter(rf => thisIds.has(rf.id)).map(rf => ({ title: rf.title.trim(), included: true }));
+    return []; // 'message', 'hide', 'deltaOnly' — all render empty list; rendering below handles the difference
+  })();
 
   // Resolve inheritance label with {{previousTier}} template
   const showInheritanceLabel = index > 0 && (version.inheritanceLabelEnabled ?? true);
@@ -884,11 +879,11 @@ function PricingCard({
           </p>
         )}
 
-        {/* Feature list — delta only for tiers > 0, all included for tier 0 */}
+        {/* Feature list */}
         <div className="flex-grow mb-5">
-          {deltaFeatures.length > 0 ? (
+          {displayFeatures.length > 0 ? (
             <ul className="space-y-2">
-              {deltaFeatures.map((item, i) => (
+              {displayFeatures.map((item, i) => (
                 <li key={i} className="flex items-start gap-2.5">
                   <Check
                     className="w-3.5 h-3.5 mt-0.5 flex-shrink-0"
@@ -902,7 +897,7 @@ function PricingCard({
             </ul>
           ) : index > 0 && emptyMode === 'message' ? (
             <p className="text-sm text-white/40 italic">{emptyMessage}</p>
-          ) : null /* hide, deltaOnly (empty), showAll already handled via showAllFallback */}
+          ) : null}
         </div>
 
         {/* Compare all plans link */}
