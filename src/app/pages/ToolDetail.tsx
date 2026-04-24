@@ -612,11 +612,22 @@ function PricingCard({
 
   // Pattern A: show only this tier's NEW features (not in the previous tier)
   const prevVersion = tool?.versions && index > 0 ? tool.versions[index - 1] : null;
-  const prevIncludedIds = new Set<string>(prevVersion?.includedFeatureIds ?? []);
   const richFeatures = tool?.richFeatures ?? [];
+
+  const emptyMode = version.emptyDeltaMode ?? 'message';
+  const emptyMessage = version.emptyDeltaMessage ?? 'Same features as previous tier';
+
+  // For deltaOnly mode, always diff against tier 0 (Free) so that sibling tiers
+  // with identical feature sets (e.g. Pro Monthly vs Pro Yearly) still show their
+  // delta vs Free rather than showing nothing vs each other.
+  const baseVersion = emptyMode === 'deltaOnly' && index > 0
+    ? (tool?.versions?.[0] ?? null)
+    : prevVersion;
+  const baseIncludedIds = new Set<string>(baseVersion?.includedFeatureIds ?? []);
+
   const rawDelta = index > 0
     ? richFeatures
-        .filter(rf => (version.includedFeatureIds ?? []).includes(rf.id) && !prevIncludedIds.has(rf.id))
+        .filter(rf => (version.includedFeatureIds ?? []).includes(rf.id) && !baseIncludedIds.has(rf.id))
         .map(rf => ({ title: rf.title.trim(), included: true }))
     : allFeatures.filter(f => f.included);
 
@@ -624,9 +635,7 @@ function PricingCard({
   //   'message'   → show italic custom text (default)
   //   'hide'      → render nothing (label + CTA only)
   //   'showAll'   → fall back to all features included in this version (free + new)
-  //   'deltaOnly' → show only new features; if none, list stays empty (no message)
-  const emptyMode = version.emptyDeltaMode ?? 'message';
-  const emptyMessage = version.emptyDeltaMessage ?? 'Same features as previous tier';
+  //   'deltaOnly' → diff vs tier 0; list stays empty silently if no new features
   const showAllFallback = index > 0 && rawDelta.length === 0 && emptyMode === 'showAll';
   const deltaFeatures = showAllFallback ? allFeatures.filter(f => f.included) : rawDelta;
 
