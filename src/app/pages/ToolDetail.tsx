@@ -430,18 +430,19 @@ function ComparisonModal({
   const versions = tool.versions ?? [];
   const features = (tool.richFeatures ?? []).filter(f => f.title?.trim());
 
-  // Build cumulative included sets: a version implicitly includes everything
-  // any earlier (lower-index) version includes, so "All free features, plus:"
-  // is reflected in the matrix without requiring re-checking IDs in each tier.
-  const cumulativeIds: Set<string>[] = [];
-  for (let i = 0; i < versions.length; i++) {
-    const own = new Set<string>(versions[i].includedFeatureIds ?? []);
-    if (i === 0) {
-      cumulativeIds.push(own);
-    } else {
-      cumulativeIds.push(new Set([...cumulativeIds[i - 1], ...own]));
-    }
-  }
+  // Each paid tier inherits only from the free tier (index 0), not from other
+  // paid tiers — paid tiers can have different feature sets from each other.
+  const freeIds = new Set<string>(
+    versions[0] && !versions[0].monthlyPrice?.trim() && !versions[0].yearlyPrice?.trim() && !versions[0].lifetimePrice?.trim()
+      ? (versions[0].includedFeatureIds ?? [])
+      : []
+  );
+  const cumulativeIds: Set<string>[] = versions.map((v, i) => {
+    const own = new Set<string>(v.includedFeatureIds ?? []);
+    const isFreeV = !v.monthlyPrice?.trim() && !v.yearlyPrice?.trim() && !v.lifetimePrice?.trim();
+    // Free tier: just its own. Paid tiers: own + free tier features.
+    return i === 0 || isFreeV ? own : new Set([...freeIds, ...own]);
+  });
 
   const isVersionFree = (v: ToolVersion) =>
     !v.monthlyPrice?.trim() && !v.yearlyPrice?.trim() && !v.lifetimePrice?.trim();
@@ -1173,23 +1174,25 @@ function FeaturesShowcase({
   // Hide section if no featured rich features exist
   if (displayRichFeatures.length === 0) return null;
 
-  const paidVersion = versions.find(v =>
-    v.monthlyPrice?.trim() || v.yearlyPrice?.trim() || v.lifetimePrice?.trim()
-  );
   const freeVersion = versions.find(v =>
     !v.monthlyPrice?.trim() && !v.yearlyPrice?.trim() && !v.lifetimePrice?.trim()
   );
+  const paidVersion = versions.find(v =>
+    v.monthlyPrice?.trim() || v.yearlyPrice?.trim() || v.lifetimePrice?.trim()
+  );
 
-  // For CTA: map each feature to the most relevant version (paid preferred)
+  // For each feature, find the lowest-tier version that includes it.
+  // If the free tier includes it → show free CTA. Otherwise → paid CTA.
   const featureToVersionMap = new Map<string, ToolVersion>();
   for (const f of displayRichFeatures) {
-    featureToVersionMap.set(f.id, paidVersion ?? freeVersion ?? versions[0]);
+    const lowestVersion = versions.find(v => (v.includedFeatureIds ?? []).includes(f.id));
+    featureToVersionMap.set(f.id, lowestVersion ?? paidVersion ?? freeVersion ?? versions[0]);
   }
 
   const primaryVersion = paidVersion ?? freeVersion ?? versions[0];
-  
-  const isFree = !primaryVersion?.monthlyPrice?.trim() && 
-                 !primaryVersion?.yearlyPrice?.trim() && 
+
+  const isFree = !primaryVersion?.monthlyPrice?.trim() &&
+                 !primaryVersion?.yearlyPrice?.trim() &&
                  !primaryVersion?.lifetimePrice?.trim();
 
   // Helper to convert hex to RGB
