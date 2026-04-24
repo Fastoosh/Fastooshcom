@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -180,6 +180,8 @@ export function ToolFormNew({
     paidCtaIcon: tool.paidCtaIcon || '',
     showcasePaidCtaText: tool.showcasePaidCtaText || '',
   });
+  const formDataRef = useRef(formData);
+  formDataRef.current = formData;
   const [activeVersionTab, setActiveVersionTab] = useState<string>('');
   const [uploading, setUploading] = useState(false);
   const [imageInputMode, setImageInputMode] = useState<'url' | 'upload'>('url');
@@ -748,10 +750,11 @@ export function ToolFormNew({
     if (validateForm()) {
       setSaving(true);
       setFormMessage(null);
+      const latest = formDataRef.current;
       const cleanedData = {
-        ...formData,
-        faqs: (formData.faqs || []).filter(faq => faq.question || faq.answer),
-        richFeatures: (formData.richFeatures || []).map((f: RichFeature) => ({
+        ...latest,
+        faqs: (latest.faqs || []).filter(faq => faq.question || faq.answer),
+        richFeatures: (latest.richFeatures || []).map((f: RichFeature) => ({
           ...f,
           screenshots: (f.screenshots || []).filter(Boolean),
         })),
