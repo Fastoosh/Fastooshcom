@@ -2287,7 +2287,15 @@ function FeatureLabelEditor({
 
   return (
     <div className="p-4 rounded-lg bg-white/3 border border-white/8 space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => onUpdate({ featureLabel: hasLabel ? '' : 'All free features, plus:' })}
+          className={`relative flex-shrink-0 w-10 h-5 rounded-full transition-colors ${hasLabel ? 'bg-purple-500' : 'bg-white/10'}`}
+          aria-label={hasLabel ? 'Remove label' : 'Add label'}
+        >
+          <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${hasLabel ? 'translate-x-5' : 'translate-x-0.5'}`} />
+        </button>
         <div>
           <label className="text-sm font-medium text-gray-300 flex items-center gap-2">
             <Tag className="w-3.5 h-3.5 text-white/40" />
@@ -2295,14 +2303,6 @@ function FeatureLabelEditor({
           </label>
           <p className="text-xs text-white/35 mt-0.5">Optional text shown above the feature list</p>
         </div>
-        <button
-          type="button"
-          onClick={() => onUpdate({ featureLabel: hasLabel ? '' : 'All free features, plus:' })}
-          className={`relative w-10 h-5 rounded-full transition-colors ${hasLabel ? 'bg-purple-500' : 'bg-white/10'}`}
-          aria-label={hasLabel ? 'Remove label' : 'Add label'}
-        >
-          <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${hasLabel ? 'translate-x-5' : 'translate-x-0.5'}`} />
-        </button>
       </div>
 
       {hasLabel && (
