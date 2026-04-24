@@ -66,7 +66,7 @@ interface ToolVersion {
   includedFeatureIds?: string[];  // IDs from tool.richFeatures included in this version
   inheritanceLabelEnabled?: boolean;
   inheritanceLabel?: string;
-  emptyDeltaMode?: 'message' | 'hide' | 'showAll';
+  emptyDeltaMode?: 'message' | 'hide' | 'showAll' | 'deltaOnly';
   emptyDeltaMessage?: string;
 }
 
@@ -621,9 +621,10 @@ function PricingCard({
     : allFeatures.filter(f => f.included);
 
   // Decide what to render when delta is empty (tiers > 0 only):
-  //   'message'  → show italic custom text (default)
-  //   'hide'     → render nothing (label + CTA only)
-  //   'showAll'  → fall back to all features included in this version
+  //   'message'   → show italic custom text (default)
+  //   'hide'      → render nothing (label + CTA only)
+  //   'showAll'   → fall back to all features included in this version (free + new)
+  //   'deltaOnly' → show only new features; if none, list stays empty (no message)
   const emptyMode = version.emptyDeltaMode ?? 'message';
   const emptyMessage = version.emptyDeltaMessage ?? 'Same features as previous tier';
   const showAllFallback = index > 0 && rawDelta.length === 0 && emptyMode === 'showAll';
@@ -892,7 +893,7 @@ function PricingCard({
             </ul>
           ) : index > 0 && emptyMode === 'message' ? (
             <p className="text-sm text-white/40 italic">{emptyMessage}</p>
-          ) : null}
+          ) : null /* hide, deltaOnly (empty), showAll already handled via showAllFallback */}
         </div>
 
         {/* Compare all plans link */}

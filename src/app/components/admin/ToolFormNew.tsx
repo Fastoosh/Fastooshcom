@@ -91,7 +91,7 @@ interface ToolVersion {
   demoUrl?: string;
   inheritanceLabelEnabled?: boolean;  // Show "Everything in X, plus:" label above features
   inheritanceLabel?: string;  // Template supports {{previousTier}}
-  emptyDeltaMode?: 'message' | 'hide' | 'showAll';  // What to show when delta is empty
+  emptyDeltaMode?: 'message' | 'hide' | 'showAll' | 'deltaOnly';  // What to show when delta is empty
   emptyDeltaMessage?: string;  // Custom message when mode is 'message'
 }
 
@@ -2348,11 +2348,12 @@ function InheritanceLabelEditor({
           <label className="text-xs font-medium text-gray-300 block">
             When this version has no new features vs. {prevTierName || 'previous tier'}
           </label>
-          <div className="grid grid-cols-3 gap-1.5">
+          <div className="grid grid-cols-2 gap-1.5">
             {([
               { value: 'message', label: 'Show message' },
               { value: 'hide', label: 'Hide list' },
-              { value: 'showAll', label: 'Show all features' },
+              { value: 'showAll', label: 'Show all included' },
+              { value: 'deltaOnly', label: 'Delta only (silent)' },
             ] as const).map(opt => (
               <button
                 key={opt.value}
@@ -2379,7 +2380,8 @@ function InheritanceLabelEditor({
           <p className="text-xs text-white/25 leading-relaxed">
             {emptyMode === 'message' && 'Shown as italic text where features would be listed.'}
             {emptyMode === 'hide' && 'Feature list section is completely hidden (label + CTA only).'}
-            {emptyMode === 'showAll' && 'All features from this version are shown (repeats parent\'s features).'}
+            {emptyMode === 'showAll' && "Shows all features included in this tier (free + new). No message."}
+            {emptyMode === 'deltaOnly' && 'Shows only new features vs. previous tier. If none, list is empty — use the inheritance label above (e.g. "All free features, plus:") to provide context.'}
           </p>
         </div>
       )}

@@ -370,13 +370,13 @@ const normalizeTool = (tool: Record<string, any>): Record<string, any> => {
         }
       }
       // Decode empty-delta behavior: 💡 <mode>|<message>
-      //   mode ∈ 'message' | 'hide' | 'showAll'
+      //   mode ∈ 'message' | 'hide' | 'showAll' | 'deltaOnly'
       //   message is optional; relevant only when mode = 'message'
       const emptyEntry = v.features.find((f: string) => typeof f === 'string' && f.startsWith('💡 '));
       if (emptyEntry) {
         const body = (emptyEntry as string).replace('💡 ', '');
         const [mode, ...rest] = body.split('|');
-        if (mode === 'message' || mode === 'hide' || mode === 'showAll') {
+        if (mode === 'message' || mode === 'hide' || mode === 'showAll' || mode === 'deltaOnly') {
           v.emptyDeltaMode = mode;
           if (mode === 'message') v.emptyDeltaMessage = rest.join('|');
         }
@@ -3387,7 +3387,7 @@ app.post("/make-server-e07959ec/tools", requireAuth, async (c) => {
               ? [`⬆️ ${v.inheritanceLabel}`]
               : [];
         const emptyDeltaSentinel =
-          v.emptyDeltaMode === 'hide' || v.emptyDeltaMode === 'showAll'
+          v.emptyDeltaMode === 'hide' || v.emptyDeltaMode === 'showAll' || v.emptyDeltaMode === 'deltaOnly'
             ? [`💡 ${v.emptyDeltaMode}`]
             : v.emptyDeltaMode === 'message' && typeof v.emptyDeltaMessage === 'string'
               ? [`💡 message|${v.emptyDeltaMessage}`]
@@ -3523,7 +3523,7 @@ app.put("/make-server-e07959ec/tools/:id", requireAuth, async (c) => {
               ? [`⬆️ ${v.inheritanceLabel}`]
               : [];
         const emptyDeltaSentinel =
-          v.emptyDeltaMode === 'hide' || v.emptyDeltaMode === 'showAll'
+          v.emptyDeltaMode === 'hide' || v.emptyDeltaMode === 'showAll' || v.emptyDeltaMode === 'deltaOnly'
             ? [`💡 ${v.emptyDeltaMode}`]
             : v.emptyDeltaMode === 'message' && typeof v.emptyDeltaMessage === 'string'
               ? [`💡 message|${v.emptyDeltaMessage}`]
