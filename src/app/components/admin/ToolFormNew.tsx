@@ -891,10 +891,12 @@ export function ToolFormNew({
   };
 
   const updateVersion = (versionId: string, updates: Partial<ToolVersion>) => {
-    const updatedVersions = (formData.versions || []).map(v =>
-      v.id === versionId ? { ...v, ...updates } : v
-    );
-    setFormData({ ...formData, versions: updatedVersions });
+    setFormData(prev => ({
+      ...prev,
+      versions: (prev.versions || []).map(v =>
+        v.id === versionId ? { ...v, ...updates } : v
+      ),
+    }));
   };
 
   const reorderVersion = (versionId: string, direction: 'left' | 'right') => {

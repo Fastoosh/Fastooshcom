@@ -3386,12 +3386,9 @@ app.post("/make-server-e07959ec/tools", requireAuth, async (c) => {
             : v.inheritanceLabelEnabled === true && typeof v.inheritanceLabel === 'string' && v.inheritanceLabel.length > 0
               ? [`⬆️ ${v.inheritanceLabel}`]
               : [];
-        const emptyDeltaSentinel =
-          v.emptyDeltaMode === 'hide' || v.emptyDeltaMode === 'showAll' || v.emptyDeltaMode === 'deltaOnly'
-            ? [`💡 ${v.emptyDeltaMode}`]
-            : v.emptyDeltaMode === 'message' && typeof v.emptyDeltaMessage === 'string'
-              ? [`💡 message|${v.emptyDeltaMessage}`]
-              : [];
+        const emptyDeltaSentinel = v.emptyDeltaMode
+          ? [`💡 ${v.emptyDeltaMode}${v.emptyDeltaMode === 'message' && v.emptyDeltaMessage ? `|${v.emptyDeltaMessage}` : ''}`]
+          : [];
         const enrichedFeatures = [
           `💰 ${priceSentinel}`,
           ...(v.color ? [`🖌️ color|${v.color}`] : []),
@@ -3522,12 +3519,9 @@ app.put("/make-server-e07959ec/tools/:id", requireAuth, async (c) => {
             : v.inheritanceLabelEnabled === true && typeof v.inheritanceLabel === 'string' && v.inheritanceLabel.length > 0
               ? [`⬆️ ${v.inheritanceLabel}`]
               : [];
-        const emptyDeltaSentinel =
-          v.emptyDeltaMode === 'hide' || v.emptyDeltaMode === 'showAll' || v.emptyDeltaMode === 'deltaOnly'
-            ? [`💡 ${v.emptyDeltaMode}`]
-            : v.emptyDeltaMode === 'message' && typeof v.emptyDeltaMessage === 'string'
-              ? [`💡 message|${v.emptyDeltaMessage}`]
-              : [];
+        const emptyDeltaSentinel = v.emptyDeltaMode
+          ? [`💡 ${v.emptyDeltaMode}${v.emptyDeltaMode === 'message' && v.emptyDeltaMessage ? `|${v.emptyDeltaMessage}` : ''}`]
+          : [];
         const enrichedFeatures = [
           `💰 ${priceSentinel}`,
           ...(v.color ? [`🖌️ color|${v.color}`] : []),
