@@ -556,7 +556,7 @@ function ComparisonModal({
             >
               <div className="hidden sm:block" />
               {versions.map(v => {
-                const { mainPrice, period, ctaPrice } = parsePricing(v, tool.richFeatures ?? [], billingCycle);
+                const { mainPrice, period } = parsePricing(v, tool.richFeatures ?? [], billingCycle);
                 const free = isVersionFree(v);
                 const isLifetimeActive = !free && billingCycle === 'lifetime' && !!v.lifetimePrice?.trim();
                 const FreeCtaIcon = getIconComponent(tool.freeCtaIcon, Download);
@@ -611,9 +611,7 @@ function ComparisonModal({
                         {isLifetimeActive
                           ? <Zap className="w-3 h-3 fill-current" />
                           : <PaidCtaIcon className="w-3 h-3" />}
-                        {user
-                          ? `${paidCtaText}${ctaPrice ? ` · ${ctaPrice}` : ''}`
-                          : paidCtaText}
+                        {paidCtaText}
                       </button>
                     )}
                   </div>
@@ -660,7 +658,7 @@ function PricingCard({
   onCompare?: () => void;
 }) {
   const { t, i18n } = useTranslation();
-  const { mainPrice, period, subLabel, ctaPrice, allFeatures } = parsePricing(version, tool?.richFeatures ?? [], billingCycle ?? 'monthly');
+  const { mainPrice, period, subLabel, allFeatures } = parsePricing(version, tool?.richFeatures ?? [], billingCycle ?? 'monthly');
 
   const richFeatures = tool?.richFeatures ?? [];
   const thisIds = new Set<string>(version.includedFeatureIds ?? []);
@@ -979,9 +977,7 @@ function PricingCard({
                 {isLifetimeActive
                   ? <Zap className="w-3.5 h-3.5 fill-current" />
                   : <PaidCtaIcon className="w-3.5 h-3.5" />}
-                {user
-                  ? `${paidCtaText}${ctaPrice ? ` · ${ctaPrice}` : ''}`
-                  : paidCtaText}
+                {paidCtaText}
               </button>
               {!user && (
                 <p className="text-center text-white/35 text-xs mt-2 leading-snug">
