@@ -11,7 +11,9 @@ interface LsVariant {
   price: number; // cents
   interval: 'month' | 'year' | null;
   isSubscription: boolean;
-  buyNowUrl: string;
+  productUrl?: string;  // clean product URL — shows all variants on checkout page
+  enabledUrl?: string;  // productUrl + ?enabled=variantId — may not honor pre-select reliably
+  buyNowUrl: string;    // legacy fallback (same as enabledUrl)
   status: string;
 }
 
@@ -45,12 +47,15 @@ function fmtPrice(cents: number): string {
   return dollars % 1 === 0 ? `$${dollars}` : `$${dollars.toFixed(2)}`;
 }
 
+type UrlMode = 'product' | 'enabled';
+
 export function LsImportModal({ open, onImport, onImportAll, onClose }: Props) {
   const [products, setProducts] = useState<LsProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [expandedProduct, setExpandedProduct] = useState<string | null>(null);
   const [mode, setMode] = useState<'test' | 'production'>('production'); // LS API mode
+  const [urlMode, setUrlMode] = useState<UrlMode>('product');             // URL format to import
 
   const fetchProducts = async (apiMode: 'test' | 'production' = mode) => {
     setLoading(true);
@@ -102,7 +107,12 @@ export function LsImportModal({ open, onImport, onImportAll, onClose }: Props) {
       lifetimePrice = fmtPrice(variant.price);
     }
 
-    return { versionName, pricingModel, monthlyPrice, yearlyPrice, lifetimePrice, buyNowUrl: variant.buyNowUrl, variantId: String(variant.id), productId: String(product.id) };
+    // Pick URL based on selected mode. Fall back to legacy buyNowUrl if the new fields aren't present.
+    const chosenUrl = urlMode === 'product'
+      ? (variant.productUrl || variant.buyNowUrl)
+      : (variant.enabledUrl || variant.buyNowUrl);
+
+    return { versionName, pricingModel, monthlyPrice, yearlyPrice, lifetimePrice, buyNowUrl: chosenUrl, variantId: String(variant.id), productId: String(product.id) };
   };
 
   const handleSelectVariant = (product: LsProduct, variant: LsVariant) => {
@@ -198,6 +208,37 @@ export function LsImportModal({ open, onImport, onImportAll, onClose }: Props) {
               className="p-1.5 rounded-lg hover:bg-white/8 text-white/40 hover:text-white/70 transition-colors"
             >
               <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* URL mode toggle */}
+        <div className="px-5 py-3 border-b border-white/8 bg-white/[0.02]">
+          <p className="text-[10px] font-semibold text-white/40 uppercase tracking-wider mb-2">Checkout URL format</p>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setUrlMode('product')}
+              className={`flex flex-col items-start gap-1 px-3 py-2 rounded-lg border text-left transition-all ${
+                urlMode === 'product'
+                  ? 'bg-purple-500/15 border-purple-500/40 text-purple-200'
+                  : 'bg-white/3 border-white/8 text-white/50 hover:bg-white/6'
+              }`}
+            >
+              <span className="text-xs font-semibold">Product URL</span>
+              <span className="text-[10px] text-white/40 leading-tight">Clean URL, shows all variants — recommended</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setUrlMode('enabled')}
+              className={`flex flex-col items-start gap-1 px-3 py-2 rounded-lg border text-left transition-all ${
+                urlMode === 'enabled'
+                  ? 'bg-amber-500/15 border-amber-500/40 text-amber-200'
+                  : 'bg-white/3 border-white/8 text-white/50 hover:bg-white/6'
+              }`}
+            >
+              <span className="text-xs font-semibold">Pre-select variant ⚠</span>
+              <span className="text-[10px] text-white/40 leading-tight">?enabled=ID — may break display</span>
             </button>
           </div>
         </div>
@@ -308,14 +349,15 @@ export function LsImportModal({ open, onImport, onImportAll, onClose }: Props) {
 
         {/* Footer */}
         <div className="px-5 py-3 border-t border-white/8 space-y-2">
-          <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/25">
-            <span className="text-amber-400 text-xs mt-0.5 flex-shrink-0">⚠</span>
-            <p className="text-amber-300/80 text-xs leading-relaxed">
-              After importing, paste each variant's own checkout link from{' '}
-              <strong className="text-amber-300">LS Dashboard → Product → Share → select the variant → Checkout Link</strong>.
-              Each variant has a unique URL — do not use the product-level link.
-            </p>
-          </div>
+          {urlMode === 'enabled' && (
+            <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/25">
+              <span className="text-amber-400 text-xs mt-0.5 flex-shrink-0">⚠</span>
+              <p className="text-amber-300/80 text-xs leading-relaxed">
+                Some LemonSqueezy share configurations ignore <code className="px-1 rounded bg-black/40 text-amber-200">?enabled=</code>{' '}
+                or hide product media. If checkout opens the wrong variant, switch to <strong className="text-amber-300">Product URL</strong> mode and re-import.
+              </p>
+            </div>
+          )}
           <p className="text-white/20 text-xs text-center">Each variant creates a separate version · Click monthly &amp; yearly separately for distinct pricing tiers</p>
         </div>
       </div>

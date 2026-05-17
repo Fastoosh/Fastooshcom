@@ -5376,15 +5376,17 @@ app.get('/make-server-e07959ec/ls/variants', requireAuth, async (c) => {
       if (!variantsByProduct[pid]) variantsByProduct[pid] = [];
 
       const variantId = String(v.id);
-      // Build per-variant checkout URL: product UUID + ?enabled=variant_numeric_id
-      // This pre-selects the exact variant on the LS checkout page.
-      const productUrl = productBuyUrls[pid] || '';
-      let buyNowUrl = '';
-      if (productUrl) {
-        const base = productUrl.includes('/checkout/buy/')
-          ? productUrl
-          : productUrl.replace('/buy/', '/checkout/buy/');
-        buyNowUrl = `${base}?enabled=${variantId}`;
+      // Build two URLs per variant so the admin can choose at import time:
+      //   productUrl — clean product checkout URL (shows all variants, most reliable display)
+      //   enabledUrl — same URL with ?enabled=variantId appended to pre-select (may fail if LS share UUID ignores it)
+      const rawProductUrl = productBuyUrls[pid] || '';
+      let productUrl = '';
+      let enabledUrl = '';
+      if (rawProductUrl) {
+        productUrl = rawProductUrl.includes('/checkout/buy/')
+          ? rawProductUrl
+          : rawProductUrl.replace('/buy/', '/checkout/buy/');
+        enabledUrl = `${productUrl}?enabled=${variantId}`;
       }
       variantsByProduct[pid].push({
         id:             variantId,
@@ -5392,7 +5394,10 @@ app.get('/make-server-e07959ec/ls/variants', requireAuth, async (c) => {
         price:          v.attributes?.price ?? 0,
         interval:       v.attributes?.interval ?? null,
         isSubscription: !!v.attributes?.is_subscription,
-        buyNowUrl,
+        productUrl,
+        enabledUrl,
+        // Legacy field — keep for backward compat with any older callers, defaults to enabledUrl
+        buyNowUrl: enabledUrl,
         status:         v.attributes?.status ?? 'pending',
       });
     }
