@@ -311,29 +311,90 @@ export function LicensesTab() {
 }
 
 // ── Create-license modal ────────────────────────────────────────────────────────
+interface ToolOption {
+  id: string;
+  name: string;
+  slug?: string;
+  versions: Array<{
+    id: string;
+    versionType: string;
+    pricingModel: 'subscription' | 'lifetime';
+    monthlyPrice?: string | null;
+    yearlyPrice?: string | null;
+    lifetimePrice?: string | null;
+  }>;
+}
+
+// A version is "free" (no license) when it has no price on any model.
+const isFreeVersion = (v: ToolOption['versions'][number]) =>
+  !v.monthlyPrice && !v.yearlyPrice && !v.lifetimePrice;
+
 function CreateLicenseModal({ onClose, onCreated, flash }: {
   onClose: () => void;
   onCreated: () => void;
   flash: (k: 'ok' | 'err', m: string) => void;
 }) {
+  const [tools, setTools] = useState<ToolOption[]>([]);
+  const [loadingTools, setLoadingTools] = useState(true);
+  const [toolId, setToolId] = useState('');
+  const [versionId, setVersionId] = useState('');
   const [email, setEmail] = useState('');
-  const [tier, setTier] = useState('pro');
-  const [type, setType] = useState<'lifetime' | 'subscription'>('lifetime');
   const [machineLimit, setMachineLimit] = useState('1');
   const [sendEmail, setSendEmail] = useState(true);
+  const [trialEnabled, setTrialEnabled] = useState(false);
+  const [expiresAt, setExpiresAt] = useState(''); // yyyy-mm-dd from date input
   const [saving, setSaving] = useState(false);
   const [result, setResult] = useState<string | null>(null);
 
+  // Load tools + versions for the cascading dropdowns.
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/tools`, { headers: getAuthHeaders() });
+        const data = await res.json();
+        const list: ToolOption[] = (data.data ?? data.tools ?? []).map((t: any) => ({
+          id: t.id, name: t.name, slug: t.slug, versions: t.versions ?? [],
+        }));
+        // Only tools that have at least one paid (licensable) version.
+        const licensable = list.filter(t => (t.versions ?? []).some(v => !isFreeVersion(v)));
+        setTools(licensable);
+        if (licensable.length === 1) setToolId(licensable[0].id);
+      } catch {
+        flash('err', 'Failed to load tools');
+      } finally {
+        setLoadingTools(false);
+      }
+    })();
+  }, [flash]);
+
+  const selectedTool = tools.find(t => t.id === toolId);
+  const paidVersions = (selectedTool?.versions ?? []).filter(v => !isFreeVersion(v));
+  const selectedVersion = paidVersions.find(v => v.id === versionId);
+
   const submit = async () => {
-    if (!email.trim()) { flash('err', 'Email is required'); return; }
+    if (!email.trim()) { flash('err', 'Customer email is required'); return; }
+    if (!selectedTool)  { flash('err', 'Select a product'); return; }
+    if (!selectedVersion) { flash('err', 'Select a version'); return; }
     setSaving(true);
     try {
+      // Trial: an explicit expiry overrides the type's default. We send it as an
+      // ISO string at end-of-day so a "1 week" trial lasts the full last day.
+      let expiresOverride: string | undefined;
+      if (trialEnabled && expiresAt) {
+        expiresOverride = new Date(`${expiresAt}T23:59:59`).toISOString();
+      }
+
       const res = await fetch(`${API_BASE}/admin/licenses/create`, {
         method: 'POST', headers: getAuthHeaders(),
         body: JSON.stringify({
-          email: email.trim(), plan_tier: tier, type,
-          machine_limit: Number(machineLimit) || 1, send_email: sendEmail,
-          product_id: 'fastoosh_data_automator',
+          email: email.trim(),
+          // product_id = tool slug (stable, human-readable) or id fallback.
+          product_id: selectedTool.slug || selectedTool.id,
+          plan_tier: selectedVersion.versionType,
+          type: selectedVersion.pricingModel,
+          machine_limit: Number(machineLimit) || 1,
+          send_email: sendEmail,
+          ...(expiresOverride ? { expires_at: expiresOverride } : {}),
         }),
       });
       const data = await res.json();
@@ -344,6 +405,12 @@ function CreateLicenseModal({ onClose, onCreated, flash }: {
     } finally {
       setSaving(false);
     }
+  };
+
+  const versionLabel = (v: ToolOption['versions'][number]) => {
+    const price = v.lifetimePrice || v.yearlyPrice || v.monthlyPrice || '';
+    const model = v.pricingModel === 'lifetime' ? 'lifetime' : 'subscription';
+    return `${v.versionType}${price ? ` · ${price}` : ''} (${model})`;
   };
 
   return (
@@ -365,36 +432,84 @@ function CreateLicenseModal({ onClose, onCreated, flash }: {
           </div>
         ) : (
           <div className="p-5 space-y-4">
+            {/* Product */}
             <div>
-              <label className="block text-xs text-white/40 mb-1.5">Customer email</label>
-              <Input value={email} onChange={e => setEmail(e.target.value)} placeholder="customer@example.com" className="bg-black/40 border-white/15 text-white" />
+              <label className="block text-xs text-white/40 mb-1.5">Product</label>
+              <AdminSelect
+                value={toolId}
+                onChange={(v) => { setToolId(v); setVersionId(''); }}
+                placeholder={loadingTools ? 'Loading…' : 'Select a product'}
+                options={tools.map(t => ({ value: t.id, label: t.name }))}
+              />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            {/* Version / variant */}
+            <div>
+              <label className="block text-xs text-white/40 mb-1.5">Version</label>
+              <AdminSelect
+                value={versionId}
+                onChange={setVersionId}
+                placeholder={selectedTool ? 'Select a version' : 'Select a product first'}
+                options={paidVersions.map(v => ({ value: v.id, label: versionLabel(v) }))}
+              />
+              {selectedVersion && (
+                <p className="text-[11px] text-white/35 mt-1">
+                  Type: <span className="capitalize text-white/55">{selectedVersion.pricingModel}</span>
+                  {selectedVersion.pricingModel === 'subscription' && ' · expires in 33 days, renews on payment'}
+                </p>
+              )}
+            </div>
+            {/* Customer email + machines */}
+            <div className="grid grid-cols-[1fr_auto] gap-3">
               <div>
-                <label className="block text-xs text-white/40 mb-1.5">Tier</label>
-                <Input value={tier} onChange={e => setTier(e.target.value)} placeholder="pro" className="bg-black/40 border-white/15 text-white" />
+                <label className="block text-xs text-white/40 mb-1.5">Customer email</label>
+                <Input value={email} onChange={e => setEmail(e.target.value)} placeholder="customer@example.com" className="bg-black/40 border-white/15 text-white" />
               </div>
-              <div>
+              <div className="w-24">
                 <label className="block text-xs text-white/40 mb-1.5">Machines</label>
                 <Input type="number" min={1} value={machineLimit} onChange={e => setMachineLimit(e.target.value)} className="bg-black/40 border-white/15 text-white" />
               </div>
             </div>
-            <div>
-              <label className="block text-xs text-white/40 mb-1.5">Type</label>
-              <AdminSelect
-                value={type}
-                onChange={(v) => setType(v as 'lifetime' | 'subscription')}
-                options={[
-                  { value: 'lifetime', label: 'Lifetime' },
-                  { value: 'subscription', label: 'Subscription (33-day expiry)' },
-                ]}
-              />
+            {/* Trial / custom expiry */}
+            <div className="rounded-lg bg-white/3 border border-white/8 p-3 space-y-2.5">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={trialEnabled} onChange={e => setTrialEnabled(e.target.checked)} className="w-4 h-4 rounded bg-black/40 border-white/20 checked:bg-purple-500" />
+                <span className="text-sm text-white/60">Trial / custom expiry</span>
+              </label>
+              {trialEnabled && (
+                <div>
+                  <div className="flex gap-1.5 mb-2">
+                    {[
+                      { label: '7 days', days: 7 },
+                      { label: '14 days', days: 14 },
+                      { label: '30 days', days: 30 },
+                    ].map(p => (
+                      <button
+                        key={p.days}
+                        type="button"
+                        onClick={() => {
+                          const d = new Date(Date.now() + p.days * 86400000);
+                          setExpiresAt(d.toISOString().slice(0, 10));
+                        }}
+                        className="px-2.5 py-1 rounded-md text-xs bg-white/5 border border-white/10 text-white/60 hover:bg-purple-500/15 hover:text-purple-200 transition-colors"
+                      >{p.label}</button>
+                    ))}
+                  </div>
+                  <Input
+                    type="date"
+                    value={expiresAt}
+                    min={new Date(Date.now() + 86400000).toISOString().slice(0, 10)}
+                    onChange={e => setExpiresAt(e.target.value)}
+                    className="bg-black/40 border-white/15 text-white"
+                  />
+                  <p className="text-[11px] text-white/35 mt-1">License stops working after this date, regardless of type.</p>
+                </div>
+              )}
             </div>
             <label className="flex items-center gap-2 cursor-pointer">
               <input type="checkbox" checked={sendEmail} onChange={e => setSendEmail(e.target.checked)} className="w-4 h-4 rounded bg-black/40 border-white/20 checked:bg-purple-500" />
               <span className="text-sm text-white/60">Email the license key to the customer</span>
             </label>
-            <Button onClick={submit} disabled={saving} className="w-full bg-violet-600 hover:bg-violet-500 text-white cursor-pointer">
+            <Button onClick={submit} disabled={saving || !selectedVersion || !email.trim() || (trialEnabled && !expiresAt)} className="w-full bg-violet-600 hover:bg-violet-500 text-white cursor-pointer disabled:opacity-40">
               {saving ? 'Creating…' : 'Create License'}
             </Button>
           </div>
