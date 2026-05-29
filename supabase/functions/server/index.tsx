@@ -4317,10 +4317,29 @@ app.get("/make-server-e07959ec/user/licenses", requireUserAuth, async (c) => {
       }
     }
 
-    const out = (licenses ?? []).map((l: any) => ({
+    // Resolve product_id → tool name + thumbnail. product_id may be a slug
+    // (admin-created) or an internal id like 'fastoosh_data_automator' (Gumroad).
+    // Build lookups by slug and by normalized name so both forms match.
+    const norm = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    const { data: allTools } = await supabase.from('tools').select('id, name, slug, image_url');
+    const bySlug: Record<string, any> = {};
+    const byNorm: Record<string, any> = {};
+    for (const tdata of allTools ?? []) {
+      if (tdata.slug) bySlug[tdata.slug] = tdata;
+      byNorm[norm(tdata.name)] = tdata;
+      byNorm[norm(tdata.slug)] = tdata;
+    }
+    const resolveTool = (pid: string) => bySlug[pid] || byNorm[norm(pid)] || null;
+
+    const out = (licenses ?? []).map((l: any) => {
+      const toolRow = resolveTool(l.product_id);
+      return {
       id: l.id,
       licenseKey: l.license_key,
       productId: l.product_id,
+      productName: toolRow?.name ?? l.product_id.replace(/_/g, ' '),
+      productImage: toolRow?.image_url ?? null,
+      productSlug: toolRow?.slug ?? null,
       planTier: l.plan_tier,
       type: l.type,
       status: l.status,
@@ -4335,7 +4354,8 @@ app.get("/make-server-e07959ec/user/licenses", requireUserAuth, async (c) => {
         lastSeenAt: a.last_seen_at,
         activatedAt: a.activated_at,
       })),
-    }));
+    };
+    });
 
     return c.json({ success: true, licenses: out });
   } catch (e) {

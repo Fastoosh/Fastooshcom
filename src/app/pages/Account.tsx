@@ -636,6 +636,9 @@ interface UserLicense {
   id: string;
   licenseKey: string;
   productId: string;
+  productName: string;
+  productImage: string | null;
+  productSlug: string | null;
   planTier: string;
   type: 'lifetime' | 'subscription';
   status: 'active' | 'revoked' | 'expired' | 'past_due';
@@ -654,6 +657,9 @@ function MyLicensesSection({ token }: { token: string | undefined }) {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  // Post-checkout banner: ?purchase=success|failed (set via Gumroad redirect URL)
+  const [purchaseFlag, setPurchaseFlag] = useState<'success' | 'failed' | null>(null);
+  const [awaitingLicense, setAwaitingLicense] = useState(false);
 
   const load = async () => {
     if (!token) return;
@@ -665,14 +671,47 @@ function MyLicensesSection({ token }: { token: string | undefined }) {
       const data = await res.json();
       if (!data.success) throw new Error(data.error || 'Failed to load licenses');
       setLicenses(data.licenses ?? []);
+      return (data.licenses ?? []).length as number;
     } catch (e: any) {
       setError(e.message || 'Could not load your licenses.');
+      return 0;
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [token]);
+
+  // On mount, read ?purchase= from the URL. On success, poll for the new license
+  // (the webhook creates it asynchronously, usually within a few seconds).
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const flag = params.get('purchase');
+    if (flag === 'success' || flag === 'failed') {
+      setPurchaseFlag(flag);
+      // Clean the URL so a refresh doesn't re-show the banner.
+      const url = new URL(window.location.href);
+      url.searchParams.delete('purchase');
+      window.history.replaceState({}, '', url.toString());
+
+      if (flag === 'success' && token) {
+        setAwaitingLicense(true);
+        const before = licenses.length;
+        let tries = 0;
+        const poll = async () => {
+          tries++;
+          const count = await load();
+          if ((count ?? 0) > before || tries >= 5) {
+            setAwaitingLicense(false);
+            return;
+          }
+          setTimeout(poll, 2500);
+        };
+        setTimeout(poll, 1500);
+      }
+    }
+    /* eslint-disable-next-line */
+  }, [token]);
 
   const deactivate = async (licenseKey: string, activationId: string) => {
     if (!token) return;
@@ -708,11 +747,41 @@ function MyLicensesSection({ token }: { token: string | undefined }) {
     past_due: { label: 'Past due', cls: 'text-amber-300 bg-amber-500/15 border-amber-500/30' },
   } as const;
 
-  // Hide the whole section if the user has no FSTH licenses (keeps the page clean).
-  if (!loading && !error && licenses.length === 0) return null;
+  // Hide the whole section if the user has no FSTH licenses AND there's no
+  // post-checkout banner to show (keeps the page clean for non-buyers).
+  if (!loading && !error && licenses.length === 0 && !purchaseFlag) return null;
 
   return (
     <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }} className="mt-10">
+      {/* Post-checkout banner */}
+      {purchaseFlag === 'success' && (
+        <GlassCard className="p-4 mb-5 border border-emerald-500/25 bg-emerald-500/8">
+          <div className="flex items-start gap-3">
+            <CheckCircle className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-emerald-200 text-sm font-semibold">Payment successful — thank you!</p>
+              <p className="text-emerald-300/60 text-xs mt-0.5">
+                {awaitingLicense
+                  ? 'Your license is being issued and will appear below in a few seconds. We also emailed it to you.'
+                  : 'Your license is ready below and on its way to your email.'}
+              </p>
+            </div>
+            {awaitingLicense && <Loader2 className="w-4 h-4 text-emerald-400 animate-spin ml-auto flex-shrink-0" />}
+          </div>
+        </GlassCard>
+      )}
+      {purchaseFlag === 'failed' && (
+        <GlassCard className="p-4 mb-5 border border-red-500/25 bg-red-500/8">
+          <div className="flex items-start gap-3">
+            <XCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-red-200 text-sm font-semibold">Payment was not completed</p>
+              <p className="text-red-300/60 text-xs mt-0.5">No charge was made. You can try again from the tool page anytime.</p>
+            </div>
+          </div>
+        </GlassCard>
+      )}
+
       <div className="flex items-center gap-3 mb-5">
         <div className="w-8 h-8 rounded-lg bg-purple-500/15 border border-purple-500/25 flex items-center justify-center">
           <KeyRound className="w-4 h-4 text-purple-400" />
@@ -740,10 +809,18 @@ function MyLicensesSection({ token }: { token: string | undefined }) {
             const st = STATUS[l.status] ?? STATUS.expired;
             return (
               <GlassCard key={l.id} className="p-5">
-                <div className="flex items-start justify-between gap-4 flex-wrap">
-                  <div className="min-w-0">
+                <div className="flex items-start gap-4">
+                  {/* Tool thumbnail */}
+                  {l.productImage ? (
+                    <img src={l.productImage} alt={l.productName} className="w-12 h-12 rounded-lg object-cover border border-white/10 flex-shrink-0" />
+                  ) : (
+                    <div className="w-12 h-12 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center flex-shrink-0">
+                      <Package className="w-5 h-5 text-white/20" />
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                      <h3 className="text-white font-bold text-base leading-tight">{l.productId.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</h3>
+                      <h3 className="text-white font-bold text-base leading-tight">{l.productName}</h3>
                       <span className="px-2 py-0.5 rounded-full text-xs font-bold border border-purple-500/30 bg-purple-500/15 text-purple-300 capitalize">{l.planTier}</span>
                       <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border ${st.cls}`}>{st.label}</span>
                     </div>
@@ -1307,7 +1384,8 @@ export function Account() {
           </GlassCard>
         </motion.div>
 
-        {/* ── Licenses ── */}
+        {/* ── Old Lemon Squeezy purchases section removed — replaced by My Licenses (FSTH) below ── */}
+        {false && (
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}>
           <div className="flex items-center justify-between mb-5">
             <div className="flex items-center gap-3">
@@ -1419,6 +1497,7 @@ export function Account() {
             </motion.div>
           )}
         </motion.div>
+        )}
 
         {/* ── My Licenses (FSTH) ── */}
         <MyLicensesSection token={session?.access_token} />

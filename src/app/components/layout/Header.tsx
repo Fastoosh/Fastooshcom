@@ -6,7 +6,7 @@ import { LanguageSwitcher } from "../shared/LanguageSwitcher";
 import { useUserAuth } from "../../hooks/useUserAuth";
 import { useTranslation } from "react-i18next";
 import { useState, useRef, useEffect } from "react";
-import { X, User, ShoppingBag, LogOut } from "lucide-react";
+import { X, User, KeyRound, LogOut } from "lucide-react";
 import { useLogo } from "../../context/LogoContext";
 
 export function Header() {
@@ -152,8 +152,8 @@ export function Header() {
                               onClick={() => setUserMenuOpen(false)}
                               className="flex items-center gap-3 rtl:flex-row-reverse px-4 py-2.5 text-sm text-white/70 hover:text-white hover:bg-white/5 transition-colors"
                             >
-                              <ShoppingBag className="w-4 h-4" />
-                              {t('nav.myPurchases')}
+                              <KeyRound className="w-4 h-4" />
+                              {t('nav.myLicenses', { defaultValue: 'My Licenses' })}
                             </Link>
                             <Link
                               to="/account"
