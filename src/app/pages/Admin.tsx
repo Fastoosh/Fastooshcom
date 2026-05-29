@@ -14,6 +14,7 @@ import { AIImproveModal, type AIImproveContext } from '../components/admin/AIImp
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import { ToolFormNew } from '../components/admin/ToolFormNew';
 import { LeadsTab } from '../components/admin/LeadsTab';
+import { LicensesTab } from '../components/admin/LicensesTab';
 import { SeoTab } from '../components/admin/SeoTab';
 import { HomeTab } from '../components/admin/HomeTab';
 import { AdminReviewsTab } from '../components/admin/AdminReviewsTab';
@@ -839,6 +840,7 @@ export function Admin() {
               ]},
               { label: 'Audience', items: [
                 { value: 'leads',     label: 'Leads' },
+                { value: 'licenses',  label: '🔑 Licenses' },
                 { value: 'broadcast', label: '📣 Broadcast' },
                 { value: 'messages',  label: '🔧 Tool Requests' },
                 { value: 'traffic',   label: '🌐 Traffic' },
@@ -1537,6 +1539,11 @@ export function Admin() {
           {/* LEADS TAB */}
           <TabsContent value="leads">
             <LeadsTab />
+          </TabsContent>
+
+          {/* LICENSES TAB */}
+          <TabsContent value="licenses">
+            <LicensesTab />
           </TabsContent>
 
           {/* BROADCAST TAB */}

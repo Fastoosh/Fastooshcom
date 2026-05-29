@@ -4030,6 +4030,240 @@ app.post("/make-server-e07959ec/verify-license", async (c) => {
   }
 });
 
+// ========== LICENSE ADMIN (FSTH license server, session-authed) ==========
+// These power the admin Licenses tab. They read/write the shared license tables
+// (license_customers, licenses, activations, denylist, license_events) that the
+// standalone make-server-license function also uses. Auth is the normal admin
+// session (X-Admin-Token via requireAuth) — NOT the license server's static
+// ADMIN_API_TOKEN, which stays for CLI/external use only.
+
+const LICENSE_PRODUCT_NAMES: Record<string, string> = {
+  fastoosh_data_automator: 'Fastoosh Data Automator',
+};
+const licenseProductName = (id: string) => LICENSE_PRODUCT_NAMES[id] ?? 'Fastoosh';
+
+// FSTH-XXXX-XXXX-XXXX-XXXX key generator (Crockford-ish alphabet, no I/O/0/1).
+function generateFsthKey(): string {
+  const ALPHABET = '23456789ABCDEFGHJKMNPQRSTVWXYZ';
+  const threshold = Math.floor(256 / ALPHABET.length) * ALPHABET.length;
+  const rc = () => {
+    const b = new Uint8Array(1);
+    while (true) { crypto.getRandomValues(b); if (b[0] < threshold) return ALPHABET[b[0] % ALPHABET.length]; }
+  };
+  const groups: string[] = [];
+  for (let g = 0; g < 4; g++) { let s = ''; for (let i = 0; i < 4; i++) s += rc(); groups.push(s); }
+  return `FSTH-${groups.join('-')}`;
+}
+const normalizeFsthKey = (raw: string) => raw.trim().toUpperCase().replace(/\s+/g, '');
+
+// Minimal license-delivery + revoked emails (brand-consistent with the rest).
+async function sendLicenseEmail(to: string, content: { subject: string; html: string; text: string }) {
+  try {
+    const resendKey = Deno.env.get('RESEND_API_KEY');
+    if (!resendKey) { console.error('[license email] RESEND_API_KEY not set'); return; }
+    const resendClient = new Resend(resendKey);
+    await resendClient.emails.send({
+      from: 'Fastoosh Licenses <licenses@contact.fastoosh.com>',
+      to, subject: content.subject, html: content.html, text: content.text,
+    });
+  } catch (e) { console.error('[license email] send failed:', e); }
+}
+function licenseDeliveryEmail(p: { licenseKey: string; productName: string; planTier: string; type: string; machineLimit: number }) {
+  const year = new Date().getFullYear();
+  const typeLabel = p.type === 'lifetime' ? 'Lifetime License' : 'Subscription';
+  const html = `<div style="background:#0a0a0a;padding:32px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;"><div style="max-width:520px;margin:0 auto;background:#141416;border:1px solid #262629;border-radius:16px;overflow:hidden;"><div style="padding:28px 32px 8px;"><span style="font-size:18px;font-weight:800;color:#fff;">Fastoosh</span></div><div style="padding:8px 32px 32px;color:#d4d4d8;font-size:14px;line-height:1.6;"><h1 style="margin:0 0 16px;font-size:20px;color:#fff;font-weight:700;">Your ${p.productName} license</h1><p style="margin:0 0 20px;">Thanks for your purchase. Here is your license key — keep it safe.</p><div style="background:#0a0a0a;border:1px solid #3f3f46;border-radius:10px;padding:18px;text-align:center;margin:0 0 20px;"><span style="font-family:'SF Mono',Menlo,monospace;font-size:18px;color:#a78bfa;letter-spacing:0.08em;font-weight:600;">${p.licenseKey}</span></div><table style="width:100%;border-collapse:collapse;margin:0 0 20px;font-size:13px;"><tr><td style="padding:4px 0;color:#71717a;">Plan</td><td style="padding:4px 0;color:#d4d4d8;text-align:right;text-transform:capitalize;">${p.planTier} · ${typeLabel}</td></tr><tr><td style="padding:4px 0;color:#71717a;">Machines</td><td style="padding:4px 0;color:#d4d4d8;text-align:right;">Up to ${p.machineLimit}</td></tr></table><p style="margin:0 0 8px;color:#a1a1aa;font-size:13px;"><strong style="color:#d4d4d8;">How to activate:</strong></p><ol style="margin:0 0 20px;padding-left:18px;color:#a1a1aa;font-size:13px;"><li style="margin-bottom:6px;">Open the extension in After Effects.</li><li style="margin-bottom:6px;">Paste your license key when prompted.</li><li>It works offline after the first activation.</li></ol><p style="margin:20px 0 0;font-size:12px;color:#71717a;">Questions? <a href="https://fastoosh.com/contact" style="color:#a78bfa;text-decoration:none;">Contact support</a>.</p></div><div style="padding:18px 32px;border-top:1px solid #262629;"><p style="margin:0;font-size:11px;color:#71717a;">© ${year} Fastoosh · <a href="https://fastoosh.com" style="color:#71717a;text-decoration:none;">fastoosh.com</a></p></div></div></div>`;
+  const text = `Your ${p.productName} license\n\nLicense key: ${p.licenseKey}\nPlan: ${p.planTier} (${typeLabel})\nMachines: up to ${p.machineLimit}\n\nActivate by pasting the key into the extension in After Effects. Works offline after first activation.\n\n— Fastoosh · https://fastoosh.com`;
+  return { subject: `Your ${p.productName} license`, html, text };
+}
+function licenseRevokedEmail(p: { productName: string; reason?: string }) {
+  const year = new Date().getFullYear();
+  const html = `<div style="background:#0a0a0a;padding:32px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;"><div style="max-width:520px;margin:0 auto;background:#141416;border:1px solid #262629;border-radius:16px;overflow:hidden;"><div style="padding:28px 32px 8px;"><span style="font-size:18px;font-weight:800;color:#fff;">Fastoosh</span></div><div style="padding:8px 32px 32px;color:#d4d4d8;font-size:14px;line-height:1.6;"><h1 style="margin:0 0 16px;font-size:20px;color:#fff;font-weight:700;">Your license has been deactivated</h1><p style="margin:0 0 16px;">Your ${p.productName} license has been deactivated${p.reason ? ` (${p.reason})` : ''}. It will stop working at the next online check.</p><p style="margin:8px 0 0;font-size:12px;color:#71717a;">Think this is a mistake? <a href="https://fastoosh.com/contact" style="color:#a78bfa;text-decoration:none;">Contact support</a>.</p></div><div style="padding:18px 32px;border-top:1px solid #262629;"><p style="margin:0;font-size:11px;color:#71717a;">© ${year} Fastoosh · fastoosh.com</p></div></div></div>`;
+  const text = `Your ${p.productName} license has been deactivated${p.reason ? ` (${p.reason})` : ''}. It will stop working at the next online check.\n\n— Fastoosh · https://fastoosh.com`;
+  return { subject: 'Your Fastoosh license has been deactivated', html, text };
+}
+
+// GET /admin/licenses?email=&status=&product=&type= — list/search for the UI.
+app.get("/make-server-e07959ec/admin/licenses", requireAuth, async (c) => {
+  try {
+    const email = c.req.query('email');
+    const status = c.req.query('status');
+    const product = c.req.query('product');
+    const type = c.req.query('type');
+
+    let query = supabase
+      .from('licenses')
+      .select('*, license_customers!inner(email, name, country)')
+      .order('created_at', { ascending: false })
+      .limit(500);
+    if (status)  query = query.eq('status', status);
+    if (product) query = query.eq('product_id', product);
+    if (type)    query = query.eq('type', type);
+    if (email)   query = query.ilike('license_customers.email', `%${email}%`);
+
+    const { data, error } = await query;
+    if (error) return c.json({ success: false, error: error.message }, 500);
+
+    const ids = (data ?? []).map((l: any) => l.id);
+    const counts: Record<string, number> = {};
+    if (ids.length) {
+      const { data: acts } = await supabase.from('activations').select('license_id').in('license_id', ids);
+      for (const a of acts ?? []) counts[a.license_id] = (counts[a.license_id] ?? 0) + 1;
+    }
+
+    const licenses = (data ?? []).map((l: any) => ({
+      id: l.id,
+      license_key: l.license_key,
+      email: l.license_customers?.email,
+      customer_name: l.license_customers?.name,
+      product_id: l.product_id,
+      product_name: licenseProductName(l.product_id),
+      plan_tier: l.plan_tier,
+      type: l.type,
+      status: l.status,
+      machine_limit: l.machine_limit,
+      machines_used: counts[l.id] ?? 0,
+      expires_at: l.expires_at,
+      provider: l.provider,
+      created_at: l.created_at,
+    }));
+    return c.json({ success: true, licenses });
+  } catch (e) {
+    return c.json({ success: false, error: String(e) }, 500);
+  }
+});
+
+// GET /admin/licenses/:id/activations — machine list for a license (detail view).
+app.get("/make-server-e07959ec/admin/licenses/:id/activations", requireAuth, async (c) => {
+  try {
+    const id = c.req.param('id');
+    const { data, error } = await supabase
+      .from('activations')
+      .select('*')
+      .eq('license_id', id)
+      .order('activated_at', { ascending: true });
+    if (error) return c.json({ success: false, error: error.message }, 500);
+    return c.json({ success: true, activations: data ?? [] });
+  } catch (e) {
+    return c.json({ success: false, error: String(e) }, 500);
+  }
+});
+
+// POST /admin/licenses/revoke { license_key, reason }
+app.post("/make-server-e07959ec/admin/licenses/revoke", requireAuth, async (c) => {
+  try {
+    const { license_key, reason } = await c.req.json();
+    const key = normalizeFsthKey(String(license_key ?? ''));
+    const { data: license } = await supabase.from('licenses').select('*').eq('license_key', key).maybeSingle();
+    if (!license) return c.json({ success: false, error: 'not_found' }, 404);
+
+    await supabase.from('licenses').update({ status: 'revoked' }).eq('id', license.id);
+    await supabase.from('denylist').upsert({ license_key: key, reason: reason ?? 'manual_revoke' }, { onConflict: 'license_key' });
+    await supabase.from('license_events').insert({
+      license_id: license.id, customer_id: license.customer_id,
+      event_type: 'license.revoked', payload: { reason: reason ?? 'manual_revoke' },
+    });
+
+    const { data: cust } = await supabase.from('license_customers').select('email').eq('id', license.customer_id).maybeSingle();
+    if (cust?.email) await sendLicenseEmail(cust.email, licenseRevokedEmail({ productName: licenseProductName(license.product_id), reason }));
+    return c.json({ success: true });
+  } catch (e) {
+    return c.json({ success: false, error: String(e) }, 500);
+  }
+});
+
+// POST /admin/licenses/unrevoke { license_key } — reverse a revocation.
+app.post("/make-server-e07959ec/admin/licenses/unrevoke", requireAuth, async (c) => {
+  try {
+    const { license_key } = await c.req.json();
+    const key = normalizeFsthKey(String(license_key ?? ''));
+    const { data: license } = await supabase.from('licenses').select('*').eq('license_key', key).maybeSingle();
+    if (!license) return c.json({ success: false, error: 'not_found' }, 404);
+    await supabase.from('licenses').update({ status: 'active' }).eq('id', license.id);
+    await supabase.from('denylist').delete().eq('license_key', key);
+    await supabase.from('license_events').insert({ license_id: license.id, customer_id: license.customer_id, event_type: 'license.unrevoked' });
+    return c.json({ success: true });
+  } catch (e) {
+    return c.json({ success: false, error: String(e) }, 500);
+  }
+});
+
+// POST /admin/licenses/reissue { license_key } — resend the license email.
+app.post("/make-server-e07959ec/admin/licenses/reissue", requireAuth, async (c) => {
+  try {
+    const { license_key } = await c.req.json();
+    const key = normalizeFsthKey(String(license_key ?? ''));
+    const { data: license } = await supabase.from('licenses').select('*').eq('license_key', key).maybeSingle();
+    if (!license) return c.json({ success: false, error: 'not_found' }, 404);
+    const { data: cust } = await supabase.from('license_customers').select('email').eq('id', license.customer_id).maybeSingle();
+    if (!cust?.email) return c.json({ success: false, error: 'no_email' }, 400);
+    await sendLicenseEmail(cust.email, licenseDeliveryEmail({
+      licenseKey: license.license_key, productName: licenseProductName(license.product_id),
+      planTier: license.plan_tier, type: license.type, machineLimit: license.machine_limit,
+    }));
+    await supabase.from('license_events').insert({ license_id: license.id, customer_id: license.customer_id, event_type: 'license.reissued' });
+    return c.json({ success: true });
+  } catch (e) {
+    return c.json({ success: false, error: String(e) }, 500);
+  }
+});
+
+// POST /admin/licenses/update { license_key, machine_limit } — edit machine limit.
+app.post("/make-server-e07959ec/admin/licenses/update", requireAuth, async (c) => {
+  try {
+    const { license_key, machine_limit } = await c.req.json();
+    const key = normalizeFsthKey(String(license_key ?? ''));
+    const { data: license } = await supabase.from('licenses').select('*').eq('license_key', key).maybeSingle();
+    if (!license) return c.json({ success: false, error: 'not_found' }, 404);
+    const ml = Math.max(1, Math.floor(Number(machine_limit)));
+    if (!Number.isFinite(ml)) return c.json({ success: false, error: 'invalid_machine_limit' }, 400);
+    await supabase.from('licenses').update({ machine_limit: ml }).eq('id', license.id);
+    await supabase.from('license_events').insert({ license_id: license.id, customer_id: license.customer_id, event_type: 'license.updated', payload: { machine_limit: ml } });
+    return c.json({ success: true });
+  } catch (e) {
+    return c.json({ success: false, error: String(e) }, 500);
+  }
+});
+
+// POST /admin/licenses/create — mint a license manually (comp / support / test).
+app.post("/make-server-e07959ec/admin/licenses/create", requireAuth, async (c) => {
+  try {
+    const b = await c.req.json();
+    const email = String(b.email ?? '').toLowerCase().trim();
+    const productId = String(b.product_id ?? 'fastoosh_data_automator');
+    const tier = String(b.plan_tier ?? 'pro');
+    const type = (b.type === 'subscription' ? 'subscription' : 'lifetime') as 'lifetime' | 'subscription';
+    const machineLimit = Number.isFinite(Number(b.machine_limit)) ? Math.max(1, Math.floor(Number(b.machine_limit))) : 1;
+    const features: string[] = Array.isArray(b.features) ? b.features : [];
+    const expiresAt = b.expires_at ?? (type === 'subscription' ? new Date(Date.now() + 33 * 86400 * 1000).toISOString() : null);
+    const sendMail = b.send_email !== false;
+    if (!email) return c.json({ success: false, error: 'email_required' }, 400);
+
+    let { data: cust } = await supabase.from('license_customers').select('*').eq('email', email).maybeSingle();
+    if (!cust) {
+      const { data: newCust, error } = await supabase.from('license_customers').insert({ email, name: b.name ?? null }).select().single();
+      if (error) return c.json({ success: false, error: error.message }, 500);
+      cust = newCust;
+    }
+
+    const licenseKey = generateFsthKey();
+    const { data: license, error } = await supabase.from('licenses').insert({
+      customer_id: cust.id, license_key: licenseKey, product_id: productId, plan_tier: tier,
+      type, status: 'active', machine_limit: machineLimit, expires_at: expiresAt,
+      provider: 'manual', features,
+    }).select().single();
+    if (error) return c.json({ success: false, error: error.message }, 500);
+
+    await supabase.from('license_events').insert({
+      license_id: license.id, customer_id: cust.id, event_type: 'license.created',
+      provider: 'manual', payload: { tier, type, machine_limit: machineLimit },
+    });
+    if (sendMail) await sendLicenseEmail(email, licenseDeliveryEmail({ licenseKey, productName: licenseProductName(productId), planTier: tier, type, machineLimit }));
+    return c.json({ success: true, license_key: licenseKey, license_id: license.id });
+  } catch (e) {
+    return c.json({ success: false, error: String(e) }, 500);
+  }
+});
+
 // ========== USER PURCHASE SYNC ==========
 
 // Sync orphan purchases — links purchases made before sign-up to the authenticated user
