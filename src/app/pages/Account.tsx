@@ -630,6 +630,189 @@ async function applyActivationStepTranslations(raw: Purchase[], lang: string): P
 }
 
 /* -------------------------------------------------------------------------- */
+/* My Licenses (FSTH license server) — self-contained section                  */
+/* -------------------------------------------------------------------------- */
+interface UserLicense {
+  id: string;
+  licenseKey: string;
+  productId: string;
+  planTier: string;
+  type: 'lifetime' | 'subscription';
+  status: 'active' | 'revoked' | 'expired' | 'past_due';
+  machineLimit: number;
+  expiresAt: string | null;
+  activations: Array<{
+    id: string; machineName: string | null; os: string | null;
+    appVersion: string | null; lastSeenAt: string; activatedAt: string;
+  }>;
+}
+
+function MyLicensesSection({ token }: { token: string | undefined }) {
+  const { t } = useTranslation();
+  const [licenses, setLicenses] = useState<UserLicense[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState<string | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const load = async () => {
+    if (!token) return;
+    setLoading(true); setError('');
+    try {
+      const res = await fetch(`${API_BASE}/user/licenses`, {
+        headers: { Authorization: `Bearer ${publicAnonKey}`, 'X-User-Token': token },
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Failed to load licenses');
+      setLicenses(data.licenses ?? []);
+    } catch (e: any) {
+      setError(e.message || 'Could not load your licenses.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [token]);
+
+  const deactivate = async (licenseKey: string, activationId: string) => {
+    if (!token) return;
+    setBusy(activationId);
+    try {
+      const res = await fetch(`${API_BASE}/user/licenses/deactivate`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${publicAnonKey}`, 'X-User-Token': token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ license_key: licenseKey, activation_id: activationId }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Failed to deactivate');
+      await load();
+    } catch (e) {
+      console.error('deactivate failed:', e);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const copyKey = (key: string) => {
+    navigator.clipboard.writeText(key);
+    setCopied(key);
+    setTimeout(() => setCopied(null), 1500);
+  };
+
+  const fmtDate = (d: string | null) => d ? new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+
+  const STATUS = {
+    active:   { label: 'Active',   cls: 'text-emerald-300 bg-emerald-500/15 border-emerald-500/30' },
+    expired:  { label: 'Expired',  cls: 'text-white/40 bg-white/8 border-white/15' },
+    revoked:  { label: 'Revoked',  cls: 'text-red-300 bg-red-500/15 border-red-500/30' },
+    past_due: { label: 'Past due', cls: 'text-amber-300 bg-amber-500/15 border-amber-500/30' },
+  } as const;
+
+  // Hide the whole section if the user has no FSTH licenses (keeps the page clean).
+  if (!loading && !error && licenses.length === 0) return null;
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }} className="mt-10">
+      <div className="flex items-center gap-3 mb-5">
+        <div className="w-8 h-8 rounded-lg bg-purple-500/15 border border-purple-500/25 flex items-center justify-center">
+          <KeyRound className="w-4 h-4 text-purple-400" />
+        </div>
+        <h2 className="text-xl font-bold text-white">{t('account.myLicenses', { defaultValue: 'My Licenses' })}</h2>
+        {!loading && (
+          <button onClick={load} className="ml-auto p-1.5 rounded-lg hover:bg-white/8 text-white/40 hover:text-white/70 transition-colors" title="Refresh">
+            <RefreshCw className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
+
+      {loading && (
+        <GlassCard className="p-6 flex items-center justify-center gap-2 text-white/40 text-sm">
+          <Loader2 className="w-4 h-4 animate-spin" /> Loading your licenses…
+        </GlassCard>
+      )}
+      {error && !loading && (
+        <GlassCard className="p-4 text-red-400/70 text-sm">{error}</GlassCard>
+      )}
+
+      {!loading && !error && (
+        <div className="space-y-4">
+          {licenses.map((l) => {
+            const st = STATUS[l.status] ?? STATUS.expired;
+            return (
+              <GlassCard key={l.id} className="p-5">
+                <div className="flex items-start justify-between gap-4 flex-wrap">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                      <h3 className="text-white font-bold text-base leading-tight">{l.productId.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</h3>
+                      <span className="px-2 py-0.5 rounded-full text-xs font-bold border border-purple-500/30 bg-purple-500/15 text-purple-300 capitalize">{l.planTier}</span>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border ${st.cls}`}>{st.label}</span>
+                    </div>
+                    <p className="text-white/40 text-xs flex items-center gap-3">
+                      <span className="inline-flex items-center gap-1">
+                        {l.type === 'lifetime'
+                          ? <><CheckCircle className="w-3 h-3 text-amber-400/70" /> Lifetime</>
+                          : <><Clock className="w-3 h-3 text-sky-400/70" /> Renews · expires {fmtDate(l.expiresAt)}</>}
+                      </span>
+                    </p>
+                  </div>
+                </div>
+
+                {/* License key */}
+                {l.licenseKey && (
+                  <button
+                    type="button"
+                    onClick={() => copyKey(l.licenseKey)}
+                    className="mt-3 w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-black/40 border border-white/10 hover:border-purple-400/30 transition-colors group"
+                  >
+                    <span className="font-mono text-sm text-purple-300">{l.licenseKey}</span>
+                    {copied === l.licenseKey ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-white/30 group-hover:text-white/60" />}
+                  </button>
+                )}
+
+                {/* Machines */}
+                <div className="mt-4">
+                  <p className="text-[11px] uppercase tracking-wider text-white/35 mb-2">
+                    Machines · {l.activations.length}/{l.machineLimit}
+                  </p>
+                  {l.activations.length === 0 ? (
+                    <p className="text-white/30 text-xs italic">Not activated on any machine yet.</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {l.activations.map((a) => (
+                        <div key={a.id} className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-white/3 border border-white/8">
+                          <div className="min-w-0">
+                            <p className="text-white/80 text-sm truncate">{a.machineName || 'Unnamed machine'}</p>
+                            <p className="text-white/30 text-[11px]">
+                              {[a.os, a.appVersion].filter(Boolean).join(' · ')}
+                              {a.lastSeenAt ? ` · last seen ${fmtDate(a.lastSeenAt)}` : ''}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            disabled={busy === a.id}
+                            onClick={() => deactivate(l.licenseKey, a.id)}
+                            className="flex-shrink-0 px-2.5 py-1 rounded-md text-xs font-medium text-white/50 hover:text-red-300 hover:bg-red-500/10 border border-white/10 hover:border-red-500/30 transition-colors disabled:opacity-40"
+                          >
+                            {busy === a.id ? 'Removing…' : 'Deactivate'}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <p className="text-white/25 text-[11px] mt-2">
+                    Deactivate a machine to free a seat, then re-enter your key in the extension on the new machine.
+                  </p>
+                </div>
+              </GlassCard>
+            );
+          })}
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
 /* Main Account page                                                           */
 /* -------------------------------------------------------------------------- */
 export function Account() {
@@ -1236,6 +1419,9 @@ export function Account() {
             </motion.div>
           )}
         </motion.div>
+
+        {/* ── My Licenses (FSTH) ── */}
+        <MyLicensesSection token={session?.access_token} />
 
         {/* ── My Downloads ── */}
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 }} className="mt-10">

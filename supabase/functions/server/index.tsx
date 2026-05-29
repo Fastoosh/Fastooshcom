@@ -4279,6 +4279,118 @@ app.post("/make-server-e07959ec/admin/licenses/create", requireAuth, async (c) =
   }
 });
 
+// ========== USER-FACING LICENSES (FSTH license server, JWT-authed) ==========
+// A logged-in user sees the FSTH licenses tied to THEIR account email — including
+// ones bought directly on Gumroad before they signed up (matched automatically by
+// email, no claim step). They can deactivate a machine to free a seat.
+
+// GET /user/licenses — the authenticated user's FSTH licenses + activations.
+app.get("/make-server-e07959ec/user/licenses", requireUserAuth, async (c) => {
+  try {
+    const user = c.get('user');
+    const email = user.email?.toLowerCase();
+    if (!email) return c.json({ success: false, error: 'No email on account' }, 400);
+
+    const { data: customer } = await supabase
+      .from('license_customers')
+      .select('id')
+      .eq('email', email)
+      .maybeSingle();
+    if (!customer) return c.json({ success: true, licenses: [] });
+
+    const { data: licenses } = await supabase
+      .from('licenses')
+      .select('*')
+      .eq('customer_id', customer.id)
+      .order('created_at', { ascending: false });
+
+    const ids = (licenses ?? []).map((l: any) => l.id);
+    const actsByLicense: Record<string, any[]> = {};
+    if (ids.length) {
+      const { data: acts } = await supabase
+        .from('activations')
+        .select('id, license_id, machine_name, os, app_version, last_seen_at, activated_at')
+        .in('license_id', ids)
+        .order('activated_at', { ascending: true });
+      for (const a of acts ?? []) {
+        (actsByLicense[a.license_id] ??= []).push(a);
+      }
+    }
+
+    const out = (licenses ?? []).map((l: any) => ({
+      id: l.id,
+      licenseKey: l.license_key,
+      productId: l.product_id,
+      planTier: l.plan_tier,
+      type: l.type,
+      status: l.status,
+      machineLimit: l.machine_limit,
+      expiresAt: l.expires_at,
+      createdAt: l.created_at,
+      activations: (actsByLicense[l.id] ?? []).map((a: any) => ({
+        id: a.id,
+        machineName: a.machine_name,
+        os: a.os,
+        appVersion: a.app_version,
+        lastSeenAt: a.last_seen_at,
+        activatedAt: a.activated_at,
+      })),
+    }));
+
+    return c.json({ success: true, licenses: out });
+  } catch (e) {
+    return c.json({ success: false, error: String(e) }, 500);
+  }
+});
+
+// POST /user/licenses/deactivate { license_key, activation_id } — free a machine
+// seat. The user may only deactivate activations on a license they own (by email).
+app.post("/make-server-e07959ec/user/licenses/deactivate", requireUserAuth, async (c) => {
+  try {
+    const user = c.get('user');
+    const email = user.email?.toLowerCase();
+    if (!email) return c.json({ success: false, error: 'No email on account' }, 400);
+
+    const body = await c.req.json();
+    const key = String(body.license_key ?? '').trim().toUpperCase();
+    const activationId = body.activation_id;
+
+    // Verify ownership: the license must belong to this user's customer record.
+    const { data: customer } = await supabase
+      .from('license_customers')
+      .select('id')
+      .eq('email', email)
+      .maybeSingle();
+    if (!customer) return c.json({ success: false, error: 'not_found' }, 404);
+
+    const { data: license } = await supabase
+      .from('licenses')
+      .select('id, customer_id')
+      .eq('license_key', key)
+      .maybeSingle();
+    if (!license || license.customer_id !== customer.id) {
+      return c.json({ success: false, error: 'forbidden' }, 403);
+    }
+    if (!activationId) return c.json({ success: false, error: 'activation_id_required' }, 400);
+
+    // Delete the specific activation (scoped to this license).
+    const { error } = await supabase
+      .from('activations')
+      .delete()
+      .eq('license_id', license.id)
+      .eq('id', activationId);
+    if (error) return c.json({ success: false, error: error.message }, 500);
+
+    await supabase.from('license_events').insert({
+      license_id: license.id, customer_id: customer.id,
+      event_type: 'machine.deactivated', payload: { by: 'user', activation_id: activationId },
+    });
+    return c.json({ success: true });
+  } catch (e) {
+    return c.json({ success: false, error: String(e) }, 500);
+  }
+});
+
 // ========== USER PURCHASE SYNC ==========
 
 // Sync orphan purchases — links purchases made before sign-up to the authenticated user
