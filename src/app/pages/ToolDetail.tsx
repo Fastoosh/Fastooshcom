@@ -7,7 +7,7 @@ import { ToolSupportModal } from '../components/shared/ToolSupportModal';
 import { UserAuthModal } from '../components/shared/UserAuthModal';
 import { SeoHead } from '../components/shared/SeoHead';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
-import { buildGumroadCheckoutUrl, openGumroadOverlay } from '../utils/gumroad';
+import { buildGumroadCheckoutUrl, openGumroadCheckout } from '../utils/gumroad';
 import {
   ArrowLeft, Check, Download, Play, ChevronDown, ChevronUp,
   Monitor, Zap, Star, ExternalLink, Sparkles, ShoppingCart, Quote,
@@ -570,7 +570,6 @@ function ComparisonModal({
                   email: user?.email,
                   userId: user?.id,
                   toolVersionId: v.id,
-                  overlay: true,
                 });
 
                 return (
@@ -595,7 +594,7 @@ function ComparisonModal({
                         onClick={() => {
                           if (!user) { onClose(); onSignInRequired('Sign in to purchase and access your license key.'); return; }
                           onBuyClick?.(v);
-                          openGumroadOverlay(buildUrl());
+                          openGumroadCheckout(buildUrl());
                         }}
                         className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all active:scale-[0.98]
                           bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-fuchsia-500 text-white shadow-lg hover:shadow-purple-500/25"
@@ -735,7 +734,6 @@ function PricingCard({
       userId: user?.id,
       toolVersionId: version.id,
       sessionId,
-      overlay: true,
     });
   };
 
@@ -745,8 +743,8 @@ function PricingCard({
       return;
     }
     onBuyClick?.(version);
-    // Open Gumroad checkout as an on-page overlay (falls back to new tab).
-    openGumroadOverlay(buildCheckoutUrl());
+    // Full-page Gumroad checkout; Gumroad redirects back to /account?purchase=success.
+    openGumroadCheckout(buildCheckoutUrl());
   };
 
   return (
@@ -1198,7 +1196,6 @@ function FeaturesShowcase({
     userId: user?.id,
     toolVersionId: primaryVersion?.id,
     sessionId,
-    overlay: true,
   });
 
   const handleCTA = () => {
@@ -1208,7 +1205,7 @@ function FeaturesShowcase({
     } else {
       if (!user) { onSignInRequired('Sign in to purchase and access your license key.'); return; }
       onBuyClick?.(primaryVersion);
-      openGumroadOverlay(buildCheckoutUrl());
+      openGumroadCheckout(buildCheckoutUrl());
     }
   };
 
