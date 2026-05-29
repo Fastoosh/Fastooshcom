@@ -8,7 +8,6 @@ import { UserAuthModal } from '../components/shared/UserAuthModal';
 import { SeoHead } from '../components/shared/SeoHead';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import { buildGumroadCheckoutUrl, openGumroadCheckout } from '../utils/gumroad';
-import { GumroadBuyButton } from '../components/shared/GumroadBuyButton';
 import {
   ArrowLeft, Check, Download, Play, ChevronDown, ChevronUp,
   Monitor, Zap, Star, ExternalLink, Sparkles, ShoppingCart, Quote,
@@ -924,20 +923,18 @@ function PricingCard({
               )}
             </div>
           ) : (
-            /* ── Paid: Gumroad overlay checkout CTA ── */
-            <div onClick={(e) => e.stopPropagation()}>
-              <GumroadBuyButton
-                baseUrl={(billingCycle === 'lifetime' && version.lifetimeBuyUrl?.trim()) ? version.lifetimeBuyUrl : version.downloadUrl}
-                email={user?.email}
-                userId={user?.id}
-                toolVersionId={version.id}
-                sessionId={sessionId}
-                onBeforeBuy={() => {
-                  if (!user) { onSignInRequired('Sign in to purchase and access your license key.'); return false; }
+            /* ── Paid: Gumroad hosted checkout CTA ── */
+            <div>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!user) { onSignInRequired('Sign in to purchase and access your license key.'); return; }
                   onBuyClick?.(version);
+                  const baseUrl = (billingCycle === 'lifetime' && version.lifetimeBuyUrl?.trim()) ? version.lifetimeBuyUrl : version.downloadUrl;
+                  openGumroadCheckout(buildGumroadCheckoutUrl({ baseUrl, email: user?.email, userId: user?.id, toolVersionId: version.id, sessionId }));
                 }}
                 className="w-full inline-flex items-center justify-center gap-2 rtl:flex-row-reverse
-                  px-5 py-3 rounded-xl text-sm font-semibold transition-all active:scale-[0.98] cursor-pointer
+                  px-5 py-3 rounded-xl text-sm font-semibold transition-all active:scale-[0.98]
                   bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-fuchsia-500
                   text-white shadow-lg hover:shadow-purple-500/30"
               >
@@ -945,7 +942,7 @@ function PricingCard({
                   ? <Zap className="w-3.5 h-3.5 fill-current" />
                   : <PaidCtaIcon className="w-3.5 h-3.5" />}
                 {paidCtaText}
-              </GumroadBuyButton>
+              </button>
               {!user && (
                 <p className="text-center text-white/35 text-xs mt-2 leading-snug">
                   {t('tools.detail.paidGuestHint')}
