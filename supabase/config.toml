@@ -5,3 +5,8 @@ verify_jwt = false
 
 [functions.make-server-e07959ec]
 verify_jwt = false
+
+# License server — handles its own auth (webhook secret, admin bearer token,
+# license-key + fingerprint), so Supabase JWT verification is disabled.
+[functions.make-server-license]
+verify_jwt = false

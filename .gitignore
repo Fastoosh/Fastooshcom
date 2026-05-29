@@ -3,3 +3,5 @@ dist/
 .env
 .env.local
 .env.*.local
+supabase/.temp/cli-latest
+supabase/.temp/linked-project.json
