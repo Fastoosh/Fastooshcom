@@ -8,6 +8,7 @@ import { UserAuthModal } from '../components/shared/UserAuthModal';
 import { SeoHead } from '../components/shared/SeoHead';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import { buildGumroadCheckoutUrl, openGumroadCheckout } from '../utils/gumroad';
+import { GumroadBuyButton } from '../components/shared/GumroadBuyButton';
 import {
   ArrowLeft, Check, Download, Play, ChevronDown, ChevronUp,
   Monitor, Zap, Star, ExternalLink, Sparkles, ShoppingCart, Quote,
@@ -722,30 +723,6 @@ function PricingCard({
   const rgb = hexToRgb(versionColor);
   const rgbString = `${rgb.r}, ${rgb.g}, ${rgb.b}`;
 
-  // Build the checkout URL with pre-filled user data
-  // When lifetime tab is active and a dedicated lifetimeBuyUrl is set, use it
-  const buildCheckoutUrl = () => {
-    const baseUrl = (billingCycle === 'lifetime' && version.lifetimeBuyUrl?.trim())
-      ? version.lifetimeBuyUrl
-      : version.downloadUrl;
-    return buildGumroadCheckoutUrl({
-      baseUrl,
-      email: user?.email,
-      userId: user?.id,
-      toolVersionId: version.id,
-      sessionId,
-    });
-  };
-
-  const handlePaidCTA = () => {
-    if (!user) {
-      onSignInRequired('Sign in to purchase and access your license key.');
-      return;
-    }
-    onBuyClick?.(version);
-    // Full-page Gumroad checkout; Gumroad redirects back to /account?purchase=success.
-    openGumroadCheckout(buildCheckoutUrl());
-  };
 
   return (
     <motion.div
@@ -753,17 +730,16 @@ function PricingCard({
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true }}
       transition={{ delay: index * 0.08 }}
-      className="h-full cursor-pointer"
+      className={`h-full ${isFree ? 'cursor-pointer' : ''}`}
       onClick={() => {
-        // Make entire card clickable - trigger the appropriate action
+        // Free card is fully clickable; paid purchases go through the overlay
+        // buy button below (clicking the card body does nothing for paid).
         if (isFree) {
           if (!user) {
             onSignInRequired('Sign in to download free tools.');
             return;
           }
           onFreeDownload(version);
-        } else {
-          handlePaidCTA();
         }
       }}
       style={isLifetimeActive 
@@ -948,15 +924,20 @@ function PricingCard({
               )}
             </div>
           ) : (
-            /* ── Paid: smart checkout CTA ── */
-            <div>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation(); // Prevent card click when clicking button
-                  handlePaidCTA();
+            /* ── Paid: Gumroad overlay checkout CTA ── */
+            <div onClick={(e) => e.stopPropagation()}>
+              <GumroadBuyButton
+                baseUrl={(billingCycle === 'lifetime' && version.lifetimeBuyUrl?.trim()) ? version.lifetimeBuyUrl : version.downloadUrl}
+                email={user?.email}
+                userId={user?.id}
+                toolVersionId={version.id}
+                sessionId={sessionId}
+                onBeforeBuy={() => {
+                  if (!user) { onSignInRequired('Sign in to purchase and access your license key.'); return false; }
+                  onBuyClick?.(version);
                 }}
                 className="w-full inline-flex items-center justify-center gap-2 rtl:flex-row-reverse
-                  px-5 py-3 rounded-xl text-sm font-semibold transition-all active:scale-[0.98]
+                  px-5 py-3 rounded-xl text-sm font-semibold transition-all active:scale-[0.98] cursor-pointer
                   bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-fuchsia-500
                   text-white shadow-lg hover:shadow-purple-500/30"
               >
@@ -964,7 +945,7 @@ function PricingCard({
                   ? <Zap className="w-3.5 h-3.5 fill-current" />
                   : <PaidCtaIcon className="w-3.5 h-3.5" />}
                 {paidCtaText}
-              </button>
+              </GumroadBuyButton>
               {!user && (
                 <p className="text-center text-white/35 text-xs mt-2 leading-snug">
                   {t('tools.detail.paidGuestHint')}
