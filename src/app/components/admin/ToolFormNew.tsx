@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { AdminSelect } from './AdminSelect';
 import { IconPicker } from './IconPicker';
 import { Plus, Save, X, Upload, Copy, Trash2, Sparkles, ChevronLeft, ChevronRight, GripVertical, ImageIcon, BookOpen, FileCode, CheckCircle2, AlertCircle, Pencil, Maximize2, Minimize2, Eye, Code2, PackageOpen, MousePointer2, Tag } from 'lucide-react';
-import { LsImportModal, type LsImportPayload } from './LsImportModal';
+import { GumroadImportModal, type GumroadImportPayload } from './GumroadImportModal';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import { AIImproveModal, type AIImproveContext } from './AIImproveModal';
 import { ChangelogTab } from './ChangelogTab';
@@ -54,6 +54,20 @@ export const VERSION_COLORS = [
 export const isVersionFree = (v: { lifetimePrice?: string; monthlyPrice?: string; yearlyPrice?: string }) =>
   !v.lifetimePrice?.trim() && !v.monthlyPrice?.trim() && !v.yearlyPrice?.trim();
 
+// Resolve the explicit licensing type for a version. Falls back to deriving it
+// from legacy data (no stored licenseType) so older versions still render right.
+export type LicenseTypeChoice = 'free' | 'trial' | 'subscription' | 'lifetime';
+export const resolveLicenseType = (v: {
+  licenseType?: string; pricingModel?: string;
+  lifetimePrice?: string; monthlyPrice?: string; yearlyPrice?: string; trialDays?: number;
+}): LicenseTypeChoice => {
+  if (v.licenseType === 'free' || v.licenseType === 'trial' || v.licenseType === 'subscription' || v.licenseType === 'lifetime') {
+    return v.licenseType;
+  }
+  if (isVersionFree(v)) return 'free';
+  return v.pricingModel === 'subscription' ? 'subscription' : 'lifetime';
+};
+
 // Common CTA icons available from lucide-react
 export const CTA_ICON_OPTIONS = [
   'Download',
@@ -77,14 +91,18 @@ interface ToolVersion {
   versionType_ar?: string;    // Arabic translation of version name
   versionType_fr?: string;    // French translation of version name
   color?: string;             // hex accent, e.g. '#a855f7'
+  // Explicit licensing type. Drives the editor + what license is issued.
+  // pricingModel is kept derived from this for display-card backward compat.
+  licenseType?: 'free' | 'trial' | 'subscription' | 'lifetime';
+  trialDays?: number;         // for licenseType === 'trial'
   pricingModel: 'subscription' | 'lifetime';
   monthlyPrice?: string;
   yearlyPrice?: string;
   lifetimePrice?: string;
   lifetimeBuyUrl?: string;
   downloadUrl: string;
-  lemonSqueezyVariantId?: string;
-  lemonSqueezyProductId?: string;
+  gumroadProductId?: string;
+  gumroadVariantId?: string;
   whatsIncluded?: string[];
   activationSteps?: string[];
   includedFeatureIds?: string[];
@@ -190,7 +208,7 @@ export function ToolFormNew({
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [generatingVersionId, setGeneratingVersionId] = useState<string | null>(null);
-  const [lsModalOpen, setLsModalOpen] = useState(false);
+  const [gumroadModalOpen, setGumroadModalOpen] = useState(false);
   const [versionTypeModalOpen, setVersionTypeModalOpen] = useState(false);
   // AI options (bulk)
   const [aiInstruction, setAiInstruction] = useState('');
@@ -775,8 +793,8 @@ export function ToolFormNew({
       color: VERSION_COLORS[existingCount % VERSION_COLORS.length],
       pricingModel: 'lifetime',
       downloadUrl: '',
-      lemonSqueezyVariantId: '',
-      lemonSqueezyProductId: '',
+      gumroadVariantId: '',
+      gumroadProductId: '',
       whatsIncluded: [],
       activationSteps: [],
       includedFeatureIds: [],
@@ -840,38 +858,44 @@ export function ToolFormNew({
     setActiveVersionTab(newVersion.id);
   };
 
-  const handleLsImport = (payload: LsImportPayload) => {
+  // Derive the licensing type from imported pricing so the editor radio is preset.
+  const deriveLicenseTypeFromImport = (p: GumroadImportPayload): 'free' | 'subscription' | 'lifetime' => {
+    if (!p.monthlyPrice && !p.yearlyPrice && !p.lifetimePrice) return 'free';
+    return p.pricingModel === 'subscription' ? 'subscription' : 'lifetime';
+  };
+
+  const handleGumroadImport = (payload: GumroadImportPayload) => {
     addVersion({
-      versionType:           payload.versionName,
-      pricingModel:          payload.pricingModel,
-      monthlyPrice:          payload.monthlyPrice ?? '',
-      yearlyPrice:           payload.yearlyPrice  ?? '',
-      lifetimePrice:         payload.lifetimePrice ?? '',
-      lifetimeBuyUrl:        payload.buyNowUrl,
-      downloadUrl:           payload.buyNowUrl,
-      lemonSqueezyVariantId: payload.variantId,
-      lemonSqueezyProductId: payload.productId,
+      versionType:      payload.versionName,
+      licenseType:      deriveLicenseTypeFromImport(payload),
+      pricingModel:     payload.pricingModel,
+      monthlyPrice:     payload.monthlyPrice ?? '',
+      yearlyPrice:      payload.yearlyPrice  ?? '',
+      lifetimePrice:    payload.lifetimePrice ?? '',
+      downloadUrl:      payload.checkoutUrl,
+      gumroadProductId: payload.gumroadProductId,
+      gumroadVariantId: payload.gumroadVariantId,
     });
   };
 
-  const handleLsImportAll = (payloads: LsImportPayload[]) => {
+  const handleGumroadImportAll = (payloads: GumroadImportPayload[]) => {
     const base = formData.versions || [];
     const newVersions: ToolVersion[] = payloads.map((p, i) => ({
       id: `version-${Date.now()}-${i}`,
-      versionType:           p.versionName,
-      pricingModel:          p.pricingModel,
-      color:                 VERSION_COLORS[(base.length + i) % VERSION_COLORS.length],
-      monthlyPrice:          p.monthlyPrice  ?? '',
-      yearlyPrice:           p.yearlyPrice   ?? '',
-      lifetimePrice:         p.lifetimePrice ?? '',
-      lifetimeBuyUrl:        p.buyNowUrl,
-      downloadUrl:           p.buyNowUrl,
-      lemonSqueezyVariantId: p.variantId,
-      lemonSqueezyProductId: p.productId,
-      whatsIncluded:         [],
-      activationSteps:       [],
-      includedFeatureIds:    [],
-      demoUrl:               '',
+      versionType:      p.versionName,
+      licenseType:      deriveLicenseTypeFromImport(p),
+      pricingModel:     p.pricingModel,
+      color:            VERSION_COLORS[(base.length + i) % VERSION_COLORS.length],
+      monthlyPrice:     p.monthlyPrice  ?? '',
+      yearlyPrice:      p.yearlyPrice   ?? '',
+      lifetimePrice:    p.lifetimePrice ?? '',
+      downloadUrl:      p.checkoutUrl,
+      gumroadProductId: p.gumroadProductId,
+      gumroadVariantId: p.gumroadVariantId,
+      whatsIncluded:    [],
+      activationSteps:  [],
+      includedFeatureIds: [],
+      demoUrl:          '',
     }));
     const updated = [...base, ...newVersions];
     setFormData(prev => ({ ...prev, versions: updated }));
@@ -1731,13 +1755,13 @@ export function ToolFormNew({
             </Button>
             <Button
               type="button"
-              onClick={() => setLsModalOpen(true)}
+              onClick={() => setGumroadModalOpen(true)}
               size="sm"
               variant="outline"
-              className="cursor-pointer border-amber-500/30 text-amber-300 hover:bg-amber-500/10 hover:border-amber-500/50"
+              className="cursor-pointer border-pink-500/30 text-pink-300 hover:bg-pink-500/10 hover:border-pink-500/50"
             >
               <PackageOpen className="w-4 h-4 mr-1" />
-              Import from LS
+              Import from Gumroad
             </Button>
           </div>
         </div>
@@ -1848,12 +1872,12 @@ export function ToolFormNew({
         />
       )}
 
-      {/* LemonSqueezy Import Modal */}
-      <LsImportModal
-        open={lsModalOpen}
-        onClose={() => setLsModalOpen(false)}
-        onImport={handleLsImport}
-        onImportAll={handleLsImportAll}
+      {/* Gumroad Import Modal */}
+      <GumroadImportModal
+        open={gumroadModalOpen}
+        onClose={() => setGumroadModalOpen(false)}
+        onImport={handleGumroadImport}
+        onImportAll={handleGumroadImportAll}
       />
 
       {/* Version Type Selection Modal */}
@@ -1932,7 +1956,7 @@ export function ToolFormNew({
             
             <div className="mt-6 pt-4 border-t border-white/5">
               <p className="text-white/40 text-xs text-center">
-                You can also import versions from LemonSqueezy using the "Import from LS" button
+                You can also import versions from Gumroad using the "Import from Gumroad" button
               </p>
             </div>
           </div>
@@ -2450,95 +2474,99 @@ function VersionEditor({
         </div>
       </div>
 
-      {/* Pricing Model */}
-      <div>
-        <label className="block text-sm font-medium text-gray-300 mb-2">
-          Pricing Model
-        </label>
-        <div className="flex gap-4">
-          <label className="flex items-center gap-2 text-white cursor-pointer">
-            <input
-              type="radio"
-              name={`pricing-${version.id}`}
-              checked={version.pricingModel === 'lifetime'}
-              onChange={() => onUpdate({ pricingModel: 'lifetime' })}
-              className="w-4 h-4"
-              disabled={isVersionFree(version)}
-            />
-            Lifetime (one-time payment)
-          </label>
-          <label className="flex items-center gap-2 text-white cursor-pointer">
-            <input
-              type="radio"
-              name={`pricing-${version.id}`}
-              checked={version.pricingModel === 'subscription'}
-              onChange={() => onUpdate({ pricingModel: 'subscription' })}
-              className="w-4 h-4"
-              disabled={isVersionFree(version)}
-            />
-            Subscription (recurring)
-          </label>
-        </div>
-      </div>
+      {/* Licensing type */}
+      {(() => {
+        const lt = resolveLicenseType(version);
+        const choose = (next: LicenseTypeChoice) => {
+          // Set licenseType and reconcile dependent fields so the display layer
+          // (which reads pricingModel + prices) stays consistent.
+          if (next === 'free') {
+            onUpdate({ licenseType: 'free', pricingModel: 'lifetime', monthlyPrice: '', yearlyPrice: '', lifetimePrice: '', trialDays: undefined });
+          } else if (next === 'trial') {
+            onUpdate({ licenseType: 'trial', pricingModel: 'subscription', monthlyPrice: '', yearlyPrice: '', lifetimePrice: '', trialDays: version.trialDays || 7 });
+          } else if (next === 'subscription') {
+            onUpdate({ licenseType: 'subscription', pricingModel: 'subscription', lifetimePrice: '', trialDays: undefined });
+          } else {
+            onUpdate({ licenseType: 'lifetime', pricingModel: 'lifetime', monthlyPrice: '', yearlyPrice: '', trialDays: undefined });
+          }
+        };
+        const OPTIONS: { v: LicenseTypeChoice; label: string; hint: string }[] = [
+          { v: 'free',         label: 'Free',         hint: 'No payment' },
+          { v: 'trial',        label: 'Trial',        hint: 'Time-limited free' },
+          { v: 'subscription', label: 'Subscription', hint: 'Recurring' },
+          { v: 'lifetime',     label: 'Lifetime',     hint: 'One-time' },
+        ];
+        return (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Licensing type</label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {OPTIONS.map(o => (
+                  <button
+                    key={o.v}
+                    type="button"
+                    onClick={() => choose(o.v)}
+                    className={`flex flex-col items-start px-3 py-2 rounded-lg border text-left transition-all ${
+                      lt === o.v
+                        ? 'bg-purple-500/15 border-purple-500/40 text-purple-200'
+                        : 'bg-white/3 border-white/8 text-white/50 hover:bg-white/6'
+                    }`}
+                  >
+                    <span className="text-sm font-semibold">{o.label}</span>
+                    <span className="text-[10px] text-white/35">{o.hint}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
 
-      {/* Pricing Fields */}
-      {!isVersionFree(version) && (
-        <div className="space-y-4">
-          {version.pricingModel === 'subscription' ? (
-            <>
-              {/* Subscription prices */}
+            {/* Conditional fields per type */}
+            {lt === 'trial' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Trial duration (days)</label>
+                <Input
+                  type="number" min={1}
+                  placeholder="7"
+                  value={version.trialDays ?? ''}
+                  onChange={(e) => onUpdate({ trialDays: Number(e.target.value) || undefined })}
+                  className="bg-black/50 border-white/20 text-white w-32"
+                />
+                <p className="text-xs text-white/30 mt-1">Free access that expires after this many days.</p>
+              </div>
+            )}
+
+            {lt === 'subscription' && (
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Monthly Price (e.g., $9)
-                  </label>
-                  <Input
-                    placeholder="$9/month"
-                    value={version.monthlyPrice || ''}
-                    onChange={(e) => onUpdate({ monthlyPrice: e.target.value })}
-                    className="bg-black/50 border-white/20 text-white"
-                  />
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Monthly Price (e.g., $9)</label>
+                  <Input placeholder="$9/month" value={version.monthlyPrice || ''} onChange={(e) => onUpdate({ monthlyPrice: e.target.value })} className="bg-black/50 border-white/20 text-white" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Yearly Price (e.g., $90)
-                  </label>
-                  <Input
-                    placeholder="$90/year"
-                    value={version.yearlyPrice || ''}
-                    onChange={(e) => onUpdate({ yearlyPrice: e.target.value })}
-                    className="bg-black/50 border-white/20 text-white"
-                  />
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Yearly Price (e.g., $90)</label>
+                  <Input placeholder="$90/year" value={version.yearlyPrice || ''} onChange={(e) => onUpdate({ yearlyPrice: e.target.value })} className="bg-black/50 border-white/20 text-white" />
                 </div>
               </div>
+            )}
 
-            </>
-          ) : (
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Lifetime Price (e.g., $49)
-              </label>
-              <Input
-                placeholder="$49 one-time"
-                value={version.lifetimePrice || ''}
-                onChange={(e) => onUpdate({ lifetimePrice: e.target.value })}
-                className="bg-black/50 border-white/20 text-white"
-              />
-            </div>
-          )}
-        </div>
-      )}
+            {lt === 'lifetime' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Lifetime Price (e.g., $49)</label>
+                <Input placeholder="$49 one-time" value={version.lifetimePrice || ''} onChange={(e) => onUpdate({ lifetimePrice: e.target.value })} className="bg-black/50 border-white/20 text-white" />
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
-      {/* Download URL */}
+      {/* Download / Checkout URL */}
       <div>
         <label className="block text-sm font-medium text-gray-300 mb-2">
-          {isVersionFree(version) ? 'Download URL' : 'Lemon Squeezy Checkout URL'}
+          {isVersionFree(version) ? 'Download URL' : 'Gumroad Checkout URL'}
         </label>
         <Input
           placeholder={
             isVersionFree(version)
-              ? 'https://your-cdn.com/tool-free.zip or LS checkout URL'
-              : 'https://yourstore.lemonsqueezy.com/checkout/buy/...'
+              ? 'https://your-cdn.com/tool-free.zip'
+              : 'https://fastoosh.gumroad.com/l/...'
           }
           value={version.downloadUrl || ''}
           onChange={(e) => onUpdate({ downloadUrl: e.target.value })}
@@ -2546,36 +2574,36 @@ function VersionEditor({
         />
         <p className="text-xs text-white/30 mt-1">
           {isVersionFree(version)
-            ? 'Direct file URL (e.g. .zip) for instant download, or an LS checkout link to go through the LS flow.'
-            : 'Lemon Squeezy checkout link. User email will be pre-filled automatically.'}
+            ? 'Direct file URL (e.g. .zip) for instant download.'
+            : 'Gumroad checkout link. Opens in an overlay on the site; user email is pre-filled.'}
         </p>
       </div>
 
-      {/* Lemon Squeezy IDs (paid versions only) */}
+      {/* Gumroad IDs (paid versions only) */}
       {!isVersionFree(version) && (
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">
-              LS Product ID <span className="text-white/30 font-normal">(optional)</span>
+              Gumroad Product ID <span className="text-white/30 font-normal">(optional)</span>
             </label>
             <Input
-              placeholder="123456"
-              value={version.lemonSqueezyProductId || ''}
-              onChange={(e) => onUpdate({ lemonSqueezyProductId: e.target.value })}
+              placeholder="data-automator"
+              value={version.gumroadProductId || ''}
+              onChange={(e) => onUpdate({ gumroadProductId: e.target.value })}
               className="bg-black/50 border-white/20 text-white"
             />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">
-              LS Variant ID <span className="text-white/30 font-normal">(optional)</span>
+              Gumroad Variant ID <span className="text-white/30 font-normal">(optional)</span>
             </label>
             <Input
-              placeholder="789012"
-              value={version.lemonSqueezyVariantId || ''}
-              onChange={(e) => onUpdate({ lemonSqueezyVariantId: e.target.value })}
+              placeholder="Pro Monthly"
+              value={version.gumroadVariantId || ''}
+              onChange={(e) => onUpdate({ gumroadVariantId: e.target.value })}
               className="bg-black/50 border-white/20 text-white"
             />
-            <p className="text-xs text-white/30 mt-1">Used for webhook purchase tracking</p>
+            <p className="text-xs text-white/30 mt-1">Maps the purchase to this version</p>
           </div>
         </div>
       )}

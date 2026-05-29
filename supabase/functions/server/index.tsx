@@ -362,6 +362,17 @@ const normalizeTool = (tool: Record<string, any>): Record<string, any> => {
       if (featureLabelEntry) {
         v.featureLabel = (featureLabelEntry as string).replace('📝 ', '');
       }
+      // Decode licensing type: 🎫 free|trial|subscription|lifetime
+      const licenseTypeEntry = v.features.find((f: string) => typeof f === 'string' && f.startsWith('🎫 '));
+      if (licenseTypeEntry) {
+        v.licenseType = (licenseTypeEntry as string).replace('🎫 ', '');
+      }
+      // Decode trial duration in days: ⏳ <n>
+      const trialEntry = v.features.find((f: string) => typeof f === 'string' && f.startsWith('⏳ '));
+      if (trialEntry) {
+        const n = Number((trialEntry as string).replace('⏳ ', ''));
+        if (Number.isFinite(n)) v.trialDays = n;
+      }
       // Remove the raw features array after decoding
       delete v.features;
       return v;
@@ -3365,6 +3376,8 @@ app.post("/make-server-e07959ec/tools", requireAuth, async (c) => {
           `💰 ${priceSentinel}`,
           ...(v.color ? [`🖌️ color|${v.color}`] : []),
           ...(v.featureLabel ? [`📝 ${v.featureLabel}`] : []),
+          ...(v.licenseType ? [`🎫 ${v.licenseType}`] : []),
+          ...(v.trialDays ? [`⏳ ${v.trialDays}`] : []),
           ...((v.whatsIncluded ?? []) as string[]).filter(Boolean).map((item: string) => `📦 ${item}`),
           ...((v.activationSteps ?? []) as string[]).filter(Boolean).map((step: string) => `🔑 ${step}`),
           ...((v.includedFeatureIds ?? []) as string[]).filter(Boolean).map((fid: string) => `✅ ${fid}`),
@@ -3376,8 +3389,8 @@ app.post("/make-server-e07959ec/tools", requireAuth, async (c) => {
           features:                 enrichedFeatures,
           how_it_works:             v.howItWorks ?? null,
           system_requirements:      v.systemRequirements ?? null,
-          lemon_squeezy_product_id: v.lemonSqueezyProductId ?? null,
-          lemon_squeezy_variant_id: v.lemonSqueezyVariantId ?? null,
+          gumroad_product_id:       v.gumroadProductId ?? null,
+          gumroad_variant_id:       v.gumroadVariantId ?? null,
           download_url:             v.downloadUrl ?? '',
           order_index:              v.orderIndex ?? 0,
         };
@@ -3488,6 +3501,8 @@ app.put("/make-server-e07959ec/tools/:id", requireAuth, async (c) => {
           `💰 ${priceSentinel}`,
           ...(v.color ? [`🖌️ color|${v.color}`] : []),
           ...(v.featureLabel ? [`📝 ${v.featureLabel}`] : []),
+          ...(v.licenseType ? [`🎫 ${v.licenseType}`] : []),
+          ...(v.trialDays ? [`⏳ ${v.trialDays}`] : []),
           ...((v.whatsIncluded ?? []) as string[]).filter(Boolean).map((item: string) => `📦 ${item}`),
           ...((v.activationSteps ?? []) as string[]).filter(Boolean).map((step: string) => `🔑 ${step}`),
           ...((v.includedFeatureIds ?? []) as string[]).filter(Boolean).map((fid: string) => `✅ ${fid}`),
@@ -3499,8 +3514,8 @@ app.put("/make-server-e07959ec/tools/:id", requireAuth, async (c) => {
           features:                 enrichedFeatures,
           how_it_works:             v.howItWorks ?? null,
           system_requirements:      v.systemRequirements ?? null,
-          lemon_squeezy_product_id: v.lemonSqueezyProductId ?? null,
-          lemon_squeezy_variant_id: v.lemonSqueezyVariantId ?? null,
+          gumroad_product_id:       v.gumroadProductId ?? null,
+          gumroad_variant_id:       v.gumroadVariantId ?? null,
           download_url:             v.downloadUrl ?? '',
           order_index:              v.orderIndex ?? 0,
         };
@@ -3874,7 +3889,7 @@ app.get("/make-server-e07959ec/user/purchases", requireUserAuth, async (c) => {
         if (row.tool_version_id) {
           const { data: tvData } = await supabase
             .from('tool_versions')
-            .select('id, version_type, download_url, lemon_squeezy_variant_id, tool_id, features')
+            .select('id, version_type, download_url, gumroad_variant_id, tool_id, features')
             .eq('id', row.tool_version_id)
             .maybeSingle();
           tv = tvData ?? null;
@@ -3901,12 +3916,12 @@ app.get("/make-server-e07959ec/user/purchases", requireUserAuth, async (c) => {
           console.log(`  → Fallback tool by product_name: ${tool?.name ?? 'not found'}`);
 
           if (tool) {
-            // 1. Match version via lemon_squeezy_variant_id on the purchase row
-            if (!tv && row.lemon_squeezy_variant_id) {
+            // 1. Match version via gumroad_variant_id on the purchase row
+            if (!tv && row.gumroad_variant_id) {
               const { data: tvData } = await supabase
                 .from('tool_versions')
-                .select('id, version_type, download_url, lemon_squeezy_variant_id, tool_id, features')
-                .eq('lemon_squeezy_variant_id', row.lemon_squeezy_variant_id)
+                .select('id, version_type, download_url, gumroad_variant_id, tool_id, features')
+                .eq('gumroad_variant_id', row.gumroad_variant_id)
                 .maybeSingle();
               tv = tvData ?? null;
               console.log(`  → Step 1 (variant_id match): ${tv?.version_type ?? 'not found'}`);
@@ -3923,7 +3938,7 @@ app.get("/make-server-e07959ec/user/purchases", requireUserAuth, async (c) => {
               if (versionType) {
                 const { data: tvData } = await supabase
                   .from('tool_versions')
-                  .select('id, version_type, download_url, lemon_squeezy_variant_id, tool_id, features')
+                  .select('id, version_type, download_url, gumroad_variant_id, tool_id, features')
                   .eq('tool_id', tool.id)
                   .eq('version_type', versionType)
                   .maybeSingle();
@@ -3940,7 +3955,7 @@ app.get("/make-server-e07959ec/user/purchases", requireUserAuth, async (c) => {
               console.log(`  → Step 3 last resort: isFreeVariant=${isFreeVariant}`);
               const { data: tvData } = await supabase
                 .from('tool_versions')
-                .select('id, version_type, download_url, lemon_squeezy_variant_id, tool_id, features')
+                .select('id, version_type, download_url, gumroad_variant_id, tool_id, features')
                 .eq('tool_id', tool.id)
                 .neq('version_type', isFreeVariant ? '' : 'Free')
                 .limit(1)
@@ -5651,6 +5666,70 @@ app.get('/make-server-e07959ec/ls/variants', requireAuth, async (c) => {
     return c.json({ success: true, products });
   } catch (error) {
     console.log(`[ls/variants] Error: ${error}`);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
+// GET /gumroad/products — admin: fetch Gumroad products + their variants for the
+// import picker. Gumroad's /v2/products returns each product with a price (cents)
+// and a `variants` array of option categories, each with options (named tiers).
+app.get('/make-server-e07959ec/gumroad/products', requireAuth, async (c) => {
+  try {
+    const token = Deno.env.get('GUMROAD_ACCESS_TOKEN');
+    if (!token) return c.json({ success: false, error: 'GUMROAD_ACCESS_TOKEN is not configured.' }, 500);
+
+    const res = await fetch(`https://api.gumroad.com/v2/products`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return c.json({ success: false, error: `Gumroad API error ${res.status}` }, 502);
+    const data = await res.json();
+    if (!data.success) return c.json({ success: false, error: 'Gumroad returned an error' }, 502);
+
+    const products = (data.products ?? []).map((p: any) => {
+      const baseUrl: string = p.short_url || p.preview_url || '';
+      // Flatten Gumroad's variant structure into a flat list of { name, price, url }.
+      // Gumroad: product.variants = [{ title, options: [{ name, price_difference_cents }] }]
+      const out: any[] = [];
+      const basePriceCents = Number(p.price ?? 0); // product base price in cents
+      const variantCategories = Array.isArray(p.variants) ? p.variants : [];
+      if (variantCategories.length === 0) {
+        // No variants — the product itself is the only "version".
+        out.push({
+          id: '',
+          name: p.name ?? '',
+          priceCents: basePriceCents,
+          isRecurring: !!p.is_recurring_billing,
+          recurrence: p.recurrence ?? null,
+          url: baseUrl,
+        });
+      } else {
+        for (const cat of variantCategories) {
+          for (const opt of (cat.options ?? [])) {
+            const diff = Number(opt.price_difference_cents ?? opt.price_difference ?? 0);
+            out.push({
+              id: String(opt.id ?? opt.name ?? ''),
+              name: opt.name ?? '',
+              priceCents: basePriceCents + diff,
+              isRecurring: !!p.is_recurring_billing,
+              recurrence: opt.recurrence ?? p.recurrence ?? null,
+              // Pre-select this option on the Gumroad checkout overlay.
+              url: baseUrl && opt.name ? `${baseUrl}?variant=${encodeURIComponent(opt.name)}` : baseUrl,
+            });
+          }
+        }
+      }
+      return {
+        id: String(p.id ?? p.permalink ?? ''),
+        permalink: p.permalink ?? p.custom_permalink ?? '',
+        name: p.name ?? '',
+        url: baseUrl,
+        variants: out,
+      };
+    });
+
+    return c.json({ success: true, products });
+  } catch (error) {
+    console.log(`[gumroad/products] Error: ${error}`);
     return c.json({ success: false, error: String(error) }, 500);
   }
 });
