@@ -7,6 +7,7 @@ import { ToolSupportModal } from '../components/shared/ToolSupportModal';
 import { UserAuthModal } from '../components/shared/UserAuthModal';
 import { SeoHead } from '../components/shared/SeoHead';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
+import { buildGumroadCheckoutUrl, openGumroadOverlay } from '../utils/gumroad';
 import {
   ArrowLeft, Check, Download, Play, ChevronDown, ChevronUp,
   Monitor, Zap, Star, ExternalLink, Sparkles, ShoppingCart, Quote,
@@ -564,19 +565,13 @@ function ComparisonModal({
                 const freeCtaText = tool.freeCtaText || t('tools.detail.downloadFree');
                 const paidCtaText = tool.paidCtaText || t('tools.detail.buyNow');
 
-                const buildUrl = () => {
-                  const baseUrl = (billingCycle === 'lifetime' && v.lifetimeBuyUrl?.trim())
-                    ? v.lifetimeBuyUrl
-                    : v.downloadUrl;
-                  if (!baseUrl) return '/work-with-us';
-                  try {
-                    const url = new URL(baseUrl);
-                    if (user?.email) url.searchParams.set('checkout[email]', user.email);
-                    if (user?.id)    url.searchParams.set('checkout[custom][user_id]', user.id);
-                    url.searchParams.set('checkout[custom][tool_version_id]', v.id);
-                    return url.toString();
-                  } catch { return v.downloadUrl; }
-                };
+                const buildUrl = () => buildGumroadCheckoutUrl({
+                  baseUrl: (billingCycle === 'lifetime' && v.lifetimeBuyUrl?.trim()) ? v.lifetimeBuyUrl : v.downloadUrl,
+                  email: user?.email,
+                  userId: user?.id,
+                  toolVersionId: v.id,
+                  overlay: true,
+                });
 
                 return (
                   <div key={v.id} className="flex flex-col items-center gap-2">
@@ -598,11 +593,9 @@ function ComparisonModal({
                       <button
                         type="button"
                         onClick={() => {
-                          onClose();
-                          if (!user) { onSignInRequired('Sign in to purchase and access your license key.'); return; }
+                          if (!user) { onClose(); onSignInRequired('Sign in to purchase and access your license key.'); return; }
                           onBuyClick?.(v);
-                          const url = buildUrl();
-                          window.open(url, '_blank', 'noopener,noreferrer');
+                          openGumroadOverlay(buildUrl());
                         }}
                         className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all active:scale-[0.98]
                           bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-fuchsia-500 text-white shadow-lg hover:shadow-purple-500/25"
@@ -736,19 +729,14 @@ function PricingCard({
     const baseUrl = (billingCycle === 'lifetime' && version.lifetimeBuyUrl?.trim())
       ? version.lifetimeBuyUrl
       : version.downloadUrl;
-    if (!baseUrl) return '/work-with-us';
-    try {
-      const url = new URL(baseUrl);
-      if (user?.email) url.searchParams.set('checkout[email]', user.email);
-      if (user?.id)    url.searchParams.set('checkout[custom][user_id]', user.id);
-      // Pass version ID so the webhook can record tool_version_id
-      url.searchParams.set('checkout[custom][tool_version_id]', version.id);
-      // Pass session ID so the webhook can mark the session as converted
-      if (sessionId) url.searchParams.set('checkout[custom][session_id]', sessionId);
-      return url.toString();
-    } catch {
-      return version.downloadUrl;
-    }
+    return buildGumroadCheckoutUrl({
+      baseUrl,
+      email: user?.email,
+      userId: user?.id,
+      toolVersionId: version.id,
+      sessionId,
+      overlay: true,
+    });
   };
 
   const handlePaidCTA = () => {
@@ -757,8 +745,8 @@ function PricingCard({
       return;
     }
     onBuyClick?.(version);
-    const url = buildCheckoutUrl();
-    window.open(url, '_blank', 'noopener,noreferrer');
+    // Open Gumroad checkout as an on-page overlay (falls back to new tab).
+    openGumroadOverlay(buildCheckoutUrl());
   };
 
   return (
@@ -1204,17 +1192,14 @@ function FeaturesShowcase({
   const rgb = hexToRgb(versionColor);
   const rgbString = `${rgb.r}, ${rgb.g}, ${rgb.b}`;
 
-  const buildCheckoutUrl = () => {
-    if (!primaryVersion?.downloadUrl) return '/work-with-us';
-    try {
-      const url = new URL(primaryVersion.downloadUrl);
-      if (user?.email) url.searchParams.set('checkout[email]', user.email);
-      if (user?.id)    url.searchParams.set('checkout[custom][user_id]', user.id);
-      url.searchParams.set('checkout[custom][tool_version_id]', primaryVersion.id);
-      if (sessionId) url.searchParams.set('checkout[custom][session_id]', sessionId);
-      return url.toString();
-    } catch { return primaryVersion?.downloadUrl ?? '#'; }
-  };
+  const buildCheckoutUrl = () => buildGumroadCheckoutUrl({
+    baseUrl: primaryVersion?.downloadUrl ?? '',
+    email: user?.email,
+    userId: user?.id,
+    toolVersionId: primaryVersion?.id,
+    sessionId,
+    overlay: true,
+  });
 
   const handleCTA = () => {
     if (!primaryVersion) return;
@@ -1223,7 +1208,7 @@ function FeaturesShowcase({
     } else {
       if (!user) { onSignInRequired('Sign in to purchase and access your license key.'); return; }
       onBuyClick?.(primaryVersion);
-      window.open(buildCheckoutUrl(), '_blank', 'noopener,noreferrer');
+      openGumroadOverlay(buildCheckoutUrl());
     }
   };
 
