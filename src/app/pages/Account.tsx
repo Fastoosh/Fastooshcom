@@ -960,22 +960,8 @@ export function Account() {
   }, [i18n.language]);
 
   const syncAndFetch = async (token: string) => {
-    try {
-      // Silently attempt to claim any pre-signup purchases
-      const syncRes  = await fetch(`${API_BASE}/user/sync-purchases`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${publicAnonKey}`,
-          'X-User-Token': token,
-        },
-      });
-      const syncData = await syncRes.json();
-      if (syncData.success && syncData.synced > 0) {
-        setSyncedCount(syncData.synced);
-      }
-    } catch (err) {
-      console.error('Sync error (non-fatal):', err);
-    }
+    // Loads licenses + reviews + downloads in parallel. (The old LS orphan-
+    // purchase sync was removed — FSTH licenses are auto-matched by email.)
     await Promise.all([fetchPurchases(token), fetchUserReviews(token), fetchDownloads(token)]);
   };
 
@@ -1023,27 +1009,41 @@ export function Account() {
     }
   };
 
+  // Load the user's FSTH licenses and project them onto the Purchase shape so
+  // the existing stats bar (activeCount / lifetimeCount / subscriptionCount)
+  // keeps working from real license data. The old Lemon Squeezy /user/purchases
+  // endpoint is gone; everything below is driven by /user/licenses.
   const fetchPurchases = async (token: string) => {
     setPurchasesLoading(true); setPurchasesError('');
     try {
-      const res  = await fetch(`${API_BASE}/user/purchases`, {
-        headers: {
-          Authorization: `Bearer ${publicAnonKey}`,
-          'X-User-Token': token,
-        },
+      const res = await fetch(`${API_BASE}/user/licenses`, {
+        headers: { Authorization: `Bearer ${publicAnonKey}`, 'X-User-Token': token },
       });
       const data = await res.json();
       if (data.success) {
-        const raw: Purchase[] = (data.data || []).map(mapPurchase);
-        rawPurchasesRef.current = raw;                                    // store English source
-        const mapped = await applyActivationStepTranslations(raw, i18n.language);
+        const mapped: Purchase[] = (data.licenses || []).map((l: any): Purchase => ({
+          id:                  l.id,
+          productName:         l.productName || '',
+          variantName:         l.planTier || '',
+          licenseKey:          l.licenseKey || '',
+          status:              (l.status === 'active' || l.status === 'past_due') ? 'active'
+                                : l.status === 'revoked' ? 'cancelled'
+                                : 'expired',
+          amount:              0,
+          currency:            'USD',
+          purchasedAt:         l.createdAt || '',
+          expiresAt:           l.expiresAt || null,
+          lemonSqueezyOrderId: '',
+          toolVersions:        null,
+        }));
         setPurchases(mapped);
+        rawPurchasesRef.current = mapped;
       } else {
-        setPurchasesError(data.error || 'Failed to load purchases');
+        setPurchasesError(data.error || 'Failed to load licenses');
       }
     } catch (err) {
-      console.error('Error fetching purchases:', err);
-      setPurchasesError('Could not load your purchases. Please try again.');
+      console.error('Error fetching licenses:', err);
+      setPurchasesError('Could not load your licenses. Please try again.');
     } finally {
       setPurchasesLoading(false);
     }
@@ -1368,7 +1368,6 @@ export function Account() {
                   { label: t('account.activeLicenses'),      value: activeCount,                 icon: <Key className="w-3.5 h-3.5" />,         color: 'text-white',       glow: '' },
                   { label: t('account.lifetimeLabel'),        value: lifetimeCount,               icon: <CheckCircle className="w-3.5 h-3.5" />, color: 'text-emerald-400', glow: 'drop-shadow-[0_0_6px_rgba(52,211,153,0.5)]' },
                   { label: t('account.subscriptionsLabel'),   value: subscriptionCount,           icon: <RefreshCw className="w-3.5 h-3.5" />,   color: 'text-purple-400',  glow: 'drop-shadow-[0_0_6px_rgba(168,85,247,0.5)]' },
-                  { label: t('account.totalSpentLabel'),      value: `$${totalSpent.toFixed(0)}`, icon: <ShoppingBag className="w-3.5 h-3.5" />, color: 'text-sky-400',     glow: 'drop-shadow-[0_0_6px_rgba(56,189,248,0.5)]' },
                   { label: t('account.freeDownloadsLabel'),   value: downloadsCount,              icon: <Gift className="w-3.5 h-3.5" />,        color: 'text-teal-400',    glow: 'drop-shadow-[0_0_6px_rgba(45,212,191,0.5)]' },
                 ].map(stat => (
                   <div key={stat.label} className="text-center p-3 rounded-xl bg-white/3 border border-white/6">
