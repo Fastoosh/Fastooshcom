@@ -8620,7 +8620,12 @@ app.get('/make-server-e07959ec/tools/:slug/changelog', async (c) => {
   }
 });
 
-// GET /tools/:slug/latest-version — public, lightweight ping for in-app update checks
+// GET /tools/:slug/latest-version — public, lightweight ping for in-app update
+// checks. Also returns the direct downloadUrl so extensions can fire a download
+// immediately when the user clicks "Update". The same .zxp ships for everyone
+// (license tier gates features at runtime), so we use the Free version's
+// downloadUrl as the canonical link — admin updates it whenever a new .zxp
+// is published; all installed extensions pick it up on next check.
 app.get('/make-server-e07959ec/tools/:slug/latest-version', async (c) => {
   try {
     const slug = c.req.param('slug');
@@ -8629,7 +8634,38 @@ app.get('/make-server-e07959ec/tools/:slug/latest-version', async (c) => {
     if (!entries.length) return c.json({ success: false, error: 'No changelog found' }, 404);
     const sorted = sortChangelogDesc(entries);
     const latest = sorted[0];
-    return c.json({ success: true, data: { version: latest.version, releaseDate: latest.releaseDate, type: latest.type, title: latest.title } });
+
+    // Look up the Free version's downloadUrl on this tool.
+    let downloadUrl: string | null = null;
+    try {
+      const { data: tool } = await supabase
+        .from('tools').select('id').eq('slug', slug).maybeSingle();
+      if (tool?.id) {
+        const { data: versions } = await supabase
+          .from('tool_versions')
+          .select('version_type, download_url')
+          .eq('tool_id', tool.id);
+        // Prefer the Free version (every customer can use it); fall back to
+        // any version with a non-empty download_url so admins don't have to
+        // mark one as "Free" just to publish a download.
+        const free = (versions || []).find((v: any) => String(v.version_type || '').toLowerCase() === 'free' && v.download_url);
+        const anyWithUrl = (versions || []).find((v: any) => v.download_url);
+        downloadUrl = (free?.download_url) || (anyWithUrl?.download_url) || null;
+      }
+    } catch (e) {
+      console.log('[latest-version] downloadUrl lookup failed:', e);
+    }
+
+    return c.json({
+      success: true,
+      data: {
+        version: latest.version,
+        releaseDate: latest.releaseDate,
+        type: latest.type,
+        title: latest.title,
+        downloadUrl,
+      },
+    });
   } catch (err) {
     console.log('[latest-version] GET error:', err);
     return c.json({ success: false, error: String(err) }, 500);
