@@ -60,12 +60,20 @@ function timingSafeEqual(a: string, b: string): boolean {
 // ── Helper: build claims + sign a token for a license + machine ───────────────
 async function issueToken(license: {
   id: string; license_key: string; product_id: string; plan_tier: string;
-  type: 'lifetime' | 'subscription'; status: string; machine_limit: number; features: string[];
+  type: 'lifetime' | 'subscription'; status: string; machine_limit: number;
+  features: string[]; expires_at?: string | null;
 }, email: string, fingerprint: string): Promise<{ token: string; expiresAt: string }> {
   const now = Math.floor(Date.now() / 1000);
   const pastDue = license.status === 'past_due';
   const ttl = tokenTtlSeconds(license.type, pastDue);
-  const exp = now + ttl;
+  // Cap the token's exp to the license's expires_at when set, so a trial
+  // (or a canceled-but-still-active sub) cannot keep Pro alive offline past
+  // the license's real end. Token is only valid while the license is.
+  let exp = now + ttl;
+  if (license.expires_at) {
+    const licenseExp = Math.floor(new Date(license.expires_at).getTime() / 1000);
+    if (Number.isFinite(licenseExp) && licenseExp < exp) exp = licenseExp;
+  }
 
   const claims: LicenseClaims = {
     iss: ISSUER,
