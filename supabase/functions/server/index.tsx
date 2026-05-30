@@ -3256,49 +3256,45 @@ app.get("/make-server-e07959ec/tools/slug/:slug", async (c) => {
   }
 });
 
-// Get purchase counts for each version of a tool (public)
+// Get license counts for each version of a tool (public).
+// Licenses match versions by plan_tier ↔ version_type (e.g. "Pro Monthly"),
+// scoped to the tool's product_id (slug or normalized name).
 app.get("/make-server-e07959ec/tools/:toolId/version-stats", async (c) => {
   try {
     const toolId = c.req.param("toolId");
-    
-    // Get all version IDs for this tool
+
+    const { data: tool } = await supabase
+      .from('tools').select('id, name, slug').eq('id', toolId).maybeSingle();
+    if (!tool) return c.json({ success: true, data: {} });
+
     const { data: versions, error: versionError } = await supabase
       .from('tool_versions')
-      .select('id')
+      .select('id, version_type')
       .eq('tool_id', toolId);
-    
-    if (versionError) {
-      console.log(`Error fetching tool versions: ${versionError.message}`);
-      return c.json({ success: false, error: versionError.message }, 500);
-    }
-    
-    if (!versions || versions.length === 0) {
-      return c.json({ success: true, data: {} });
-    }
-    
-    const versionIds = versions.map(v => v.id);
-    
-    // Count purchases per version (only active purchases, exclude free versions by checking amount > 0)
-    const { data: purchases, error: purchaseError } = await supabase
-      .from('user_purchases')
-      .select('tool_version_id')
-      .in('tool_version_id', versionIds)
-      .eq('status', 'active')
-      .gt('amount', 0);
-    
-    if (purchaseError) {
-      console.log(`Error fetching purchase stats: ${purchaseError.message}`);
-      return c.json({ success: false, error: purchaseError.message }, 500);
-    }
-    
-    // Count purchases by version_id
+    if (versionError) return c.json({ success: false, error: versionError.message }, 500);
+    if (!versions || versions.length === 0) return c.json({ success: true, data: {} });
+
+    // Candidate product_id values that could appear on a license for this tool.
+    const norm = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    const candidates = Array.from(new Set([tool.slug, norm(tool.name), norm(tool.slug)].filter(Boolean) as string[]));
+
+    // Active licenses for this tool.
+    const { data: licenses, error: lErr } = await supabase
+      .from('licenses')
+      .select('plan_tier, product_id, status')
+      .in('product_id', candidates)
+      .eq('status', 'active');
+    if (lErr) return c.json({ success: false, error: lErr.message }, 500);
+
+    // Count by version: license.plan_tier matches version.version_type.
+    const tierToId: Record<string, string> = {};
+    for (const v of versions) tierToId[(v as any).version_type] = (v as any).id;
+
     const stats: Record<string, number> = {};
-    for (const p of (purchases || [])) {
-      if (p.tool_version_id) {
-        stats[p.tool_version_id] = (stats[p.tool_version_id] || 0) + 1;
-      }
+    for (const l of (licenses ?? [])) {
+      const vid = tierToId[(l as any).plan_tier];
+      if (vid) stats[vid] = (stats[vid] || 0) + 1;
     }
-    
     return c.json({ success: true, data: stats });
   } catch (error) {
     console.log(`Error fetching version stats: ${error}`);
@@ -5795,20 +5791,20 @@ app.delete('/make-server-e07959ec/admin/messages/delete', requireAuth, async (c)
 app.get('/make-server-e07959ec/admin/dashboard', requireAuth, async (c) => {
   try {
     // Fetch all data sources in parallel
+    // Revenue/sales come from Gumroad (the live payment provider). We project
+    // sales onto the legacy purchase shape so the downstream calcs work unchanged.
+    const gumroadToken = Deno.env.get('GUMROAD_ACCESS_TOKEN');
     const [
       toolsRes,
       projectsRes,
-      purchasesRes,
+      gumroadSales,
       kvLeads,
       messages,
       toolRequestsRaw,
     ] = await Promise.all([
       supabase.from('tools').select('id, name, category, slug'),
       supabase.from('projects').select('id, title, category, created_at'),
-      supabase
-        .from('user_purchases')
-        .select('id, amount, currency, status, product_name, variant_name, purchased_at, lemon_squeezy_order_id')
-        .order('purchased_at', { ascending: false }),
+      gumroadToken ? gumroadFetchAllSales(gumroadToken).catch(() => [] as any[]) : Promise.resolve([] as any[]),
       kv.getByPrefix('lead:free:log:'),
       kv.getByPrefix('msg:'),
       kv.getByPrefix('custom_tool_request:'),
@@ -5816,7 +5812,30 @@ app.get('/make-server-e07959ec/admin/dashboard', requireAuth, async (c) => {
 
     const tools     = toolsRes.data     || [];
     const projects  = projectsRes.data  || [];
-    const purchases = purchasesRes.data || [];
+    // Project Gumroad sales → legacy purchase shape (amount in dollars; status
+    // 'refunded' or 'active'; variant_name extracted from variants object/string).
+    const variantNameOf = (s: any): string => {
+      if (typeof s.variants === 'string') return s.variants.replace(/^\(|\)$/g, '').trim() || 'Default';
+      if (s.variants && typeof s.variants === 'object') {
+        const vals = Object.values(s.variants as Record<string, unknown>).map(String).filter(Boolean);
+        if (vals.length) return vals.join(' / ');
+      }
+      if (typeof s.variants_and_quantity === 'string') return s.variants_and_quantity.replace(/\s*\(\d+\)\s*$/, '').trim() || 'Default';
+      return 'Default';
+    };
+    const purchases = (gumroadSales as any[])
+      .map((s: any) => ({
+        id:                       s.id,
+        amount:                   ((Number(s.price ?? 0)) / 100).toFixed(2),
+        currency:                 'USD',
+        status:                   (s.refunded || s.chargebacked) ? 'refunded' : 'active',
+        product_name:             s.product_name || '',
+        variant_name:             variantNameOf(s),
+        purchased_at:             s.created_at || '',
+        lemon_squeezy_order_id:   '',
+      }))
+      .sort((a: any, b: any) => new Date(b.purchased_at || 0).getTime() - new Date(a.purchased_at || 0).getTime());
+    const purchasesRes = { data: purchases, error: null as any };
 
     // Normalize read field for messages (contact + support) - default to false if missing
     const messagesNormalized = (messages as any[]).map((m: any) => ({ 
@@ -6837,29 +6856,41 @@ app.get('/make-server-e07959ec/tools-ratings', async (c) => {
   }
 });
 
-// GET /user/reviews — authenticated: all purchased tools + user's review for each
+// GET /user/reviews — authenticated: all licensed tools + user's review for each.
+// "Licensed" = the user has an FSTH license (active or otherwise) for the tool,
+// matched by their account email → license_customers → licenses → product_id.
 app.get('/make-server-e07959ec/user/reviews', requireUserAuth, async (c) => {
   const user = c.get('user');
   try {
-    const { data: purchases, error: pErr } = await supabase
-      .from('user_purchases')
-      .select('tool_version_id, tool_versions!inner(tool_id, tools!inner(id, name, slug, image_url))')
-      .eq('user_id', user.id);
-    if (pErr) {
-      console.log('[user/reviews] purchases error:', pErr.message);
-      return c.json({ success: false, error: pErr.message }, 500);
+    const email = (user.email || '').toLowerCase();
+    if (!email) return c.json({ success: true, data: [] });
+
+    // Find the customer record, then their licenses.
+    const { data: customer } = await supabase
+      .from('license_customers').select('id').eq('email', email).maybeSingle();
+    if (!customer) return c.json({ success: true, data: [] });
+
+    const { data: licenses } = await supabase
+      .from('licenses').select('product_id').eq('customer_id', customer.id);
+    const productIds = Array.from(new Set((licenses ?? []).map((l: any) => l.product_id).filter(Boolean)));
+    if (productIds.length === 0) return c.json({ success: true, data: [] });
+
+    // Resolve product_id → tool. product_id is the tool slug (admin-created)
+    // or an internal id like 'fastoosh_data_automator' (Gumroad). Match both.
+    const norm = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    const { data: allTools } = await supabase.from('tools').select('id, name, slug, image_url');
+    const bySlug: Record<string, any> = {};
+    const byNorm: Record<string, any> = {};
+    for (const t of allTools ?? []) {
+      if (t.slug) bySlug[t.slug] = t;
+      byNorm[norm(t.name)] = t;
+      byNorm[norm(t.slug)] = t;
     }
-    // De-dup by tool_id
+
     const toolMap: Record<string, { name: string; slug: string; imageUrl: string }> = {};
-    for (const p of (purchases || [])) {
-      const tv = (p as any).tool_versions;
-      if (tv?.tool_id && tv?.tools) {
-        toolMap[tv.tool_id] = {
-          name: tv.tools.name || '',
-          slug: tv.tools.slug || '',
-          imageUrl: tv.tools.image_url || '',
-        };
-      }
+    for (const pid of productIds) {
+      const t = bySlug[pid] || byNorm[norm(pid)];
+      if (t) toolMap[t.id] = { name: t.name || '', slug: t.slug || '', imageUrl: t.image_url || '' };
     }
     const toolIds = Object.keys(toolMap);
     const reviewResults = await Promise.all(
@@ -6889,39 +6920,32 @@ app.post('/make-server-e07959ec/reviews', requireUserAuth, async (c) => {
     if (!ratingNum || ratingNum < 1 || ratingNum > 5)
       return c.json({ success: false, error: 'rating must be 1–5' }, 400);
 
-    // Verify user has purchased this tool
-    const { data: toolVersions, error: tvErr } = await supabase
-      .from('tool_versions').select('id').eq('tool_id', toolId);
-    if (tvErr) return c.json({ success: false, error: tvErr.message }, 500);
-    const versionIds = (toolVersions || []).map((v: any) => v.id);
-    if (versionIds.length === 0) return c.json({ success: false, error: 'Tool not found' }, 404);
+    // Verify the user holds a license for this tool. Match by email →
+    // license_customers → licenses.product_id ↔ tool slug or normalized id.
+    const email = (user.email || '').toLowerCase();
+    if (!email) return c.json({ success: false, error: 'No email on account' }, 400);
 
-    // Primary check: match by tool_version_id (set when checkout had custom_data.tool_version_id)
+    const { data: toolRow } = await supabase
+      .from('tools').select('name, slug').eq('id', toolId).maybeSingle();
+    if (!toolRow) return c.json({ success: false, error: 'Tool not found' }, 404);
+
+    const norm = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    const candidates = new Set<string>();
+    if (toolRow.slug) candidates.add(toolRow.slug);
+    candidates.add(norm(toolRow.name));
+    candidates.add(norm(toolRow.slug));
+
     let hasPurchase = false;
-    const { data: byVersion, error: pErr } = await supabase
-      .from('user_purchases').select('id')
-      .eq('user_id', user.id).in('tool_version_id', versionIds);
-    if (pErr) return c.json({ success: false, error: pErr.message }, 500);
-    hasPurchase = !!(byVersion && byVersion.length > 0);
-
-    // Fallback: match by product_name — handles purchases where tool_version_id was NULL
-    // (e.g. webhook received before the version ID was wired into the checkout link)
-    if (!hasPurchase) {
-      const { data: toolRow } = await supabase
-        .from('tools').select('name').eq('id', toolId).maybeSingle();
-      if (toolRow?.name) {
-        const { data: byName } = await supabase
-          .from('user_purchases').select('id')
-          .eq('user_id', user.id)
-          .ilike('product_name', toolRow.name);
-        hasPurchase = !!(byName && byName.length > 0);
-        if (hasPurchase)
-          console.log(`[reviews POST] ✅ Purchase verified by product_name fallback: "${toolRow.name}"`);
-      }
+    const { data: customer } = await supabase
+      .from('license_customers').select('id').eq('email', email).maybeSingle();
+    if (customer) {
+      const { data: licenses } = await supabase
+        .from('licenses').select('product_id').eq('customer_id', customer.id);
+      hasPurchase = (licenses ?? []).some((l: any) => candidates.has(l.product_id) || candidates.has(norm(l.product_id)));
     }
 
     if (!hasPurchase)
-      return c.json({ success: false, error: 'You must purchase this tool to leave a review' }, 403);
+      return c.json({ success: false, error: 'You must own a license for this tool to leave a review' }, 403);
 
     const reviewKey = `review:${toolId}:${user.id}`;
     const existing: any = await kv.get(reviewKey);
@@ -7946,11 +7970,17 @@ app.post('/make-server-e07959ec/admin/reset', requireAuth, async (c) => {
           else deletedAuth++;
         }
 
-        // Delete DB rows for removed users
+        // Delete DB rows for removed users. license_customers cascade-deletes
+        // their licenses + activations via FK; the table is keyed by email,
+        // so look up by the removed users' emails.
         if (nonAdminIds.length > 0) {
+          const emails = (nonAdmins || [])
+            .filter((u: any) => nonAdminIds.includes(u.id))
+            .map((u: any) => (u.email || '').toLowerCase())
+            .filter(Boolean);
           await Promise.allSettled([
             supabase.from('user_profiles').delete().in('user_id', nonAdminIds),
-            supabase.from('user_purchases').delete().in('user_id', nonAdminIds),
+            ...(emails.length ? [supabase.from('license_customers').delete().in('email', emails)] : []),
           ]);
         }
 
