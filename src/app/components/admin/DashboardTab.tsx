@@ -15,8 +15,8 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
-import { LSRevenuePanel } from './LSRevenuePanel';
 import { BehaviorTab } from './BehaviorTab';
+import { GumroadRevenuePanel } from './GumroadRevenuePanel';
 import { VideoStatsTab } from './VideoStatsTab';
 
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-e07959ec`;
@@ -1107,7 +1107,7 @@ export function DashboardTab({ onNavigate }: { onNavigate?: (tab: string) => voi
         {([
           { id: 'overview',  label: 'Overview',  icon: <LayoutDashboard className="w-3.5 h-3.5" /> },
           { id: 'analytics', label: 'Analytics', icon: <BarChart2 className="w-3.5 h-3.5" /> },
-          { id: 'revenue',   label: 'LS Revenue', icon: <DollarSign className="w-3.5 h-3.5" /> },
+          { id: 'revenue',   label: 'Revenue', icon: <DollarSign className="w-3.5 h-3.5" /> },
           { id: 'behavior',  label: 'Behavior',   icon: <Activity className="w-3.5 h-3.5" /> },
           { id: 'messages',  label: 'Messages',   icon: <Inbox className="w-3.5 h-3.5" />, badge: unreadCount },
           { id: 'videos',    label: 'Videos',     icon: <Play  className="w-3.5 h-3.5" /> },
@@ -1706,8 +1706,8 @@ export function DashboardTab({ onNavigate }: { onNavigate?: (tab: string) => voi
         </div>
       )}
 
-      {/* ══ LS REVENUE VIEW ══════════════════════════════════════════════ */}
-      {view === 'revenue' && <LSRevenuePanel />}
+      {/* ══ REVENUE VIEW (Gumroad) ═══════════════════════════════════════ */}
+      {view === 'revenue' && <GumroadRevenuePanel />}
 
       {/* ══ BEHAVIOR VIEW ════════════════════════════════════════════════ */}
       {view === 'behavior' && <BehaviorTab />}

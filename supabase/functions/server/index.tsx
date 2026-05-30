@@ -6009,6 +6009,179 @@ app.get('/make-server-e07959ec/admin/ls-revenue', requireAuth, async (c) => {
   }
 });
 
+// ── Gumroad sales fetch (paginated) ─────────────────────────────────────────
+// /v2/sales returns up to 100 per page and includes a `next_page_url` for the
+// next page when more exist. We follow it until exhausted.
+async function gumroadFetchAllSales(token: string): Promise<any[]> {
+  const results: any[] = [];
+  let url: string | null = 'https://api.gumroad.com/v2/sales?per_page=100';
+  let safety = 50; // hard cap: 5,000 sales
+  while (url && safety-- > 0) {
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) {
+      console.log(`[gumroad sales] ${url} error ${res.status}: ${await res.text()}`);
+      break;
+    }
+    const json = await res.json();
+    if (!json.success) break;
+    const page = Array.isArray(json.sales) ? json.sales : [];
+    results.push(...page);
+    url = json.next_page_url ? `https://api.gumroad.com${json.next_page_url}` : null;
+  }
+  return results;
+}
+
+// GET /admin/gumroad-revenue — revenue dashboard data from Gumroad sales.
+// Response shape mirrors /admin/ls-revenue so the UI panel can stay generic.
+app.get('/make-server-e07959ec/admin/gumroad-revenue', requireAuth, async (c) => {
+  try {
+    const token = Deno.env.get('GUMROAD_ACCESS_TOKEN');
+    if (!token) return c.json({ success: false, error: 'GUMROAD_ACCESS_TOKEN is not configured.' }, 500);
+
+    console.log('[gumroad-revenue] Fetching sales');
+    const sales = await gumroadFetchAllSales(token);
+    console.log(`[gumroad-revenue] Fetched ${sales.length} sales`);
+
+    const now            = new Date();
+    const thirtyDaysAgo  = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const sevenDaysAgo   = new Date(now.getTime() -  7 * 24 * 60 * 60 * 1000);
+    const todayStr       = now.toISOString().split('T')[0];
+
+    // Gumroad sale fields: price (cents), refunded (bool), disputed (bool),
+    // chargebacked (bool), created_at (ISO), product_name, variants_and_quantity
+    // OR variants (object), recurrence, email, order_number.
+    const isRefunded   = (s: any) => !!s.refunded || !!s.chargebacked;
+    const paidSales    = sales.filter((s: any) => !isRefunded(s));
+    const refundedSales = sales.filter(isRefunded);
+
+    const toUSD = (cents: number) => parseFloat((cents / 100).toFixed(2));
+    const sumCents = (arr: any[]) => arr.reduce((s: number, x: any) => s + Number(x.price ?? 0), 0);
+
+    const totalRevenue  = sumCents(paidSales);
+    const totalRefunded = sumCents(refundedSales);
+    const revenue30d    = sumCents(paidSales.filter((s: any) => new Date(s.created_at || 0) >= thirtyDaysAgo));
+    const revenue7d     = sumCents(paidSales.filter((s: any) => new Date(s.created_at || 0) >= sevenDaysAgo));
+    const revenueToday  = sumCents(paidSales.filter((s: any) => String(s.created_at || '').startsWith(todayStr)));
+
+    // Status buckets (Gumroad has no string status; derive from flags).
+    const statusOf = (s: any) => {
+      if (s.disputed && !s.dispute_won) return 'disputed';
+      if (s.chargebacked) return 'chargebacked';
+      if (s.refunded) return 'refunded';
+      return 'paid';
+    };
+    const statusMap: Record<string, { count: number; total: number }> = {};
+    for (const s of sales as any[]) {
+      const st = statusOf(s);
+      if (!statusMap[st]) statusMap[st] = { count: 0, total: 0 };
+      statusMap[st].count++;
+      statusMap[st].total += Number(s.price ?? 0);
+    }
+    const byStatus = Object.entries(statusMap)
+      .map(([status, v]) => ({ status, count: v.count, total: toUSD(v.total) }))
+      .sort((a, b) => b.total - a.total);
+
+    // Extract variant name from Gumroad's various shapes.
+    const variantNameOf = (s: any): string => {
+      if (typeof s.variants === 'string') return s.variants.replace(/^\(|\)$/g, '').trim() || 'Default';
+      if (s.variants && typeof s.variants === 'object') {
+        const vals = Object.values(s.variants as Record<string, unknown>).map(String).filter(Boolean);
+        if (vals.length) return vals.join(' / ');
+      }
+      if (typeof s.variants_and_quantity === 'string') return s.variants_and_quantity.replace(/\s*\(\d+\)\s*$/, '').trim() || 'Default';
+      return 'Default';
+    };
+
+    // By product
+    const productMap: Record<string, { name: string; revenue: number; sales: number }> = {};
+    for (const s of paidSales as any[]) {
+      const name = s.product_name || 'Unknown';
+      if (!productMap[name]) productMap[name] = { name, revenue: 0, sales: 0 };
+      productMap[name].revenue += Number(s.price ?? 0);
+      productMap[name].sales++;
+    }
+    const byProduct = Object.values(productMap)
+      .sort((a, b) => b.revenue - a.revenue)
+      .map(p => ({ ...p, revenue: toUSD(p.revenue) }));
+
+    // By variant / tier
+    const variantMap: Record<string, { name: string; revenue: number; sales: number }> = {};
+    for (const s of paidSales as any[]) {
+      const name = variantNameOf(s);
+      if (!variantMap[name]) variantMap[name] = { name, revenue: 0, sales: 0 };
+      variantMap[name].revenue += Number(s.price ?? 0);
+      variantMap[name].sales++;
+    }
+    const byVariant = Object.values(variantMap)
+      .sort((a, b) => b.revenue - a.revenue)
+      .map(v => ({ ...v, revenue: toUSD(v.revenue) }));
+
+    // Daily series — last 30 days
+    const seriesMap: Record<string, { revenue: number; sales: number; refunds: number }> = {};
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      seriesMap[d.toISOString().split('T')[0]] = { revenue: 0, sales: 0, refunds: 0 };
+    }
+    for (const s of sales as any[]) {
+      const dateStr = String(s.created_at || '').split('T')[0];
+      if (!seriesMap[dateStr]) continue;
+      const cents = Number(s.price ?? 0);
+      if (!isRefunded(s)) { seriesMap[dateStr].revenue += cents; seriesMap[dateStr].sales++; }
+      else                 { seriesMap[dateStr].refunds++; }
+    }
+    const series = Object.entries(seriesMap).map(([date, v]) => ({
+      date,
+      revenue: toUSD(v.revenue),
+      sales:   v.sales,
+      refunds: v.refunds,
+    }));
+
+    // Recent sales (newest 20)
+    const recentOrders = [...sales as any[]]
+      .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
+      .slice(0, 20)
+      .map((s: any) => ({
+        id:          s.id,
+        orderNumber: s.order_number ?? null,
+        status:      statusOf(s),
+        email:       s.email || '',
+        productName: s.product_name || '',
+        variantName: variantNameOf(s),
+        total:       toUSD(Number(s.price ?? 0)),
+        currency:    'USD',
+        createdAt:   s.created_at || '',
+        refundedAt:  s.refunded ? (s.created_at || null) : null,
+        lsUrl:       `https://app.gumroad.com/sales/${s.id}`,
+      }));
+
+    return c.json({
+      success: true,
+      data: {
+        summary: {
+          totalOrders:    sales.length,
+          paidOrders:     paidSales.length,
+          refundedOrders: refundedSales.length,
+          totalRevenue:   toUSD(totalRevenue),
+          totalRefunded:  toUSD(totalRefunded),
+          netRevenue:     toUSD(totalRevenue - totalRefunded),
+          revenue30d:     toUSD(revenue30d),
+          revenue7d:      toUSD(revenue7d),
+          revenueToday:   toUSD(revenueToday),
+        },
+        byStatus,
+        byProduct,
+        byVariant,
+        series,
+        recentOrders,
+      },
+    });
+  } catch (error) {
+    console.log('[admin/gumroad-revenue] Error:', error);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
 // ========== BEHAVIOR TRACKING ENDPOINTS ==========
 
 // POST /track/event — public, no auth. Called by frontend to record user behavior.

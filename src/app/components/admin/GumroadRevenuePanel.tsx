@@ -148,30 +148,29 @@ function ChartTip({ active, payload, label }: any) {
 
 // ── Main Component ─────────────────────────────────────────────────────────────
 
-export function LSRevenuePanel() {
+export function GumroadRevenuePanel() {
   const [data,      setData]      = useState<LSData | null>(null);
   const [loading,   setLoading]   = useState(false);
   const [loaded,    setLoaded]    = useState(false);
   const [error,     setError]     = useState<string | null>(null);
   const [chartRange, setChartRange] = useState<7 | 14 | 30>(30);
-  const [mode,      setMode]      = useState<'test' | 'production'>('production'); // LS API mode
 
-  const load = useCallback(async (apiMode: 'test' | 'production' = mode) => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res  = await fetch(`${API_BASE}/admin/ls-revenue?mode=${apiMode}`, { headers: getAuthHeaders() });
+      const res  = await fetch(`${API_BASE}/admin/gumroad-revenue`, { headers: getAuthHeaders() });
       const json = await res.json();
       if (!json.success) throw new Error(json.error || 'Unknown error');
       setData(json.data);
       setLoaded(true);
     } catch (err: any) {
       setError(err.message || String(err));
-      console.error('[LSRevenuePanel]', err);
+      console.error('[GumroadRevenuePanel]', err);
     } finally {
       setLoading(false);
     }
-  }, [mode]);
+  }, []);
 
   const chartSeries = data?.series.slice(-chartRange) ?? [];
 
@@ -180,26 +179,26 @@ export function LSRevenuePanel() {
     return (
       <GlassCard className="p-8 text-center">
         <div className="max-w-sm mx-auto space-y-5">
-          <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/25 flex items-center justify-center mx-auto">
-            <DollarSign className="w-8 h-8 text-amber-400" />
+          <div className="w-16 h-16 rounded-2xl bg-pink-500/10 border border-pink-500/25 flex items-center justify-center mx-auto">
+            <DollarSign className="w-8 h-8 text-pink-400" />
           </div>
           <div>
-            <h3 className="text-white font-bold text-lg">Live Revenue from Lemon Squeezy</h3>
+            <h3 className="text-white font-bold text-lg">Live Revenue from Gumroad</h3>
             <p className="text-white/40 text-sm mt-2 leading-relaxed">
-              Pull your complete order history directly from the Lemon Squeezy API — authoritative numbers,
+              Pull your complete sales history directly from the Gumroad API — authoritative numbers,
               never missing a sale, with full breakdown by product, tier, and status.
             </p>
           </div>
           <div className="flex flex-wrap justify-center gap-3 text-xs text-white/30">
-            {['All orders', 'Refunds', 'By product', 'By tier', 'Daily chart', 'Order table'].map(f => (
+            {['All sales', 'Refunds', 'By product', 'By tier', 'Daily chart', 'Order table'].map(f => (
               <span key={f} className="flex items-center gap-1">
                 <CheckCircle2 className="w-3 h-3 text-green-400" />{f}
               </span>
             ))}
           </div>
           <button
-            onClick={load}
-            className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-300 hover:bg-amber-500/25 font-semibold transition-all"
+            onClick={() => load()}
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-pink-500/15 border border-pink-500/30 text-pink-300 hover:bg-pink-500/25 font-semibold transition-all"
           >
             <Zap className="w-4 h-4" />Fetch Live Data
           </button>
@@ -212,8 +211,8 @@ export function LSRevenuePanel() {
   if (loading) {
     return (
       <GlassCard className="p-8 text-center">
-        <RefreshCw className="w-8 h-8 text-amber-400 animate-spin mx-auto mb-3" />
-        <p className="text-white/50 text-sm">Fetching orders from Lemon Squeezy…</p>
+        <RefreshCw className="w-8 h-8 text-pink-400 animate-spin mx-auto mb-3" />
+        <p className="text-white/50 text-sm">Fetching sales from Gumroad…</p>
         <p className="text-white/25 text-xs mt-1">This may take a moment for large stores</p>
       </GlassCard>
     );
@@ -228,48 +227,26 @@ export function LSRevenuePanel() {
             <AlertCircle className="w-5 h-5 text-red-400" />
           </div>
           <div className="flex-1">
-            <p className="text-white font-semibold">Failed to fetch Lemon Squeezy data</p>
+            <p className="text-white font-semibold">Failed to fetch Gumroad data</p>
             <p className="text-red-400/80 text-sm mt-1 font-mono">{error}</p>
-            {error.includes('LEMON_SQUEEZY_API_KEY') && (
+            {error.includes('GUMROAD_ACCESS_TOKEN') && (
               <div className="mt-3 p-3 bg-white/5 rounded-lg border border-white/10">
-                <p className="text-white/60 text-xs mb-2 font-semibold">
-                  {error.includes('TEST') ? '🧪 Test Mode API Key Required' : '🔑 Production API Key Required'}
-                </p>
+                <p className="text-white/60 text-xs mb-2 font-semibold">🔑 Gumroad Access Token Required</p>
                 <p className="text-white/40 text-xs leading-relaxed">
-                  {error.includes('TEST') ? (
-                    <>
-                      <strong className="text-amber-400">Step 1:</strong> Go to{' '}
-                      <a href="https://app.lemonsqueezy.com/settings/api" target="_blank" rel="noreferrer" className="text-amber-400 underline">
-                        LemonSqueezy Settings
-                      </a>
-                      <br />
-                      <strong className="text-amber-400">Step 2:</strong> Enable <strong>Test Mode</strong> (toggle at top right)
-                      <br />
-                      <strong className="text-amber-400">Step 3:</strong> Create a new API key while Test Mode is active
-                      <br />
-                      <strong className="text-amber-400">Step 4:</strong> Add it to Supabase Edge Functions as{' '}
-                      <span className="text-purple-400 font-mono">LEMON_SQUEEZY_API_KEY_TEST</span>
-                    </>
-                  ) : (
-                    <>
-                      <strong className="text-amber-400">Step 1:</strong> Go to{' '}
-                      <a href="https://app.lemonsqueezy.com/settings/api" target="_blank" rel="noreferrer" className="text-amber-400 underline">
-                        LemonSqueezy Settings
-                      </a>
-                      <br />
-                      <strong className="text-amber-400">Step 2:</strong> Disable <strong>Test Mode</strong> (toggle at top right)
-                      <br />
-                      <strong className="text-amber-400">Step 3:</strong> Create a new API key while Test Mode is inactive
-                      <br />
-                      <strong className="text-amber-400">Step 4:</strong> Add it to Supabase Edge Functions as{' '}
-                      <span className="text-green-400 font-mono">LEMON_SQUEEZY_API_KEY</span>
-                    </>
-                  )}
+                  <strong className="text-pink-400">Step 1:</strong> Go to{' '}
+                  <a href="https://gumroad.com/settings/advanced" target="_blank" rel="noreferrer" className="text-pink-400 underline">
+                    Gumroad Settings → Advanced
+                  </a>
+                  <br />
+                  <strong className="text-pink-400">Step 2:</strong> Under Applications, click <strong>Generate access token</strong>
+                  <br />
+                  <strong className="text-pink-400">Step 3:</strong> Add it to Supabase Edge Functions as{' '}
+                  <span className="text-pink-400 font-mono">GUMROAD_ACCESS_TOKEN</span>
                 </p>
               </div>
             )}
           </div>
-          <button onClick={() => load(mode)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white/50 hover:text-white text-xs transition-all">
+          <button onClick={() => load()} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white/50 hover:text-white text-xs transition-all">
             <RefreshCw className="w-3 h-3" />Retry
           </button>
         </div>
@@ -287,51 +264,20 @@ export function LSRevenuePanel() {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
-          {/* LS logo-ish badge */}
-          <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center">
-            <DollarSign className="w-5 h-5 text-amber-400" />
+          <div className="w-10 h-10 rounded-xl bg-pink-500/15 border border-pink-500/30 flex items-center justify-center">
+            <DollarSign className="w-5 h-5 text-pink-400" />
           </div>
           <div>
             <h3 className="text-white font-bold text-lg flex items-center gap-2">
-              Lemon Squeezy
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/25 text-amber-400 uppercase tracking-wider">Live</span>
-              {/* Mode badge */}
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
-                mode === 'test' 
-                  ? 'bg-purple-500/15 border border-purple-500/25 text-purple-400' 
-                  : 'bg-green-500/15 border border-green-500/25 text-green-400'
-              }`}>
-                {mode}
-              </span>
+              Gumroad
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-pink-500/15 border border-pink-500/25 text-pink-400 uppercase tracking-wider">Live</span>
             </h3>
-            <p className="text-white/30 text-xs">{summary.totalOrders} orders fetched directly from the API</p>
+            <p className="text-white/30 text-xs">{summary.totalOrders} sales fetched directly from the API</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {/* Mode toggle */}
-          <div className="flex gap-1 p-0.5 rounded-lg bg-white/5 border border-white/8">
-            {(['test', 'production'] as const).map(m => (
-              <button
-                key={m}
-                onClick={() => {
-                  setMode(m);
-                  load(m);
-                }}
-                disabled={loading}
-                className={`px-3 py-1 rounded-md text-xs font-medium transition-all disabled:opacity-40 ${
-                  mode === m 
-                    ? m === 'test'
-                      ? 'bg-purple-500/20 text-purple-300'
-                      : 'bg-green-500/20 text-green-300'
-                    : 'text-white/30 hover:text-white/60'
-                }`}
-              >
-                {m === 'test' ? 'Test Mode' : 'Production'}
-              </button>
-            ))}
-          </div>
           <button
-            onClick={() => load(mode)}
+            onClick={() => load()}
             disabled={loading}
             className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white/40 hover:text-white/80 hover:bg-white/8 transition-all text-xs disabled:opacity-40"
           >
@@ -606,12 +552,12 @@ export function LSRevenuePanel() {
             <h3 className="text-white font-semibold">Recent Orders</h3>
           </div>
           <a
-            href="https://app.lemonsqueezy.com/orders"
+            href="https://app.gumroad.com/sales"
             target="_blank"
             rel="noreferrer"
-            className="flex items-center gap-1.5 text-amber-400 hover:text-amber-300 text-xs transition-colors"
+            className="flex items-center gap-1.5 text-pink-400 hover:text-pink-300 text-xs transition-colors"
           >
-            View all in LS <ExternalLink className="w-3 h-3" />
+            View all in Gumroad <ExternalLink className="w-3 h-3" />
           </a>
         </div>
 
@@ -678,7 +624,7 @@ export function LSRevenuePanel() {
                         target="_blank"
                         rel="noreferrer"
                         className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-amber-500/10 border border-amber-500/20 text-amber-400 hover:bg-amber-500/20 transition-colors"
-                        title="Open in Lemon Squeezy"
+                        title="Open in Gumroad"
                       >
                         <ExternalLink className="w-3 h-3" />
                       </a>
