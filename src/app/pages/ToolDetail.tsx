@@ -426,7 +426,9 @@ function ComparisonModal({
 }) {
   const { t } = useTranslation();
   // Modal-local toggle — does NOT propagate to the cards on the page.
-  const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly' | 'lifetime'>('yearly');
+  // Lifetime isn't a "billing cycle" (price is fixed) so the toggle is just
+  // monthly vs yearly; the Lifetime column stays the same regardless.
+  const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('yearly');
 
   // ESC to close
   useEffect(() => {
@@ -513,17 +515,16 @@ function ComparisonModal({
             </button>
           </div>
 
-          {/* Billing-cycle toggle — local to the modal. Toggling here only
-              changes prices/CTAs inside this modal; the pricing cards on the
-              page below are unaffected. */}
+          {/* Billing-cycle toggle — Monthly vs Yearly only. Lifetime is a
+              fixed one-time price (no "cycle"), so its column stays the same
+              regardless of toggle state. Tools without both subscription
+              cycles hide the toggle entirely. */}
           {(() => {
             const hasMo = versions.some(v => v.monthlyPrice?.trim());
             const hasYr = versions.some(v => v.yearlyPrice?.trim());
-            const hasLife = versions.some(v => v.lifetimePrice?.trim());
-            const options: Array<{ value: 'monthly' | 'yearly' | 'lifetime'; label: string }> = [];
-            if (hasMo)   options.push({ value: 'monthly',  label: t('tools.detail.monthly',  { defaultValue: 'Monthly' }) });
-            if (hasYr)   options.push({ value: 'yearly',   label: t('tools.detail.yearly',   { defaultValue: 'Yearly' }) });
-            if (hasLife) options.push({ value: 'lifetime', label: t('tools.detail.lifetime', { defaultValue: 'Lifetime' }) });
+            const options: Array<{ value: 'monthly' | 'yearly'; label: string }> = [];
+            if (hasMo) options.push({ value: 'monthly', label: t('tools.detail.monthly', { defaultValue: 'Monthly' }) });
+            if (hasYr) options.push({ value: 'yearly',  label: t('tools.detail.yearly',  { defaultValue: 'Yearly' }) });
             if (options.length < 2) return null;
             return (
               <div className="flex justify-center px-5 sm:px-6 pt-4 shrink-0">
@@ -532,8 +533,6 @@ function ComparisonModal({
                     const active = billingCycle === opt.value;
                     const tone = opt.value === 'yearly'
                       ? (active ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300' : '')
-                      : opt.value === 'lifetime'
-                      ? (active ? 'bg-amber-500/15 border-amber-500/30 text-amber-300' : '')
                       : (active ? 'bg-white/10 border-white/15 text-white' : '');
                     return (
                       <button
@@ -544,7 +543,7 @@ function ComparisonModal({
                           active ? tone : 'border-transparent text-white/40 hover:text-white/70'
                         }`}
                       >
-                        {opt.value === 'lifetime' ? '⚡ ' : ''}{opt.label}
+                        {opt.label}
                       </button>
                     );
                   })}
@@ -638,14 +637,19 @@ function ComparisonModal({
               {versions.map(v => {
                 const { mainPrice, period } = parsePricing(v, tool.richFeatures ?? [], billingCycle);
                 const free = isVersionFree(v);
-                const isLifetimeActive = !free && billingCycle === 'lifetime' && !!v.lifetimePrice?.trim();
+                // Lifetime column = this version is sold as a one-time purchase
+                // (has a lifetimePrice). The toggle no longer carries Lifetime,
+                // so this is purely a property of the version's own data.
+                const isLifetimeColumn = !free && !!v.lifetimePrice?.trim()
+                  && !v.monthlyPrice?.trim() && !v.yearlyPrice?.trim();
                 const FreeCtaIcon = getIconComponent(tool.freeCtaIcon, Download);
                 const PaidCtaIcon = getIconComponent(tool.paidCtaIcon, ShoppingCart);
                 const freeCtaText = tool.freeCtaText || t('tools.detail.downloadFree');
                 const paidCtaText = tool.paidCtaText || t('tools.detail.buyNow');
 
                 const buildUrl = () => buildGumroadCheckoutUrl({
-                  baseUrl: (billingCycle === 'lifetime' && v.lifetimeBuyUrl?.trim()) ? v.lifetimeBuyUrl : v.downloadUrl,
+                  // Lifetime version: use its dedicated buy URL if set.
+                  baseUrl: (isLifetimeColumn && v.lifetimeBuyUrl?.trim()) ? v.lifetimeBuyUrl : v.downloadUrl,
                   email: user?.email,
                   userId: user?.id,
                   toolVersionId: v.id,
@@ -714,9 +718,9 @@ function ComparisonModal({
                         }}
                         className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all active:scale-[0.98]
                           bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-fuchsia-500 text-white shadow-lg hover:shadow-purple-500/25"
-                        style={isLifetimeActive ? { background: 'linear-gradient(to right, #d97706, #b45309)' } : undefined}
+                        style={isLifetimeColumn ? { background: 'linear-gradient(to right, #d97706, #b45309)' } : undefined}
                       >
-                        {isLifetimeActive
+                        {isLifetimeColumn
                           ? <Zap className="w-3 h-3 fill-current" />
                           : <PaidCtaIcon className="w-3 h-3" />}
                         {paidCtaText}
@@ -991,6 +995,26 @@ function PricingCard({
                 return (
                   <p className="text-xs mt-1 text-emerald-300/80 font-semibold">
                     Save ${savings}/yr vs monthly
+                  </p>
+                );
+              })()}
+              {/* "Save $X over 2 yrs vs monthly" on the Lifetime card. Same
+                  source of truth as the Yearly card (highest sibling monthly
+                  price × 24 minus this version's lifetime price). */}
+              {isLifetimeActive && tool?.versions && version.lifetimePrice?.trim() && (() => {
+                const toNum = (s: string) => parseFloat((s || '').replace(/[^0-9.]/g, '')) || 0;
+                const monthlyRef = tool.versions
+                  .map(v => toNum(v.monthlyPrice ?? ''))
+                  .filter(n => n > 0)
+                  .sort((a, b) => b - a)[0];
+                if (!monthlyRef) return null;
+                const life = toNum(version.lifetimePrice ?? '');
+                if (!life) return null;
+                const savings = Math.round(monthlyRef * 24 - life);
+                if (savings <= 0) return null;
+                return (
+                  <p className="text-xs mt-1 text-amber-300/90 font-semibold">
+                    Save ${savings.toLocaleString()} over 2 yrs vs monthly
                   </p>
                 );
               })()}
