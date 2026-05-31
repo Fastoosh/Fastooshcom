@@ -5102,6 +5102,83 @@ app.get('/make-server-e07959ec/admin/leads/behavior', requireAuth, async (c) => 
 });
 
 
+// GET /gumroad/products — admin: fetch Gumroad products + their variants for the
+// import picker. Gumroad's /v2/products returns each product with a price (cents)
+// and a `variants` array of option categories, each with options (named tiers).
+//
+// The per-variant URL we generate is:
+//   <short_url>?variant=<name>&wanted=true
+//
+// `?variant=<name>` pre-selects the option in Gumroad's purchase widget.
+// `&wanted=true` skips the product landing page and drops the buyer directly
+// into the checkout overlay — one click instead of two from the buy button.
+app.get('/make-server-e07959ec/gumroad/products', requireAuth, async (c) => {
+  try {
+    const token = Deno.env.get('GUMROAD_ACCESS_TOKEN');
+    if (!token) return c.json({ success: false, error: 'GUMROAD_ACCESS_TOKEN is not configured.' }, 500);
+
+    const res = await fetch(`https://api.gumroad.com/v2/products`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return c.json({ success: false, error: `Gumroad API error ${res.status}` }, 502);
+    const data = await res.json();
+    if (!data.success) return c.json({ success: false, error: 'Gumroad returned an error' }, 502);
+
+    // Always append wanted=true so the URL opens the checkout overlay directly.
+    // Adds it as the right separator whether the URL already has a query string.
+    const withWanted = (u: string) => u + (u.includes('?') ? '&' : '?') + 'wanted=true';
+
+    const products = (data.products ?? []).map((p: any) => {
+      const baseUrl: string = p.short_url || p.preview_url || '';
+      // Flatten Gumroad's variant structure into a flat list of { name, price, url }.
+      // Gumroad: product.variants = [{ title, options: [{ name, price_difference_cents }] }]
+      const out: any[] = [];
+      const basePriceCents = Number(p.price ?? 0); // product base price in cents
+      const variantCategories = Array.isArray(p.variants) ? p.variants : [];
+      if (variantCategories.length === 0) {
+        // No variants — the product itself is the only "version".
+        out.push({
+          id: '',
+          name: p.name ?? '',
+          priceCents: basePriceCents,
+          isRecurring: !!p.is_recurring_billing,
+          recurrence: p.recurrence ?? null,
+          url: baseUrl ? withWanted(baseUrl) : '',
+        });
+      } else {
+        for (const cat of variantCategories) {
+          for (const opt of (cat.options ?? [])) {
+            const diff = Number(opt.price_difference_cents ?? opt.price_difference ?? 0);
+            const variantUrl = baseUrl && opt.name
+              ? withWanted(`${baseUrl}?variant=${encodeURIComponent(opt.name)}`)
+              : (baseUrl ? withWanted(baseUrl) : '');
+            out.push({
+              id: String(opt.id ?? opt.name ?? ''),
+              name: opt.name ?? '',
+              priceCents: basePriceCents + diff,
+              isRecurring: !!p.is_recurring_billing,
+              recurrence: opt.recurrence ?? p.recurrence ?? null,
+              url: variantUrl,
+            });
+          }
+        }
+      }
+      return {
+        id: String(p.id ?? p.permalink ?? ''),
+        permalink: p.permalink ?? p.custom_permalink ?? '',
+        name: p.name ?? '',
+        url: baseUrl ? withWanted(baseUrl) : '',
+        variants: out,
+      };
+    });
+
+    return c.json({ success: true, products });
+  } catch (error) {
+    console.log(`[gumroad/products] Error: ${error}`);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
 // ── Gumroad sales fetch (paginated) ─────────────────────────────────────────
 // /v2/sales returns up to 100 per page and includes a `next_page_url` for the
 // next page when more exist. We follow it until exhausted.
