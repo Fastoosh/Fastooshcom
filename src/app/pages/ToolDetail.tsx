@@ -603,136 +603,124 @@ function ComparisonModal({
                   </tr>
                 ))}
               </tbody>
+              {/* CTAs rendered INSIDE the table so the columns share the same
+                  computed widths as the feature rows above. Each Buy button
+                  sits exactly under its column's header dot + check marks. */}
+              <tfoot className="sticky bottom-0 bg-[#0d0d0f] z-10">
+                {(() => {
+                  const toNum = (s: string | undefined | null) => parseFloat((s || '').replace(/[^0-9.]/g, '')) || 0;
+                  const fmt$ = (n: number) => (n % 1 === 0 ? `$${n.toLocaleString()}` : `$${n.toFixed(2)}`);
+                  // Reference prices for the toggle.
+                  const refMonthly = Math.max(0, ...versions.map(v => toNum(v.monthlyPrice)));
+                  const refYearly  = Math.max(0, ...versions.map(v => toNum(v.yearlyPrice)));
+                  // 2-year cost at the current toggle (Lifetime savings basis).
+                  const refTwoYr =
+                    billingCycle === 'monthly' && refMonthly > 0 ? refMonthly * 24
+                    : billingCycle === 'yearly' && refYearly > 0 ? refYearly * 2
+                    : 0;
+                  const refLabel = billingCycle === 'monthly' ? 'Monthly' : 'Yearly';
+
+                  return (
+                    <tr className="border-t border-white/10">
+                      <td className="px-5 sm:px-6 py-4 align-top" />
+                      {versions.map(v => {
+                        const { mainPrice, period } = parsePricing(v, tool.richFeatures ?? [], billingCycle);
+                        const free = isVersionFree(v);
+                        const isLifetimeColumn = !free && !!v.lifetimePrice?.trim()
+                          && !v.monthlyPrice?.trim() && !v.yearlyPrice?.trim();
+                        const FreeCtaIcon = getIconComponent(tool.freeCtaIcon, Download);
+                        const PaidCtaIcon = getIconComponent(tool.paidCtaIcon, ShoppingCart);
+                        const freeCtaText = tool.freeCtaText || t('tools.detail.downloadFree');
+                        const paidCtaText = tool.paidCtaText || t('tools.detail.buyNow');
+
+                        const buildUrl = () => buildGumroadCheckoutUrl({
+                          baseUrl: (isLifetimeColumn && v.lifetimeBuyUrl?.trim()) ? v.lifetimeBuyUrl : v.downloadUrl,
+                          email: user?.email,
+                          userId: user?.id,
+                          toolVersionId: v.id,
+                        });
+
+                        const mo = toNum(v.monthlyPrice);
+                        const yr = toNum(v.yearlyPrice);
+                        const life = toNum(v.lifetimePrice);
+                        let oneYr = 0, twoYr = 0;
+                        if (!free) {
+                          if (billingCycle === 'monthly' && mo > 0) { oneYr = mo * 12; twoYr = mo * 24; }
+                          else if (billingCycle === 'yearly' && yr > 0) { oneYr = yr; twoYr = yr * 2; }
+                        }
+                        const lifetimeSavings2yr = (life > 0 && refTwoYr > life)
+                          ? Math.round(refTwoYr - life)
+                          : 0;
+
+                        // Tint the Buy button with the version's own accent
+                        // color so column header dot, check marks, and button
+                        // share one identity. Falls back to the default
+                        // violet gradient when no color is set.
+                        const accent = v.color || '';
+                        const paidBg = accent
+                          ? `linear-gradient(135deg, ${accent}, ${accent}cc)`
+                          : 'linear-gradient(to right, #7c3aed, #9333ea)';
+
+                        return (
+                          <td key={v.id} className="px-4 py-4 align-top">
+                            <div className="flex flex-col items-center gap-2">
+                              <div className="flex items-baseline gap-1">
+                                <span className="text-lg font-bold text-white leading-tight">{mainPrice}</span>
+                                {period && <span className="text-[10px] text-white/40">{period}</span>}
+                              </div>
+                              {/* Reserved slot — keeps Buy buttons at the same Y. */}
+                              <div className="flex flex-col items-center min-h-[34px] justify-start">
+                                {!free && (oneYr > 0 || twoYr > 0) && (
+                                  <div className="flex flex-col items-center text-[10px] leading-tight text-white/35 tabular-nums">
+                                    {oneYr > 0 && <span><span className="text-white/25">1 yr:</span> {fmt$(oneYr)}</span>}
+                                    {twoYr > 0 && <span><span className="text-white/25">2 yrs:</span> {fmt$(twoYr)}</span>}
+                                  </div>
+                                )}
+                                {!free && life > 0 && lifetimeSavings2yr > 0 && (
+                                  <p
+                                    className="text-[10px] leading-tight font-semibold text-center"
+                                    style={{ color: accent || '#a78bfa' }}
+                                  >
+                                    Save {fmt$(lifetimeSavings2yr)} over 2 yrs vs {refLabel}
+                                  </p>
+                                )}
+                              </div>
+                              {free ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleCta(v)}
+                                  className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all
+                                    bg-white/8 hover:bg-white/12 border border-emerald-500/30 hover:border-emerald-500/50 text-emerald-300"
+                                >
+                                  <FreeCtaIcon className="w-3 h-3" />
+                                  {freeCtaText}
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (!user) { onClose(); onSignInRequired('Sign in to purchase and access your license key.'); return; }
+                                    onBuyClick?.(v);
+                                    openGumroadCheckout(buildUrl());
+                                  }}
+                                  className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-white shadow-lg transition-all active:scale-[0.98]"
+                                  style={{ background: paidBg }}
+                                >
+                                  {isLifetimeColumn
+                                    ? <Zap className="w-3 h-3 fill-current" />
+                                    : <PaidCtaIcon className="w-3 h-3" />}
+                                  {paidCtaText}
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })()}
+              </tfoot>
             </table>
-          </div>
-
-          {/* CTAs */}
-          <div className="border-t border-white/8 p-4 sm:p-5 shrink-0">
-            {(() => {
-              // Compute running totals (1yr, 2yrs) per cycle so the comparison
-              // is fair across columns. The Lifetime "Save $X over 2 yrs" line
-              // uses whichever cycle the toggle is on as the comparison base.
-              const toNum = (s: string | undefined | null) => parseFloat((s || '').replace(/[^0-9.]/g, '')) || 0;
-              const fmt$ = (n: number) => (n % 1 === 0 ? `$${n.toLocaleString()}` : `$${n.toFixed(2)}`);
-
-              // Reference prices for the toggle. Take the highest sibling
-              // monthly/yearly price (usually the "Pro" tier) for the Lifetime
-              // comparison base.
-              const refMonthly = Math.max(0, ...versions.map(v => toNum(v.monthlyPrice)));
-              const refYearly  = Math.max(0, ...versions.map(v => toNum(v.yearlyPrice)));
-
-              // 2-year cost at the current toggle (used by the Lifetime savings line).
-              const refTwoYr =
-                billingCycle === 'monthly' && refMonthly > 0 ? refMonthly * 24
-                : billingCycle === 'yearly' && refYearly > 0 ? refYearly * 2
-                : 0;
-              const refLabel = billingCycle === 'monthly' ? 'Monthly' : 'Yearly';
-
-              return (
-            <div
-              className="grid gap-2"
-              style={{ gridTemplateColumns: `minmax(180px, 1fr) repeat(${versions.length}, minmax(120px, 1fr))` }}
-            >
-              <div className="hidden sm:block" />
-              {versions.map(v => {
-                const { mainPrice, period } = parsePricing(v, tool.richFeatures ?? [], billingCycle);
-                const free = isVersionFree(v);
-                // Lifetime column = this version is sold as a one-time purchase
-                // (has a lifetimePrice). The toggle no longer carries Lifetime,
-                // so this is purely a property of the version's own data.
-                const isLifetimeColumn = !free && !!v.lifetimePrice?.trim()
-                  && !v.monthlyPrice?.trim() && !v.yearlyPrice?.trim();
-                const FreeCtaIcon = getIconComponent(tool.freeCtaIcon, Download);
-                const PaidCtaIcon = getIconComponent(tool.paidCtaIcon, ShoppingCart);
-                const freeCtaText = tool.freeCtaText || t('tools.detail.downloadFree');
-                const paidCtaText = tool.paidCtaText || t('tools.detail.buyNow');
-
-                const buildUrl = () => buildGumroadCheckoutUrl({
-                  // Lifetime version: use its dedicated buy URL if set.
-                  baseUrl: (isLifetimeColumn && v.lifetimeBuyUrl?.trim()) ? v.lifetimeBuyUrl : v.downloadUrl,
-                  email: user?.email,
-                  userId: user?.id,
-                  toolVersionId: v.id,
-                });
-
-                // Per-column totals — only shown when this version's price
-                // matches the toggle cycle (a Monthly card has no useful
-                // 2-yr total when the toggle is set to Yearly).
-                const mo = toNum(v.monthlyPrice);
-                const yr = toNum(v.yearlyPrice);
-                const life = toNum(v.lifetimePrice);
-                let oneYr = 0, twoYr = 0;
-                if (!free) {
-                  if (billingCycle === 'monthly' && mo > 0) {
-                    oneYr = mo * 12; twoYr = mo * 24;
-                  } else if (billingCycle === 'yearly' && yr > 0) {
-                    oneYr = yr;       twoYr = yr * 2;
-                  }
-                }
-
-                // Lifetime savings vs current toggle, over 2 years.
-                const lifetimeSavings2yr = (life > 0 && refTwoYr > life)
-                  ? Math.round(refTwoYr - life)
-                  : 0;
-
-                return (
-                  <div key={v.id} className="flex flex-col items-center gap-2">
-                    <div className="flex items-baseline gap-1">
-                      <span className="text-lg font-bold text-white leading-tight">{mainPrice}</span>
-                      {period && <span className="text-[10px] text-white/40">{period}</span>}
-                    </div>
-
-                    {/* Reserved slot for running totals / lifetime savings.
-                        Always rendered with a fixed min-height so all columns'
-                        Buy buttons land at the same Y, regardless of which
-                        column has totals or a savings line to show. */}
-                    <div className="flex flex-col items-center min-h-[34px] justify-start">
-                      {!free && (oneYr > 0 || twoYr > 0) && (
-                        <div className="flex flex-col items-center text-[10px] leading-tight text-white/35 tabular-nums">
-                          {oneYr > 0 && <span><span className="text-white/25">1 yr:</span> {fmt$(oneYr)}</span>}
-                          {twoYr > 0 && <span><span className="text-white/25">2 yrs:</span> {fmt$(twoYr)}</span>}
-                        </div>
-                      )}
-                      {!free && life > 0 && lifetimeSavings2yr > 0 && (
-                        <p className="text-[10px] leading-tight text-amber-300/90 font-semibold text-center">
-                          Save {fmt$(lifetimeSavings2yr)} over 2 yrs vs {refLabel}
-                        </p>
-                      )}
-                    </div>
-                    {free ? (
-                      <button
-                        type="button"
-                        onClick={() => handleCta(v)}
-                        className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all
-                          bg-white/8 hover:bg-white/12 border border-emerald-500/30 hover:border-emerald-500/50 text-emerald-300"
-                      >
-                        <FreeCtaIcon className="w-3 h-3" />
-                        {freeCtaText}
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (!user) { onClose(); onSignInRequired('Sign in to purchase and access your license key.'); return; }
-                          onBuyClick?.(v);
-                          openGumroadCheckout(buildUrl());
-                        }}
-                        className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all active:scale-[0.98]
-                          bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-fuchsia-500 text-white shadow-lg hover:shadow-purple-500/25"
-                        style={isLifetimeColumn ? { background: 'linear-gradient(to right, #d97706, #b45309)' } : undefined}
-                      >
-                        {isLifetimeColumn
-                          ? <Zap className="w-3 h-3 fill-current" />
-                          : <PaidCtaIcon className="w-3 h-3" />}
-                        {paidCtaText}
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-              );
-            })()}
           </div>
         </motion.div>
       </motion.div>
