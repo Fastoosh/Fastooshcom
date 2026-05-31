@@ -609,6 +609,27 @@ function ComparisonModal({
 
           {/* CTAs */}
           <div className="border-t border-white/8 p-4 sm:p-5 shrink-0">
+            {(() => {
+              // Compute running totals (1yr, 2yrs) per cycle so the comparison
+              // is fair across columns. The Lifetime "Save $X over 2 yrs" line
+              // uses whichever cycle the toggle is on as the comparison base.
+              const toNum = (s: string | undefined | null) => parseFloat((s || '').replace(/[^0-9.]/g, '')) || 0;
+              const fmt$ = (n: number) => (n % 1 === 0 ? `$${n.toLocaleString()}` : `$${n.toFixed(2)}`);
+
+              // Reference prices for the toggle. Take the highest sibling
+              // monthly/yearly price (usually the "Pro" tier) for the Lifetime
+              // comparison base.
+              const refMonthly = Math.max(0, ...versions.map(v => toNum(v.monthlyPrice)));
+              const refYearly  = Math.max(0, ...versions.map(v => toNum(v.yearlyPrice)));
+
+              // 2-year cost at the current toggle (used by the Lifetime savings line).
+              const refTwoYr =
+                billingCycle === 'monthly' && refMonthly > 0 ? refMonthly * 24
+                : billingCycle === 'yearly' && refYearly > 0 ? refYearly * 2
+                : 0;
+              const refLabel = billingCycle === 'monthly' ? 'Monthly' : 'Yearly';
+
+              return (
             <div
               className="grid gap-2"
               style={{ gridTemplateColumns: `minmax(180px, 1fr) repeat(${versions.length}, minmax(120px, 1fr))` }}
@@ -630,12 +651,49 @@ function ComparisonModal({
                   toolVersionId: v.id,
                 });
 
+                // Per-column totals — only shown when this version's price
+                // matches the toggle cycle (a Monthly card has no useful
+                // 2-yr total when the toggle is set to Yearly).
+                const mo = toNum(v.monthlyPrice);
+                const yr = toNum(v.yearlyPrice);
+                const life = toNum(v.lifetimePrice);
+                let oneYr = 0, twoYr = 0;
+                if (!free) {
+                  if (billingCycle === 'monthly' && mo > 0) {
+                    oneYr = mo * 12; twoYr = mo * 24;
+                  } else if (billingCycle === 'yearly' && yr > 0) {
+                    oneYr = yr;       twoYr = yr * 2;
+                  }
+                }
+
+                // Lifetime savings vs current toggle, over 2 years.
+                const lifetimeSavings2yr = (life > 0 && refTwoYr > life)
+                  ? Math.round(refTwoYr - life)
+                  : 0;
+
                 return (
                   <div key={v.id} className="flex flex-col items-center gap-2">
                     <div className="flex items-baseline gap-1">
                       <span className="text-lg font-bold text-white leading-tight">{mainPrice}</span>
                       {period && <span className="text-[10px] text-white/40">{period}</span>}
                     </div>
+
+                    {/* Running totals row — gives the toggle a fair comparison
+                        against Lifetime by showing cumulative cost. */}
+                    {!free && (oneYr > 0 || twoYr > 0) && (
+                      <div className="flex flex-col items-center text-[10px] leading-tight text-white/35 tabular-nums">
+                        {oneYr > 0 && <span><span className="text-white/25">1 yr:</span> {fmt$(oneYr)}</span>}
+                        {twoYr > 0 && <span><span className="text-white/25">2 yrs:</span> {fmt$(twoYr)}</span>}
+                      </div>
+                    )}
+                    {/* Lifetime column: surface the savings vs the current
+                        toggle, so the value of "pay once" is visible without
+                        the buyer having to do mental math. */}
+                    {!free && life > 0 && lifetimeSavings2yr > 0 && (
+                      <p className="text-[10px] leading-tight text-amber-300/90 font-semibold text-center">
+                        Save {fmt$(lifetimeSavings2yr)} over 2 yrs vs {refLabel}
+                      </p>
+                    )}
                     {free ? (
                       <button
                         type="button"
@@ -668,6 +726,8 @@ function ComparisonModal({
                 );
               })}
             </div>
+              );
+            })()}
           </div>
         </motion.div>
       </motion.div>
