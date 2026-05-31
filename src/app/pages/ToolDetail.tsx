@@ -682,22 +682,23 @@ function ComparisonModal({
                       {period && <span className="text-[10px] text-white/40">{period}</span>}
                     </div>
 
-                    {/* Running totals row — gives the toggle a fair comparison
-                        against Lifetime by showing cumulative cost. */}
-                    {!free && (oneYr > 0 || twoYr > 0) && (
-                      <div className="flex flex-col items-center text-[10px] leading-tight text-white/35 tabular-nums">
-                        {oneYr > 0 && <span><span className="text-white/25">1 yr:</span> {fmt$(oneYr)}</span>}
-                        {twoYr > 0 && <span><span className="text-white/25">2 yrs:</span> {fmt$(twoYr)}</span>}
-                      </div>
-                    )}
-                    {/* Lifetime column: surface the savings vs the current
-                        toggle, so the value of "pay once" is visible without
-                        the buyer having to do mental math. */}
-                    {!free && life > 0 && lifetimeSavings2yr > 0 && (
-                      <p className="text-[10px] leading-tight text-amber-300/90 font-semibold text-center">
-                        Save {fmt$(lifetimeSavings2yr)} over 2 yrs vs {refLabel}
-                      </p>
-                    )}
+                    {/* Reserved slot for running totals / lifetime savings.
+                        Always rendered with a fixed min-height so all columns'
+                        Buy buttons land at the same Y, regardless of which
+                        column has totals or a savings line to show. */}
+                    <div className="flex flex-col items-center min-h-[34px] justify-start">
+                      {!free && (oneYr > 0 || twoYr > 0) && (
+                        <div className="flex flex-col items-center text-[10px] leading-tight text-white/35 tabular-nums">
+                          {oneYr > 0 && <span><span className="text-white/25">1 yr:</span> {fmt$(oneYr)}</span>}
+                          {twoYr > 0 && <span><span className="text-white/25">2 yrs:</span> {fmt$(twoYr)}</span>}
+                        </div>
+                      )}
+                      {!free && life > 0 && lifetimeSavings2yr > 0 && (
+                        <p className="text-[10px] leading-tight text-amber-300/90 font-semibold text-center">
+                          Save {fmt$(lifetimeSavings2yr)} over 2 yrs vs {refLabel}
+                        </p>
+                      )}
+                    </div>
                     {free ? (
                       <button
                         type="button"
