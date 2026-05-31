@@ -772,11 +772,17 @@ function PricingCard({
   const { t, i18n } = useTranslation();
   const { mainPrice, period, subLabel, allFeatures } = parsePricing(version, tool?.richFeatures ?? [], billingCycle ?? 'monthly');
 
+  // Cap displayed features at 7 per card. richFeatures is already in the
+  // admin-defined order, so the seven that show are the ones the admin
+  // chose to list first — i.e. the "headline" features for this card. The
+  // full list lives in the comparison modal below the grid.
+  const FEATURE_CAP = 7;
   const richFeatures = tool?.richFeatures ?? [];
   const thisIds = new Set<string>(version.includedFeatureIds ?? []);
   const displayFeatures = richFeatures
     .filter(rf => thisIds.has(rf.id) && rf.title?.trim())
-    .map(rf => rf.title.trim());
+    .map(rf => rf.title.trim())
+    .slice(0, FEATURE_CAP);
 
   // Detect free version by prices, not name
   const { monthlyPrice, yearlyPrice, lifetimePrice } = version;
@@ -952,8 +958,9 @@ function PricingCard({
           </span>
         </div>
 
-        {/* Price */}
-        <div className="mb-6">
+        {/* Price — fixed min-height so feature lists across cards line up at
+            the same Y, regardless of whether a card has a "Save $X" line. */}
+        <div className="mb-6 min-h-[96px]">
           {isFree ? (
             <>
               <div className="text-4xl font-black text-emerald-400">{t('tools.free')}</div>
