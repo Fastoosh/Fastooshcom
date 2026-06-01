@@ -561,7 +561,11 @@ function ComparisonModal({
                     Features
                   </th>
                   {versions.map(v => (
-                    <th key={v.id} className="text-center px-4 py-3 min-w-[120px]">
+                    // Equal min-width across all version columns so paid Buy
+                    // buttons end up the same size. The Lifetime savings text
+                    // wraps inside this width; shorter columns get the same
+                    // width too, which keeps the grid visually rhythmic.
+                    <th key={v.id} className="text-center px-4 py-3 min-w-[150px]">
                       <div className="flex items-center justify-center gap-1.5">
                         <span
                           className="inline-block w-1.5 h-1.5 rounded-full"
@@ -684,7 +688,7 @@ function ComparisonModal({
                                   // text-balance helps the break land cleanly
                                   // on the "vs" boundary.
                                   <p
-                                    className="text-[10px] leading-tight font-semibold text-center max-w-[110px] text-balance"
+                                    className="text-[10px] leading-tight font-semibold text-center max-w-[120px] text-balance"
                                     style={{ color: accent || '#a78bfa' }}
                                   >
                                     Save {fmt$(lifetimeSavings2yr)} over 2 yrs vs {refLabel}
