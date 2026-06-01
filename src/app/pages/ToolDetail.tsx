@@ -13,6 +13,9 @@ import {
   Monitor, Zap, Star, ExternalLink, Sparkles, ShoppingCart, Quote,
   ChevronLeft, ChevronRight, BookOpen, ArrowRight, Gift, Package,
   Heart, Rocket, LucideIcon, Tag, Wrench, AlertTriangle,
+  // Aliased — `Infinity` is also a JS global (the Infinity number), so we
+  // rename the icon to avoid shadowing it.
+  Infinity as InfinityIcon,
 } from 'lucide-react';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
@@ -717,7 +720,7 @@ function ComparisonModal({
                                   style={{ background: paidBg }}
                                 >
                                   {isLifetimeColumn
-                                    ? <Zap className="w-3 h-3 fill-current" />
+                                    ? <InfinityIcon className="w-3.5 h-3.5" strokeWidth={2.5} />
                                     : <PaidCtaIcon className="w-3 h-3" />}
                                   {paidCtaText}
                                 </button>
@@ -1094,7 +1097,7 @@ function PricingCard({
                   text-white shadow-lg hover:shadow-purple-500/30"
               >
                 {isLifetimeActive
-                  ? <Zap className="w-3.5 h-3.5 fill-current" />
+                  ? <InfinityIcon className="w-4 h-4" strokeWidth={2.5} />
                   : <PaidCtaIcon className="w-3.5 h-3.5" />}
                 {paidCtaText}
               </button>
