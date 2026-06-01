@@ -114,20 +114,20 @@ export function Header() {
                   <div className="relative" ref={userMenuRef}>
                     <button
                       onClick={() => setUserMenuOpen(!userMenuOpen)}
-                      className="flex items-center gap-2 px-3 py-1.5 rounded-full
+                      className="flex items-center gap-1.5 pl-1 pr-3 py-0.5 rounded-full
                         border border-white/10 hover:border-purple-500/40
                         hover:bg-purple-500/10 transition-all group"
                       style={{ backgroundColor: 'var(--fastoosh-signin-bg, rgba(255,255,255,0.05))' }}
                       aria-label={t('nav.myAccount')}
                     >
                       {avatarUrl ? (
-                        <img src={avatarUrl} alt={displayName} className="w-7 h-7 rounded-full object-cover" />
+                        <img src={avatarUrl} alt={displayName} className="w-6 h-6 rounded-full object-cover" />
                       ) : (
-                        <div className="w-7 h-7 rounded-full bg-purple-500/30 flex items-center justify-center text-purple-300 text-xs font-bold">
+                        <div className="w-6 h-6 rounded-full bg-purple-500/30 flex items-center justify-center text-purple-300 text-[10px] font-bold">
                           {initials}
                         </div>
                       )}
-                      <span className="fastoosh-nav-link text-sm max-w-24 truncate">{displayName}</span>
+                      <span className="fastoosh-nav-link text-xs max-w-24 truncate">{displayName}</span>
                     </button>
 
                     {/* Dropdown */}
@@ -191,7 +191,15 @@ export function Header() {
                 )}
               </>
             )}
-            <NeonButton href="/work-with-us">{t('nav.workWithUs')}</NeonButton>
+            <NeonButton
+              href="/work-with-us"
+              // Header-sized: override NeonButton's default px-8 py-4 with
+              // tighter padding + smaller text so it sits in scale with the
+              // language switcher and user menu next to it.
+              className="!px-4 !py-1.5 !rounded-lg text-sm"
+            >
+              {t('nav.workWithUs')}
+            </NeonButton>
           </div>
 
           {/* Mobile menu button */}
