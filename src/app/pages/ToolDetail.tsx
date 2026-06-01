@@ -903,20 +903,22 @@ function PricingCard({
           // ── Lifetime ────────────────────────────────────────────────
           if (isLifetimeActive) return (
             <div className="absolute top-3 right-3 rtl:right-auto rtl:left-3">
-              <span className="px-3 py-1 rounded-full text-[11px] font-bold tracking-wide
+              <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-bold tracking-wide
                 bg-gradient-to-r from-amber-500/20 to-yellow-500/10
                 border border-amber-500/30 text-amber-300">
-                ⚡ {t('tools.detail.lifetime')}
+                <InfinityIcon className="w-3 h-3" strokeWidth={2.5} />
+                {t('tools.detail.lifetime')}
               </span>
             </div>
           );
           // ── One-time model shown on any non-lifetime tab ─────────────
           if (subLabel === 'one-time payment') return (
             <div className="absolute top-3 right-3 rtl:right-auto rtl:left-3">
-              <span className="px-3 py-1 rounded-full text-[11px] font-bold tracking-wide
+              <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-bold tracking-wide
                 bg-gradient-to-r from-amber-500/20 to-yellow-500/10
                 border border-amber-500/30 text-amber-300">
-                ⚡ {t('tools.detail.lifetime')}
+                <InfinityIcon className="w-3 h-3" strokeWidth={2.5} />
+                {t('tools.detail.lifetime')}
               </span>
             </div>
           );
