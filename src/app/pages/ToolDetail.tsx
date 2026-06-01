@@ -677,8 +677,14 @@ function ComparisonModal({
                                   </div>
                                 )}
                                 {!free && life > 0 && lifetimeSavings2yr > 0 && (
+                                  // Cap the savings line width so it wraps to
+                                  // two lines instead of forcing the column
+                                  // wider than its siblings — that's what was
+                                  // making the Lifetime Buy button larger.
+                                  // text-balance helps the break land cleanly
+                                  // on the "vs" boundary.
                                   <p
-                                    className="text-[10px] leading-tight font-semibold text-center"
+                                    className="text-[10px] leading-tight font-semibold text-center max-w-[110px] text-balance"
                                     style={{ color: accent || '#a78bfa' }}
                                   >
                                     Save {fmt$(lifetimeSavings2yr)} over 2 yrs vs {refLabel}
