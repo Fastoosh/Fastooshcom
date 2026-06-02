@@ -148,7 +148,7 @@ export function Header() {
                           </div>
                           <div className="py-1">
                             <Link
-                              to="/account"
+                              to="/account/licenses"
                               onClick={() => setUserMenuOpen(false)}
                               className="flex items-center gap-3 rtl:flex-row-reverse px-4 py-2.5 text-sm text-white/70 hover:text-white hover:bg-white/5 transition-colors"
                             >
@@ -156,7 +156,7 @@ export function Header() {
                               {t('nav.myLicenses', { defaultValue: 'My Licenses' })}
                             </Link>
                             <Link
-                              to="/account"
+                              to="/account/profile"
                               onClick={() => setUserMenuOpen(false)}
                               className="flex items-center gap-3 rtl:flex-row-reverse px-4 py-2.5 text-sm text-white/70 hover:text-white hover:bg-white/5 transition-colors"
                             >
@@ -251,7 +251,7 @@ export function Header() {
                 {user ? (
                   <>
                     <Link
-                      to="/account"
+                      to="/account/licenses"
                       onClick={() => setMobileMenuOpen(false)}
                       className="fastoosh-nav-link flex items-center gap-2 rtl:flex-row-reverse py-2 transition-colors"
                     >

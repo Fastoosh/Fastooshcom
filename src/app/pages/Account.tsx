@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { fetchTranslations, deepMergeTranslations } from '../utils/translations';
 import { api } from '../utils/api';
 import { ToolSupportModal } from '../components/shared/ToolSupportModal';
-import { Link, useNavigate } from 'react-router';
+import { Link, useNavigate, useParams, NavLink, Navigate } from 'react-router';
 import { GlassCard } from '../components/shared/GlassCard';
 import { NeonButton } from '../components/shared/NeonButton';
 import { useUserAuth } from '../hooks/useUserAuth';
@@ -190,7 +190,7 @@ function SecuritySection({
   };
 
   return (
-    <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.18 }} className="mt-8">
+    <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.18 }}>
       <div className="flex items-center gap-3 mb-4">
         <Shield className="w-5 h-5 text-purple-400" />
         <h2 className="text-xl font-bold text-white">{t('account.security')}</h2>
@@ -430,12 +430,10 @@ function MyLicensesSection({ token }: { token: string | undefined }) {
     past_due: { label: 'Past due', cls: 'text-amber-300 bg-amber-500/15 border-amber-500/30' },
   } as const;
 
-  // Hide the whole section if the user has no FSTH licenses AND there's no
-  // post-checkout banner to show (keeps the page clean for non-buyers).
-  if (!loading && !error && licenses.length === 0 && !purchaseFlag) return null;
+  const isEmpty = !loading && !error && licenses.length === 0;
 
   return (
-    <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }} className="mt-10">
+    <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}>
       {/* Post-checkout banner */}
       {purchaseFlag === 'success' && (
         <GlassCard className="p-4 mb-5 border border-emerald-500/25 bg-emerald-500/8">
@@ -486,7 +484,29 @@ function MyLicensesSection({ token }: { token: string | undefined }) {
         <GlassCard className="p-4 text-red-400/70 text-sm">{error}</GlassCard>
       )}
 
-      {!loading && !error && (
+      {isEmpty && !purchaseFlag && (
+        <GlassCard className="overflow-hidden">
+          <div className="p-14 text-center">
+            <div className="relative w-16 h-16 mx-auto mb-5">
+              <div className="absolute inset-0 rounded-full bg-purple-500/15 blur-2xl" />
+              <div className="relative w-16 h-16 rounded-full border border-purple-500/20 bg-purple-500/8 flex items-center justify-center">
+                <KeyRound className="w-7 h-7 text-white/15" />
+              </div>
+            </div>
+            <h3 className="text-white/70 font-bold text-lg mb-2">No licenses yet</h3>
+            <p className="text-white/30 text-sm max-w-xs mx-auto leading-relaxed">
+              When you buy a Pro or Studio plan, your license key and machine activations appear here.
+            </p>
+            <div className="flex justify-center mt-6">
+              <NeonButton href="/tools" variant="primary">
+                <Sparkles className="w-4 h-4 mr-2 rtl:mr-0 rtl:ml-2" />Browse tools
+              </NeonButton>
+            </div>
+          </div>
+        </GlassCard>
+      )}
+
+      {!loading && !error && !isEmpty && (
         <div className="space-y-4">
           {licenses.map((l) => {
             const st = STATUS[l.status] ?? STATUS.expired;
@@ -573,21 +593,177 @@ function MyLicensesSection({ token }: { token: string | undefined }) {
 }
 
 /* -------------------------------------------------------------------------- */
+/* DownloadsSection — free-tool downloads list (self-contained, like Licenses) */
+/* -------------------------------------------------------------------------- */
+function DownloadsSection({ token }: { token: string | undefined }) {
+  const { t } = useTranslation();
+  const [downloads, setDownloads] = useState<FreeDownload[]>([]);
+  const [loading,   setLoading]   = useState(true);
+  const [error,     setError]     = useState('');
+
+  const load = async () => {
+    if (!token) return;
+    setLoading(true); setError('');
+    try {
+      const res = await fetch(`${API_BASE}/user/downloads`, {
+        headers: { Authorization: `Bearer ${publicAnonKey}`, 'X-User-Token': token },
+      });
+      const data = await res.json();
+      if (data.success) setDownloads(data.data || []);
+      else setError(data.error || 'Failed to load downloads');
+    } catch (err) {
+      console.error('Error fetching downloads:', err);
+      setError('Could not load your downloads. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [token]);
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
+      <div className="flex items-center gap-3 mb-5">
+        <div className="w-8 h-8 rounded-lg bg-teal-500/15 border border-teal-500/25 flex items-center justify-center">
+          <Gift className="w-4 h-4 text-teal-400" />
+        </div>
+        <h2 className="text-xl font-bold text-white">{t('account.myDownloads')}</h2>
+        {downloads.length > 0 && (
+          <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-teal-500/20 text-teal-300 border border-teal-500/30">{downloads.length}</span>
+        )}
+      </div>
+
+      {loading && (
+        <div className="flex items-center gap-3 py-16 justify-center">
+          <div className="w-5 h-5 border-2 border-teal-400/40 border-t-teal-400 rounded-full animate-spin" />
+          <span className="text-white/40 text-sm">{t('account.loadingDownloads')}</span>
+        </div>
+      )}
+
+      {error && !loading && (
+        <GlassCard className="p-6 border border-red-500/20 bg-red-500/5">
+          <div className="flex items-start gap-3 rtl:flex-row-reverse">
+            <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-red-400 text-sm font-semibold mb-1">{t('account.couldNotLoadDownloads')}</p>
+              <p className="text-red-400/60 text-xs">{error}</p>
+              <button onClick={load} className="mt-3 text-sm text-teal-400 hover:text-teal-300 underline">
+                {t('account.tryAgain')}
+              </button>
+            </div>
+          </div>
+        </GlassCard>
+      )}
+
+      {!loading && !error && downloads.length === 0 && (
+        <GlassCard className="overflow-hidden">
+          <div className="p-14 text-center">
+            <div className="relative w-16 h-16 mx-auto mb-5">
+              <div className="absolute inset-0 rounded-full bg-teal-500/15 blur-2xl" />
+              <div className="relative w-16 h-16 rounded-full border border-teal-500/20 bg-teal-500/8 flex items-center justify-center">
+                <Gift className="w-7 h-7 text-white/15" />
+              </div>
+            </div>
+            <h3 className="text-white/70 font-bold text-lg mb-2">{t('account.noDownloads')}</h3>
+            <p className="text-white/30 text-sm max-w-xs mx-auto leading-relaxed">{t('account.noDownloadsDesc')}</p>
+            <div className="flex justify-center mt-6">
+              <NeonButton href="/tools" variant="primary">
+                <Sparkles className="w-4 h-4 mr-2 rtl:mr-0 rtl:ml-2" />{t('account.browseTools')}
+              </NeonButton>
+            </div>
+          </div>
+        </GlassCard>
+      )}
+
+      {!loading && downloads.length > 0 && (
+        <div className="space-y-4">
+          {downloads.map((dl, i) => (
+            <DownloadCard key={`${dl.toolVersionId}-${i}`} item={dl} index={i} />
+          ))}
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* AccountTabsNav — vertical sidebar (desktop) / horizontal pills (mobile)     */
+/* -------------------------------------------------------------------------- */
+type AccountTab = 'licenses' | 'downloads' | 'profile';
+
+const ACCOUNT_TABS: Array<{ id: AccountTab; icon: typeof KeyRound; labelKey: string; defaultLabel: string }> = [
+  { id: 'licenses',  icon: KeyRound, labelKey: 'nav.myLicenses',  defaultLabel: 'My Licenses'  },
+  { id: 'downloads', icon: Gift,     labelKey: 'account.myDownloads', defaultLabel: 'My Downloads' },
+  { id: 'profile',   icon: User,     labelKey: 'nav.myAccount',   defaultLabel: 'My Account'   },
+];
+
+function AccountTabsNav({ active }: { active: AccountTab }) {
+  const { t } = useTranslation();
+  return (
+    <nav aria-label="Account sections">
+      {/* Desktop: vertical pill list */}
+      <ul className="hidden md:flex flex-col gap-1 sticky top-24">
+        {ACCOUNT_TABS.map(tab => {
+          const Icon = tab.icon;
+          const isActive = active === tab.id;
+          return (
+            <li key={tab.id}>
+              <NavLink
+                to={`/account/${tab.id}`}
+                className={`flex items-center gap-3 rtl:flex-row-reverse px-3 py-2.5 rounded-xl text-sm font-medium transition-all
+                  ${isActive
+                    ? 'bg-purple-500/15 border border-purple-500/30 text-white'
+                    : 'border border-transparent text-white/55 hover:text-white hover:bg-white/5'}`}
+              >
+                <Icon className={`w-4 h-4 ${isActive ? 'text-purple-300' : 'text-white/40'}`} />
+                <span>{t(tab.labelKey, { defaultValue: tab.defaultLabel })}</span>
+              </NavLink>
+            </li>
+          );
+        })}
+      </ul>
+      {/* Mobile: horizontal scroll row */}
+      <ul className="md:hidden flex items-center gap-2 overflow-x-auto -mx-6 px-6 pb-1">
+        {ACCOUNT_TABS.map(tab => {
+          const Icon = tab.icon;
+          const isActive = active === tab.id;
+          return (
+            <li key={tab.id} className="flex-shrink-0">
+              <NavLink
+                to={`/account/${tab.id}`}
+                className={`flex items-center gap-2 rtl:flex-row-reverse px-3.5 py-2 rounded-full text-xs font-semibold transition-all whitespace-nowrap
+                  ${isActive
+                    ? 'bg-purple-500/20 border border-purple-500/40 text-white'
+                    : 'border border-white/10 text-white/55 hover:text-white hover:bg-white/5'}`}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                <span>{t(tab.labelKey, { defaultValue: tab.defaultLabel })}</span>
+              </NavLink>
+            </li>
+          );
+        })}
+      </ul>
+    </nav>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
 /* Main Account page                                                           */
 /* -------------------------------------------------------------------------- */
 export function Account() {
   const { t, i18n } = useTranslation();
   const { user, session, loading, signInWithEmail, signUpWithEmail, signInWithOAuth, forgotPassword, updatePassword, updateEmail, signOut } = useUserAuth();
   const navigate = useNavigate();
+  // Hooks must run unconditionally — read the tab param up here, even though it
+  // is only used in the signed-in branch below.
+  const tabParam = useParams<{ tab?: string }>().tab ?? 'licenses';
 
   const [purchases,        setPurchases]        = useState<Purchase[]>([]);
   const [purchasesLoading, setPurchasesLoading] = useState(false);
   const [purchasesError,   setPurchasesError]   = useState('');
   const [supportOpen,      setSupportOpen]      = useState(false);
 
-  const [downloads,        setDownloads]        = useState<FreeDownload[]>([]);
-  const [downloadsLoading, setDownloadsLoading] = useState(false);
-  const [downloadsError,   setDownloadsError]   = useState('');
+  // Downloads now own their own state inside <DownloadsSection />.
 
   // Review state
   const [userReviews, setUserReviews] = useState<Record<string, ReviewData | null>>({});
@@ -628,38 +804,14 @@ export function Account() {
         syncAndFetch(session.access_token);
       } else {
         fetchPurchases(session.access_token);
-        fetchDownloads(session.access_token);
       }
     }
   }, [session]);
 
   const syncAndFetch = async (token: string) => {
-    // Loads licenses + reviews + downloads in parallel. (The old LS orphan-
-    // purchase sync was removed — FSTH licenses are auto-matched by email.)
-    await Promise.all([fetchPurchases(token), fetchUserReviews(token), fetchDownloads(token)]);
-  };
-
-  const fetchDownloads = async (token: string) => {
-    setDownloadsLoading(true); setDownloadsError('');
-    try {
-      const res  = await fetch(`${API_BASE}/user/downloads`, {
-        headers: {
-          Authorization: `Bearer ${publicAnonKey}`,
-          'X-User-Token': token,
-        },
-      });
-      const data = await res.json();
-      if (data.success) {
-        setDownloads(data.data || []);
-      } else {
-        setDownloadsError(data.error || 'Failed to load downloads');
-      }
-    } catch (err) {
-      console.error('Error fetching downloads:', err);
-      setDownloadsError('Could not load your downloads. Please try again.');
-    } finally {
-      setDownloadsLoading(false);
-    }
+    // Loads licenses + reviews in parallel. Downloads fetch themselves inside
+    // <DownloadsSection /> once that tab mounts.
+    await Promise.all([fetchPurchases(token), fetchUserReviews(token)]);
   };
 
   const fetchUserReviews = async (token: string) => {
@@ -961,13 +1113,18 @@ export function Account() {
   const activeCount       = purchases.filter(p => p.status === 'active').length;
   const lifetimeCount     = purchases.filter(p => p.status === 'active' && !p.expiresAt).length;
   const subscriptionCount = purchases.filter(p => p.status === 'active' && !!p.expiresAt).length;
-  const totalSpent        = purchases.reduce((sum, p) => sum + (p.amount || 0), 0);
-  const downloadsCount    = downloads.length;
+
+  // Validate the URL tab param — unknown tab redirects to the default. The
+  // hook itself is called above with the rest of the hooks (Rules of Hooks).
+  if (tabParam !== 'licenses' && tabParam !== 'downloads' && tabParam !== 'profile') {
+    return <Navigate to="/account/licenses" replace />;
+  }
+  const activeTab = tabParam as AccountTab;
 
   return (
     <>
     <div className="min-h-screen pt-8 pb-28">
-      <div className="max-w-3xl mx-auto px-6">
+      <div className="max-w-5xl mx-auto px-6">
 
         <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}>
           <Link to="/tools" className="inline-flex items-center gap-1.5 rtl:flex-row-reverse text-sm text-white/40 hover:text-white/80 transition-colors mb-10">
@@ -1006,13 +1163,14 @@ export function Account() {
                 </button>
               </div>
 
-              {/* Stats row */}
-              <div className="mt-5 pt-5 border-t border-white/8 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+              {/* Stats row — Free-downloads count was dropped when the downloads
+                  list moved into its own self-fetching tab component. The number
+                  is visible on the Downloads tab itself. */}
+              <div className="mt-5 pt-5 border-t border-white/8 grid grid-cols-3 gap-3">
                 {[
                   { label: t('account.activeLicenses'),      value: activeCount,                 icon: <Key className="w-3.5 h-3.5" />,         color: 'text-white',       glow: '' },
                   { label: t('account.lifetimeLabel'),        value: lifetimeCount,               icon: <CheckCircle className="w-3.5 h-3.5" />, color: 'text-emerald-400', glow: 'drop-shadow-[0_0_6px_rgba(52,211,153,0.5)]' },
                   { label: t('account.subscriptionsLabel'),   value: subscriptionCount,           icon: <RefreshCw className="w-3.5 h-3.5" />,   color: 'text-purple-400',  glow: 'drop-shadow-[0_0_6px_rgba(168,85,247,0.5)]' },
-                  { label: t('account.freeDownloadsLabel'),   value: downloadsCount,              icon: <Gift className="w-3.5 h-3.5" />,        color: 'text-teal-400',    glow: 'drop-shadow-[0_0_6px_rgba(45,212,191,0.5)]' },
                 ].map(stat => (
                   <div key={stat.label} className="text-center p-3 rounded-xl bg-white/3 border border-white/6">
                     <div className={`flex items-center justify-center gap-1.5 ${stat.color} ${stat.glow} mb-1`}>
@@ -1028,78 +1186,30 @@ export function Account() {
         </motion.div>
 
 
-        {/* ── My Licenses (FSTH) ── */}
-        <MyLicensesSection token={session?.access_token} />
+        {/* ── Sidebar + active tab ── */}
+        <div className="mt-2 grid grid-cols-1 md:grid-cols-[200px_1fr] gap-6 md:gap-8">
+          <aside>
+            <AccountTabsNav active={activeTab} />
+          </aside>
 
-        {/* ── My Downloads ── */}
-        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 }} className="mt-10">
-          <div className="flex items-center gap-3 mb-5">
-            <div className="w-8 h-8 rounded-lg bg-teal-500/15 border border-teal-500/25 flex items-center justify-center">
-              <Gift className="w-4 h-4 text-teal-400" />
-            </div>
-            <h2 className="text-xl font-bold text-white">{t('account.myDownloads')}</h2>
-            {downloads.length > 0 && (
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-teal-500/20 text-teal-300 border border-teal-500/30">{downloads.length}</span>
+          <section className="min-w-0">
+            {activeTab === 'licenses' && (
+              <MyLicensesSection token={session?.access_token} />
             )}
-          </div>
 
-          {downloadsLoading && (
-            <div className="flex items-center gap-3 py-16 justify-center">
-              <div className="w-5 h-5 border-2 border-teal-400/40 border-t-teal-400 rounded-full animate-spin" />
-              <span className="text-white/40 text-sm">{t('account.loadingDownloads')}</span>
-            </div>
-          )}
+            {activeTab === 'downloads' && (
+              <DownloadsSection token={session?.access_token} />
+            )}
 
-          {downloadsError && !downloadsLoading && (
-            <GlassCard className="p-6 border border-red-500/20 bg-red-500/5">
-              <div className="flex items-start gap-3 rtl:flex-row-reverse">
-                <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-red-400 text-sm font-semibold mb-1">{t('account.couldNotLoadDownloads')}</p>
-                  <p className="text-red-400/60 text-xs">{downloadsError}</p>
-                  <button onClick={() => session && fetchDownloads(session.access_token)} className="mt-3 text-sm text-teal-400 hover:text-teal-300 underline">
-                    {t('account.tryAgain')}
-                  </button>
-                </div>
-              </div>
-            </GlassCard>
-          )}
-
-          {!downloadsLoading && !downloadsError && downloads.length === 0 && (
-            <GlassCard className="overflow-hidden">
-              <div className="p-14 text-center">
-                <div className="relative w-16 h-16 mx-auto mb-5">
-                  <div className="absolute inset-0 rounded-full bg-teal-500/15 blur-2xl" />
-                  <div className="relative w-16 h-16 rounded-full border border-teal-500/20 bg-teal-500/8 flex items-center justify-center">
-                    <Gift className="w-7 h-7 text-white/15" />
-                  </div>
-                </div>
-                <h3 className="text-white/70 font-bold text-lg mb-2">{t('account.noDownloads')}</h3>
-                <p className="text-white/30 text-sm max-w-xs mx-auto leading-relaxed">{t('account.noDownloadsDesc')}</p>
-                <div className="flex justify-center mt-6">
-                  <NeonButton href="/tools" variant="primary">
-                    <Sparkles className="w-4 h-4 mr-2 rtl:mr-0 rtl:ml-2" />{t('account.browseTools')}
-                  </NeonButton>
-                </div>
-              </div>
-            </GlassCard>
-          )}
-
-          {!downloadsLoading && downloads.length > 0 && (
-            <div className="space-y-4">
-              {downloads.map((dl, i) => (
-                <DownloadCard key={`${dl.toolVersionId}-${i}`} item={dl} index={i} />
-              ))}
-            </div>
-          )}
-        </motion.div>
-
-        {/* ── Security ── */}
-        <SecuritySection
-          userEmail={user.email ?? ''}
-          updatePassword={updatePassword}
-          updateEmail={updateEmail}
-        />
+            {activeTab === 'profile' && (
+              <SecuritySection
+                userEmail={user.email ?? ''}
+                updatePassword={updatePassword}
+                updateEmail={updateEmail}
+              />
+            )}
+          </section>
+        </div>
 
       </div>
     </div>

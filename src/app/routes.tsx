@@ -48,7 +48,11 @@ export const router = createBrowserRouter([
       { path: "tools/:slug/guide", Component: ToolGuide     },
       { path: "about",             Component: About         },
       { path: "work-with-us",      Component: WorkWithUs    },
+      // /account renders the layout, /account/:tab selects which section is
+      // shown (licenses | downloads | profile). Bare /account redirects to
+      // the licenses tab from inside the component.
       { path: "account",           Component: Account       },
+      { path: "account/:tab",      Component: Account       },
       { path: "terms",             Component: Terms         },
       { path: "privacy",           Component: Privacy       },
       { path: "refunds",           Component: Refunds       },
