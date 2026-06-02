@@ -6,7 +6,7 @@ import { LanguageSwitcher } from "../shared/LanguageSwitcher";
 import { useUserAuth } from "../../hooks/useUserAuth";
 import { useTranslation } from "react-i18next";
 import { useState, useRef, useEffect } from "react";
-import { X, User, KeyRound, LogOut } from "lucide-react";
+import { X, User, KeyRound, Gift, LogOut } from "lucide-react";
 import { useLogo } from "../../context/LogoContext";
 
 export function Header() {
@@ -154,6 +154,14 @@ export function Header() {
                             >
                               <KeyRound className="w-4 h-4" />
                               {t('nav.myLicenses', { defaultValue: 'My Licenses' })}
+                            </Link>
+                            <Link
+                              to="/account/downloads"
+                              onClick={() => setUserMenuOpen(false)}
+                              className="flex items-center gap-3 rtl:flex-row-reverse px-4 py-2.5 text-sm text-white/70 hover:text-white hover:bg-white/5 transition-colors"
+                            >
+                              <Gift className="w-4 h-4" />
+                              {t('account.myDownloads', { defaultValue: 'My Downloads' })}
                             </Link>
                             <Link
                               to="/account/profile"
