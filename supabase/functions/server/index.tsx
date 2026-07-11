@@ -7895,6 +7895,185 @@ app.get('/make-server-e07959ec/admin/vimeo/videos', requireAuth, async (c) => {
   }
 });
 
+// ========== BUNNY STREAM INTEGRATION ==========
+//
+// Migration away from Vimeo (which wiped ~90% of the account when the free
+// tier dropped to 500 MB). Bunny Stream now hosts all new project videos.
+// The Vimeo endpoints above stay live for the surviving legacy videos.
+//
+// Auth model: BUNNY_STREAM_API_KEY lives only in Edge Function env vars.
+// The admin browser hits these endpoints with its admin session; this file
+// then hits Bunny with the key. The key never crosses to the browser.
+
+const BUNNY_LIBRARY_ID_FALLBACK   = '684708';
+const BUNNY_CDN_HOSTNAME_FALLBACK = 'vz-869cc91d-3f3.b-cdn.net';
+
+function bunnyConfig() {
+  const apiKey    = Deno.env.get('BUNNY_STREAM_API_KEY');
+  const libraryId = Deno.env.get('BUNNY_STREAM_LIBRARY_ID')   || BUNNY_LIBRARY_ID_FALLBACK;
+  const cdn       = Deno.env.get('BUNNY_STREAM_CDN_HOSTNAME') || BUNNY_CDN_HOSTNAME_FALLBACK;
+  return { apiKey, libraryId, cdn };
+}
+
+// POST /admin/bunny/create-video
+// Body: { title: string }
+// Reserves a video entry on Bunny and returns everything the admin browser
+// needs to run a TUS resumable upload directly to Bunny (bypassing this
+// Edge Function, which does not want the video bytes flowing through it).
+app.post('/make-server-e07959ec/admin/bunny/create-video', requireAuth, async (c) => {
+  try {
+    const { apiKey, libraryId, cdn } = bunnyConfig();
+    if (!apiKey) {
+      console.error('[bunny] BUNNY_STREAM_API_KEY is not set');
+      return c.json({ success: false, error: 'Bunny Stream API key not configured on server.' }, 500);
+    }
+
+    const body = await c.req.json().catch(() => ({}));
+    const title = (body?.title || '').toString().trim().slice(0, 240) || 'Untitled video';
+
+    const res = await fetch(`https://video.bunnycdn.com/library/${libraryId}/videos`, {
+      method:  'POST',
+      headers: { AccessKey: apiKey, 'Content-Type': 'application/json', Accept: 'application/json' },
+      body:    JSON.stringify({ title }),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`[bunny] create-video ${res.status}:`, errText);
+      return c.json({ success: false, error: `Bunny API returned ${res.status}: ${errText}` });
+    }
+    const created = await res.json();
+    const videoGuid = created?.guid as string | undefined;
+    if (!videoGuid) {
+      return c.json({ success: false, error: 'Bunny did not return a video guid.' });
+    }
+
+    // TUS uploads need an AuthorizationSignature header. The admin browser
+    // constructs the TUS request with these headers verbatim; the signature
+    // is a SHA-256 hash the client cannot compute without the API key, so
+    // we compute it here and hand it back.
+    const expiration = Math.floor(Date.now() / 1000) + 60 * 60 * 6; // 6 hours
+    const rawSig     = `${libraryId}${apiKey}${expiration}${videoGuid}`;
+    const sigBytes   = new TextEncoder().encode(rawSig);
+    const sigHash    = await crypto.subtle.digest('SHA-256', sigBytes);
+    const signature  = Array.from(new Uint8Array(sigHash))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+
+    return c.json({
+      success: true,
+      videoGuid,
+      libraryId,
+      cdnHostname: cdn,
+      tus: {
+        endpoint:              'https://video.bunnycdn.com/tusupload',
+        authorizationSignature: signature,
+        authorizationExpire:    expiration,
+        // Values the client will echo into TUS Upload-Metadata (base64 as
+        // per the TUS spec) — filename + title.
+      },
+      // Convenience URLs for the client to store on the project record once
+      // encoding is done.
+      embedUrl:        `https://iframe.mediadelivery.net/embed/${libraryId}/${videoGuid}`,
+      autoThumbnail:   `https://${cdn}/${videoGuid}/thumbnail.jpg`,
+      directMp4_720p:  `https://${cdn}/${videoGuid}/play_720p.mp4`,
+    });
+  } catch (err) {
+    console.error('[bunny] create-video unexpected error:', err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// GET /admin/bunny/video/:guid
+// Poll target: while the client is uploading + waiting for encoding, it hits
+// this every few seconds. Returns Bunny's status enum:
+//   0=Queued  1=Processing  2=Encoding  3=Finished  4=Resolution finished
+//   5=Failed  6=Presigned finished
+// The client treats 4 as "ready to embed" (Bunny publishes the 720p ladder
+// step at status 4 even if higher rungs are still finishing).
+app.get('/make-server-e07959ec/admin/bunny/video/:guid', requireAuth, async (c) => {
+  try {
+    const { apiKey, libraryId } = bunnyConfig();
+    if (!apiKey) return c.json({ success: false, error: 'Bunny API key not configured.' }, 500);
+    const guid = c.req.param('guid');
+    const res = await fetch(`https://video.bunnycdn.com/library/${libraryId}/videos/${guid}`, {
+      headers: { AccessKey: apiKey, Accept: 'application/json' },
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      return c.json({ success: false, error: `Bunny API ${res.status}: ${errText}` });
+    }
+    const v = await res.json();
+    return c.json({
+      success: true,
+      status:            v.status,             // encoding status enum
+      encodeProgress:    v.encodeProgress,     // 0..100
+      length:            v.length,             // seconds
+      width:             v.width,
+      height:            v.height,
+      title:             v.title,
+      dateUploaded:      v.dateUploaded,
+      availableResolutions: v.availableResolutions,
+    });
+  } catch (err) {
+    console.error('[bunny] video status unexpected error:', err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// POST /admin/bunny/thumbnail/:guid
+// Two modes:
+//   1. body {frameTime: seconds} — regenerate thumbnail from a video frame
+//   2. multipart/form-data with 'image' file — upload a custom thumbnail
+// Bunny's own API has separate endpoints for these; we normalize.
+app.post('/make-server-e07959ec/admin/bunny/thumbnail/:guid', requireAuth, async (c) => {
+  try {
+    const { apiKey, libraryId, cdn } = bunnyConfig();
+    if (!apiKey) return c.json({ success: false, error: 'Bunny API key not configured.' }, 500);
+    const guid = c.req.param('guid');
+    const contentType = c.req.header('content-type') || '';
+
+    if (contentType.includes('multipart/form-data')) {
+      const form = await c.req.formData();
+      const file = form.get('image');
+      if (!(file instanceof File)) {
+        return c.json({ success: false, error: 'Expected an image field in the form data.' });
+      }
+      const buf = await file.arrayBuffer();
+      const res = await fetch(
+        `https://video.bunnycdn.com/library/${libraryId}/videos/${guid}/thumbnail`,
+        { method: 'POST', headers: { AccessKey: apiKey, 'Content-Type': file.type || 'image/jpeg' }, body: buf },
+      );
+      if (!res.ok) {
+        const errText = await res.text();
+        return c.json({ success: false, error: `Bunny thumbnail upload ${res.status}: ${errText}` });
+      }
+    } else {
+      const body = await c.req.json().catch(() => ({}));
+      const frameTime = Number(body?.frameTime);
+      if (!isFinite(frameTime) || frameTime < 0) {
+        return c.json({ success: false, error: 'frameTime (seconds) is required.' });
+      }
+      // Bunny wants milliseconds
+      const url = `https://video.bunnycdn.com/library/${libraryId}/videos/${guid}/thumbnail?thumbnailTime=${Math.round(frameTime * 1000)}`;
+      const res = await fetch(url, { method: 'POST', headers: { AccessKey: apiKey } });
+      if (!res.ok) {
+        const errText = await res.text();
+        return c.json({ success: false, error: `Bunny regenerate ${res.status}: ${errText}` });
+      }
+    }
+
+    // Bust the CDN cache by adding a ?t=timestamp — the file at the same URL
+    // now has different bytes but the CDN may still serve the old version.
+    return c.json({
+      success: true,
+      thumbnailUrl: `https://${cdn}/${guid}/thumbnail.jpg?t=${Date.now()}`,
+    });
+  } catch (err) {
+    console.error('[bunny] thumbnail unexpected error:', err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
 // ========== ADMIN RESET / INITIALIZE ==========
 
 // GET /admin/reset/stats — live item counts for each resettable category
