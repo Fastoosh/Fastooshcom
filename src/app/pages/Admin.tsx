@@ -26,6 +26,7 @@ import { TranslationTab } from '../components/admin/TranslationTab';
 import { ReferrersTab } from '../components/admin/ReferrersTab';
 import { ResetTab } from '../components/admin/ResetTab';
 import { VimeoPicker } from '../components/admin/VimeoPicker';
+import { BunnyUploader } from '../components/admin/BunnyUploader';
 import { GuideTab } from '../components/admin/GuideTab';
 import { LegalTab } from '../components/admin/LegalTab';
 import { BroadcastTab } from '../components/admin/BroadcastTab';
@@ -1680,7 +1681,7 @@ function ProjectForm({
   });
   const [uploading, setUploading] = useState(false);
   const [imageInputMode, setImageInputMode] = useState<'url' | 'upload'>('url');
-  const [screenshotsInputMode, setScreenshotsInputMode] = useState<'url' | 'upload' | 'vimeo'>('url');
+  const [screenshotsInputMode, setScreenshotsInputMode] = useState<'url' | 'upload' | 'bunny' | 'vimeo'>('url');
   const [uploadingScreenshots, setUploadingScreenshots] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formMessage, setFormMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -1698,6 +1699,10 @@ function ProjectForm({
   const [showVideoCapture, setShowVideoCapture] = useState(false);
   const [showVimeoPicker, setShowVimeoPicker]   = useState(false);
   const [showScreenshotsVimeoPicker, setShowScreenshotsVimeoPicker] = useState(false);
+  // New default upload path: Bunny Stream. Vimeo picker above stays for
+  // legacy imports of surviving videos.
+  const [showBunnyUploader, setShowBunnyUploader] = useState(false);
+  const [showScreenshotsBunnyUploader, setShowScreenshotsBunnyUploader] = useState(false);
   const [capturedFrames, setCapturedFrames] = useState<string[]>([]);
   const [selectedThumbnailIndex, setSelectedThumbnailIndex] = useState<number | null>(null);
   // Per-field AI improve modal
@@ -2208,14 +2213,26 @@ function ProjectForm({
             Video URL (Optional)
           </label>
           <div className="space-y-2">
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <Input
-                placeholder="https://youtube.com/... or https://vimeo.com/..."
+                placeholder="https://iframe.mediadelivery.net/..., youtube.com/..., or vimeo.com/..."
                 value={formData.videoUrl || ''}
                 onChange={(e) => setFormData({ ...formData, videoUrl: e.target.value })}
-                className="bg-black/50 border-white/20 text-white flex-1"
+                className="bg-black/50 border-white/20 text-white flex-1 min-w-[240px]"
               />
-              {/* Browse Vimeo library */}
+              {/* Upload to Bunny — new default upload path (Vimeo dropped 90% of
+                  our videos when they moved to a 500 MB free tier). */}
+              <Button
+                type="button"
+                onClick={() => setShowBunnyUploader(true)}
+                className="cursor-pointer bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 text-white font-semibold whitespace-nowrap"
+              >
+                <svg className="w-4 h-4 mr-1.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" />
+                </svg>
+                Upload to Bunny
+              </Button>
+              {/* Browse Vimeo library — kept for importing surviving legacy videos. */}
               <Button
                 type="button"
                 onClick={() => setShowVimeoPicker(true)}
@@ -2242,11 +2259,24 @@ function ProjectForm({
               </Button>
             </div>
             <p className="text-xs text-gray-400">
-              Paste a YouTube / Vimeo URL, or click <span className="text-[#1ab7ea]">Browse Vimeo</span> to pick directly from your library
+              <span className="text-orange-400 font-semibold">Upload to Bunny</span> for new videos,
+              or <span className="text-[#1ab7ea]">Browse Vimeo</span> to import an existing one, or paste any URL directly.
             </p>
           </div>
         </div>
         
+        {/* Bunny Uploader — main video URL field, new default upload path */}
+        {showBunnyUploader && (
+          <BunnyUploader
+            onSelect={(url, title) => {
+              setFormData({ ...formData, videoUrl: url });
+              setShowBunnyUploader(false);
+              setFormMessage({ type: 'success', text: `✅ Uploaded to Bunny: "${title}"` });
+            }}
+            onClose={() => setShowBunnyUploader(false)}
+          />
+        )}
+
         {/* Vimeo Video Picker — main video URL field */}
         {showVimeoPicker && (
           <VimeoPicker
@@ -2256,6 +2286,19 @@ function ProjectForm({
               setFormMessage({ type: 'success', text: `✅ Video selected: "${title}"` });
             }}
             onClose={() => setShowVimeoPicker(false)}
+          />
+        )}
+
+        {/* Bunny Uploader — media gallery */}
+        {showScreenshotsBunnyUploader && (
+          <BunnyUploader
+            onSelect={(url, _title) => {
+              const nextScreenshots = [...(formData.screenshots || []), url];
+              setFormData({ ...formData, screenshots: nextScreenshots });
+              setShowScreenshotsBunnyUploader(false);
+              setFormMessage({ type: 'success', text: '✅ Video added to gallery from Bunny' });
+            }}
+            onClose={() => setShowScreenshotsBunnyUploader(false)}
           />
         )}
 
@@ -2395,7 +2438,7 @@ function ProjectForm({
 
               {/* Tab bar */}
               <div className="flex gap-2 mb-3">
-                {(['url', 'upload', 'vimeo'] as const).map((mode) => (
+                {(['url', 'upload', 'bunny', 'vimeo'] as const).map((mode) => (
                   <button
                     key={mode}
                     type="button"
@@ -2408,6 +2451,14 @@ function ProjectForm({
                   >
                     {mode === 'url' && 'Paste URLs'}
                     {mode === 'upload' && 'Upload Files'}
+                    {mode === 'bunny' && (
+                      <span className="flex items-center gap-1.5">
+                        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" />
+                        </svg>
+                        Upload to Bunny
+                      </span>
+                    )}
                     {mode === 'vimeo' && (
                       <span className="flex items-center gap-1.5">
                         <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
@@ -2463,6 +2514,25 @@ function ProjectForm({
                   {errors.screenshotsUpload && (
                     <p className="text-red-400 text-sm mt-1">{errors.screenshotsUpload}</p>
                   )}
+                </div>
+              )}
+
+              {/* Bunny uploader panel */}
+              {screenshotsInputMode === 'bunny' && (
+                <div className="flex items-center gap-3 py-2">
+                  <Button
+                    type="button"
+                    onClick={() => setShowScreenshotsBunnyUploader(true)}
+                    className="cursor-pointer bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 text-white font-semibold"
+                  >
+                    <svg className="w-4 h-4 mr-1.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" />
+                    </svg>
+                    Upload a video to Bunny
+                  </Button>
+                  <p className="text-xs text-gray-400">
+                    Video encodes on Bunny; a URL is added to the gallery when it's done.
+                  </p>
                 </div>
               )}
 
