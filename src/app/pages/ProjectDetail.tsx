@@ -160,6 +160,37 @@ export function ProjectDetail() {
       };
     }
 
+    // ── Bunny Stream ────────────────────────────────────────────────────────
+    // Bunny's iframe player posts { event: 'playing' | 'paused' | 'ended', ... }
+    // messages from iframe.mediadelivery.net. Same shape as YouTube's
+    // postMessage bridge — different vocab.
+    if (url.includes('mediadelivery.net') || url.includes('b-cdn.net')) {
+      const onMessage = (e: MessageEvent) => {
+        if (!e.origin.includes('mediadelivery.net')) return;
+        try {
+          const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+          const evt  = data?.event ?? data?.type;
+          if (evt === 'playing' || evt === 'play') {
+            isPlayingRef.current = true;
+            playStartRef.current = Date.now();
+            if (!viewRecordedRef.current && idRef.current) {
+              viewRecordedRef.current = true;
+              fetch(`${API_BASE}/projects/${idRef.current}/video-view`, {
+                method:  'POST',
+                headers: { 'Authorization': `Bearer ${publicAnonKey}`, 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ addView: true, watchSeconds: 0 }),
+              }).catch(err => console.warn('[VideoTrack] view record failed:', err));
+            }
+          } else if (evt === 'paused' || evt === 'pause' || evt === 'ended') {
+            isPlayingRef.current = false;
+            drainTimer(false);
+          }
+        } catch { /* ignore malformed messages */ }
+      };
+      window.addEventListener('message', onMessage);
+      return () => window.removeEventListener('message', onMessage);
+    }
+
     // ── YouTube ──────────────────────────────────────────────────────────────
     if (url.includes('youtube.com') || url.includes('youtu.be')) {
       const onMessage = (e: MessageEvent) => {
@@ -290,7 +321,14 @@ export function ProjectDetail() {
       const videoId = url.split('vimeo.com/')[1]?.split('?')[0]?.split('/').pop();
       return videoId ? `https://player.vimeo.com/video/${videoId}?autoplay=1&title=0&byline=0&portrait=0` : null;
     }
-    
+
+    // Bunny Stream — iframe.mediadelivery.net/embed/{lib}/{guid}
+    if (url.includes('mediadelivery.net') || url.includes('b-cdn.net')) {
+      return url.includes('autoplay')
+        ? url
+        : `${url}${url.includes('?') ? '&' : '?'}autoplay=true&muted=false`;
+    }
+
     // Already an embed URL - add autoplay if not present
     if (url.includes('embed') || url.includes('player')) {
       return url.includes('autoplay') ? url : `${url}${url.includes('?') ? '&' : '?'}autoplay=1`;

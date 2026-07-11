@@ -5,3 +5,8 @@ dist/
 .env.*.local
 supabase/.temp/cli-latest
 supabase/.temp/linked-project.json
+# Mirror of supabase/functions/server/, generated locally so the Supabase
+# CLI can deploy under the historical function name "make-server-e07959ec"
+# (the CLI wants folder-name to match function-name; Figma Make's original
+# deploy created the mismatch). Keep the source of truth in server/.
+supabase/functions/make-server-e07959ec/
