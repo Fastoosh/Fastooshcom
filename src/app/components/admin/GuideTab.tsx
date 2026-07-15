@@ -61,7 +61,7 @@ const SECTIONS: Section[] = [
     intro: 'Edit every piece of content shown on the public Home page — hero text, showreel, services, process steps, client logos, team section, and FAQ.',
     steps: [
       { text: 'Edit the Hero title, subtitle, and CTA button text directly in the form fields.' },
-      { text: 'Paste a Vimeo video ID or URL to update the showreel embed.' },
+      { text: 'Paste a Bunny Stream, Vimeo, or YouTube URL to update the showreel embed.' },
       { text: 'Add, reorder, or remove Service cards with the + / × controls.' },
       { text: 'Upload client logos via the drag-and-drop uploader; they appear in the scrolling strip.' },
       { text: 'Save changes with the blue "Save" button at the bottom of each section.' },

@@ -166,6 +166,19 @@ export function Home() {
       const videoId = url.split('vimeo.com/')[1]?.split('?')[0]?.split('/').pop();
       if (videoId) return `https://player.vimeo.com/video/${videoId}`;
     }
+    // Bunny Stream — pass the embed URL through with autoplay params. Muted
+    // is required for browsers to allow autoplay without a prior user
+    // gesture (same tradeoff as ProjectDetail).
+    if (url.includes('mediadelivery.net') || url.includes('b-cdn.net')) {
+      if (url.includes('autoplay')) return url;
+      const params = new URLSearchParams({
+        autoplay: 'true',
+        muted:    'true',
+        loop:     'false',
+        preload:  'true',
+      });
+      return `${url}${url.includes('?') ? '&' : '?'}${params.toString()}`;
+    }
     return url;
   };
 
@@ -221,6 +234,23 @@ export function Home() {
       vp.on('pause', onPause);
       vp.on('ended', onEnded);
       return () => { vp.off('play', onPlay); vp.off('pause', onPause); vp.off('ended', onEnded); };
+    }
+
+    // Bunny Stream — listens for iframe postMessage events with
+    // {event: 'playing' | 'paused' | 'ended'} shape. Same pattern as
+    // YouTube's postMessage bridge, different vocab.
+    if (c.showreelUrl?.includes('mediadelivery.net') || c.showreelUrl?.includes('b-cdn.net')) {
+      const onMsg = (e: MessageEvent) => {
+        if (!e.origin.includes('mediadelivery.net')) return;
+        try {
+          const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+          const evt  = data?.event ?? data?.type;
+          if (evt === 'playing' || evt === 'play') onPlay();
+          else if (evt === 'paused' || evt === 'pause' || evt === 'ended') onPause();
+        } catch { /* ignore */ }
+      };
+      window.addEventListener('message', onMsg);
+      return () => window.removeEventListener('message', onMsg);
     }
 
     // YouTube

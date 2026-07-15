@@ -487,10 +487,10 @@ function HeroSection({ content, setContent }: { content: HomeContent; setContent
             <Input
               value={content.showreelUrl || ''}
               onChange={e => set('showreelUrl', e.target.value)}
-              placeholder="https://player.vimeo.com/video/123456789 or YouTube URL"
+              placeholder="Bunny embed URL, https://player.vimeo.com/... or YouTube URL"
               className="bg-black/40 border-white/10 text-white text-sm"
             />
-            <p className="text-white/30 text-xs mt-1">Accepts Vimeo, YouTube, or any direct embed URL.</p>
+            <p className="text-white/30 text-xs mt-1">Accepts Bunny Stream, Vimeo, YouTube, or any direct embed URL.</p>
           </div>
         ) : (
           <div>
