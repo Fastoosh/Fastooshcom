@@ -8074,6 +8074,74 @@ app.post('/make-server-e07959ec/admin/bunny/thumbnail/:guid', requireAuth, async
   }
 });
 
+// GET /admin/bunny/videos
+// Lists videos in the Bunny library so the admin can pick from an existing
+// upload without re-uploading. Mirrors /admin/vimeo/videos.
+// Query params: page (1-based), itemsPerPage (default 20), search, orderBy.
+app.get('/make-server-e07959ec/admin/bunny/videos', requireAuth, async (c) => {
+  try {
+    const { apiKey, libraryId, cdn } = bunnyConfig();
+    if (!apiKey) {
+      console.error('[bunny] BUNNY_STREAM_API_KEY is not set');
+      return c.json({ success: false, error: 'Bunny Stream API key not configured on server.' }, 500);
+    }
+
+    const page         = c.req.query('page')         || '1';
+    const itemsPerPage = c.req.query('itemsPerPage') || '20';
+    const search       = c.req.query('search')       || '';
+    const orderBy      = c.req.query('orderBy')      || 'date';
+
+    // Bunny recognizes date | title | -date | -title (- prefix means descending).
+    // Default to newest-first, which is what admins usually want.
+    const VALID_ORDERS = ['date', 'title', '-date', '-title'];
+    const safeOrder    = VALID_ORDERS.includes(orderBy) ? orderBy : 'date';
+
+    const qs = new URLSearchParams({
+      page,
+      itemsPerPage,
+      orderBy: safeOrder,
+    });
+    if (search.trim()) qs.set('search', search.trim());
+
+    const res = await fetch(`https://video.bunnycdn.com/library/${libraryId}/videos?${qs}`, {
+      headers: { AccessKey: apiKey, Accept: 'application/json' },
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`[bunny] list-videos ${res.status}:`, errText);
+      return c.json({ success: false, error: `Bunny API returned ${res.status}: ${errText}` });
+    }
+    const data = await res.json();
+
+    // Project Bunny's shape onto something friendlier for the picker UI.
+    const videos = (data.items || []).map((v: any) => ({
+      guid:          v.guid,
+      title:         v.title || '(Untitled)',
+      description:   v.description ?? '',
+      length:        v.length ?? 0,                    // seconds
+      width:         v.width ?? 0,
+      height:        v.height ?? 0,
+      views:         v.views ?? 0,
+      status:        v.status,                          // 4 = playable
+      dateUploaded:  v.dateUploaded ?? null,
+      thumbnail:     `https://${cdn}/${v.guid}/thumbnail.jpg`,
+      embedUrl:      `https://iframe.mediadelivery.net/embed/${libraryId}/${v.guid}`,
+    }));
+
+    return c.json({
+      success:      true,
+      videos,
+      total:        data.totalItems     ?? videos.length,
+      page:         data.currentPage    ?? Number(page),
+      itemsPerPage: data.itemsPerPage   ?? Number(itemsPerPage),
+      totalPages:   Math.ceil((data.totalItems ?? videos.length) / Number(itemsPerPage)),
+    });
+  } catch (err) {
+    console.error('[bunny] list-videos unexpected error:', err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
 // ========== ADMIN RESET / INITIALIZE ==========
 
 // GET /admin/reset/stats — live item counts for each resettable category

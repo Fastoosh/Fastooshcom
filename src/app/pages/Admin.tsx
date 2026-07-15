@@ -27,6 +27,7 @@ import { ReferrersTab } from '../components/admin/ReferrersTab';
 import { ResetTab } from '../components/admin/ResetTab';
 import { VimeoPicker } from '../components/admin/VimeoPicker';
 import { BunnyUploader } from '../components/admin/BunnyUploader';
+import { BunnyPicker }   from '../components/admin/BunnyPicker';
 import { GuideTab } from '../components/admin/GuideTab';
 import { LegalTab } from '../components/admin/LegalTab';
 import { BroadcastTab } from '../components/admin/BroadcastTab';
@@ -1681,7 +1682,7 @@ function ProjectForm({
   });
   const [uploading, setUploading] = useState(false);
   const [imageInputMode, setImageInputMode] = useState<'url' | 'upload'>('url');
-  const [screenshotsInputMode, setScreenshotsInputMode] = useState<'url' | 'upload' | 'bunny' | 'vimeo'>('url');
+  const [screenshotsInputMode, setScreenshotsInputMode] = useState<'url' | 'upload' | 'bunny' | 'bunny-lib' | 'vimeo'>('url');
   const [uploadingScreenshots, setUploadingScreenshots] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formMessage, setFormMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -1703,6 +1704,9 @@ function ProjectForm({
   // legacy imports of surviving videos.
   const [showBunnyUploader, setShowBunnyUploader] = useState(false);
   const [showScreenshotsBunnyUploader, setShowScreenshotsBunnyUploader] = useState(false);
+  // Browse existing Bunny library — parallel to the Vimeo picker
+  const [showBunnyPicker, setShowBunnyPicker] = useState(false);
+  const [showScreenshotsBunnyPicker, setShowScreenshotsBunnyPicker] = useState(false);
   const [capturedFrames, setCapturedFrames] = useState<string[]>([]);
   const [selectedThumbnailIndex, setSelectedThumbnailIndex] = useState<number | null>(null);
   // Per-field AI improve modal
@@ -2232,6 +2236,18 @@ function ProjectForm({
                 </svg>
                 Upload to Bunny
               </Button>
+              {/* Browse existing Bunny library — the picker equivalent, for
+                  reusing videos already uploaded (no re-upload). */}
+              <Button
+                type="button"
+                onClick={() => setShowBunnyPicker(true)}
+                className="cursor-pointer bg-orange-500/15 hover:bg-orange-500/25 border border-orange-500/40 text-orange-300 whitespace-nowrap"
+              >
+                <svg className="w-4 h-4 mr-1.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 6h16M4 12h16M4 18h10" />
+                </svg>
+                Browse Bunny
+              </Button>
               {/* Browse Vimeo library — kept for importing surviving legacy videos. */}
               <Button
                 type="button"
@@ -2259,8 +2275,9 @@ function ProjectForm({
               </Button>
             </div>
             <p className="text-xs text-gray-400">
-              <span className="text-orange-400 font-semibold">Upload to Bunny</span> for new videos,
-              or <span className="text-[#1ab7ea]">Browse Vimeo</span> to import an existing one, or paste any URL directly.
+              <span className="text-orange-400 font-semibold">Upload to Bunny</span> for a new video, or
+              <span className="text-orange-300"> Browse Bunny</span> / <span className="text-[#1ab7ea]">Browse Vimeo</span> to
+              pick from an existing library, or paste any URL directly.
             </p>
           </div>
         </div>
@@ -2274,6 +2291,18 @@ function ProjectForm({
               setFormMessage({ type: 'success', text: `✅ Uploaded to Bunny: "${title}"` });
             }}
             onClose={() => setShowBunnyUploader(false)}
+          />
+        )}
+
+        {/* Bunny Picker — main video URL field, browse existing library */}
+        {showBunnyPicker && (
+          <BunnyPicker
+            onSelect={(url, title) => {
+              setFormData({ ...formData, videoUrl: url });
+              setShowBunnyPicker(false);
+              setFormMessage({ type: 'success', text: `✅ Video selected: "${title}"` });
+            }}
+            onClose={() => setShowBunnyPicker(false)}
           />
         )}
 
@@ -2299,6 +2328,29 @@ function ProjectForm({
               setFormMessage({ type: 'success', text: '✅ Video added to gallery from Bunny' });
             }}
             onClose={() => setShowScreenshotsBunnyUploader(false)}
+          />
+        )}
+
+        {/* Bunny Picker — media gallery (keeps picker open for multi-pick) */}
+        {showScreenshotsBunnyPicker && (
+          <BunnyPicker
+            selectedUrls={formData.screenshots || []}
+            onSelect={(url, title) => {
+              const current = formData.screenshots || [];
+              // Toggle: if already selected, remove; else add.
+              const nextScreenshots = current.includes(url)
+                ? current.filter((s: string) => s !== url)
+                : [...current, url];
+              setFormData({ ...formData, screenshots: nextScreenshots });
+              setFormMessage({
+                type: 'success',
+                text: current.includes(url)
+                  ? `Removed "${title}" from gallery`
+                  : `✅ Added "${title}" to gallery`,
+              });
+              // Keep picker open so user can select multiple
+            }}
+            onClose={() => setShowScreenshotsBunnyPicker(false)}
           />
         )}
 
@@ -2438,7 +2490,7 @@ function ProjectForm({
 
               {/* Tab bar */}
               <div className="flex gap-2 mb-3">
-                {(['url', 'upload', 'bunny', 'vimeo'] as const).map((mode) => (
+                {(['url', 'upload', 'bunny', 'bunny-lib', 'vimeo'] as const).map((mode) => (
                   <button
                     key={mode}
                     type="button"
@@ -2457,6 +2509,14 @@ function ProjectForm({
                           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" />
                         </svg>
                         Upload to Bunny
+                      </span>
+                    )}
+                    {mode === 'bunny-lib' && (
+                      <span className="flex items-center gap-1.5">
+                        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M4 6h16M4 12h16M4 18h10" />
+                        </svg>
+                        Browse Bunny
                       </span>
                     )}
                     {mode === 'vimeo' && (
@@ -2532,6 +2592,25 @@ function ProjectForm({
                   </Button>
                   <p className="text-xs text-gray-400">
                     Video encodes on Bunny; a URL is added to the gallery when it's done.
+                  </p>
+                </div>
+              )}
+
+              {/* Bunny picker panel (browse existing library) */}
+              {screenshotsInputMode === 'bunny-lib' && (
+                <div className="flex items-center gap-3 py-2">
+                  <Button
+                    type="button"
+                    onClick={() => setShowScreenshotsBunnyPicker(true)}
+                    className="cursor-pointer bg-orange-500/15 hover:bg-orange-500/25 border border-orange-500/40 text-orange-300"
+                  >
+                    <svg className="w-4 h-4 mr-1.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M4 6h16M4 12h16M4 18h10" />
+                    </svg>
+                    Browse Bunny library
+                  </Button>
+                  <p className="text-xs text-gray-400">
+                    Pick a video already in your library — no re-upload.
                   </p>
                 </div>
               )}
