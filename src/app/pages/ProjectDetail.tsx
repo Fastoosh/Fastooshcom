@@ -5,7 +5,7 @@ import { motion } from "motion/react";
 import { GlassCard } from "../components/shared/GlassCard";
 import { NeonButton } from "../components/shared/NeonButton";
 import { SeoHead } from "../components/shared/SeoHead";
-import { ArrowLeft, Play } from "lucide-react";
+import { ArrowLeft, Play, Volume2 } from "lucide-react";
 import { api } from "../utils/api";
 import { projectId as supabaseProjectId, publicAnonKey } from '/utils/supabase/info';
 import { useTranslation } from 'react-i18next';
@@ -79,6 +79,10 @@ export function ProjectDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showVideo, setShowVideo] = useState(true); // Changed to true for autoplay
+  // Bunny videos autoplay muted (browser policy); this chip lets the user
+  // click once to unmute. Hidden after ~6s if ignored, or on click.
+  const [unmutePromptVisible, setUnmutePromptVisible] = useState(false);
+  const [audioUnmuted,        setAudioUnmuted]        = useState(false);
 
   // ── Video analytics tracking ───────────────────────────────────────────────
   const idRef           = useRef<string | undefined>(slug);
@@ -173,6 +177,9 @@ export function ProjectDetail() {
           if (evt === 'playing' || evt === 'play') {
             isPlayingRef.current = true;
             playStartRef.current = Date.now();
+            // Bunny video started (muted). Surface the unmute prompt unless
+            // the user has already unmuted this session.
+            if (!audioUnmuted) setUnmutePromptVisible(true);
             if (!viewRecordedRef.current && idRef.current) {
               viewRecordedRef.current = true;
               fetch(`${API_BASE}/projects/${idRef.current}/video-view`, {
@@ -233,6 +240,27 @@ export function ProjectDetail() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showVideo]); // re-bind only when the iframe mounts
+
+  // ── Bunny unmute prompt auto-hide (6s) ──────────────────────────────────────
+  useEffect(() => {
+    if (!unmutePromptVisible) return;
+    const t = setTimeout(() => setUnmutePromptVisible(false), 6000);
+    return () => clearTimeout(t);
+  }, [unmutePromptVisible]);
+
+  // Click handler: reload the iframe with muted=false. The click counts as a
+  // user gesture, so the browser allows audio-autoplay this time.
+  const handleUnmute = useCallback(() => {
+    if (!iframeRef.current) return;
+    const src = iframeRef.current.src;
+    // Replace muted=true → muted=false; leaves everything else intact.
+    const next = src.includes('muted=true')
+      ? src.replace('muted=true', 'muted=false')
+      : `${src}${src.includes('?') ? '&' : '?'}muted=false`;
+    iframeRef.current.src = next;
+    setAudioUnmuted(true);
+    setUnmutePromptVisible(false);
+  }, []);
 
   // ── 10-second heartbeat: flush chunks while video is actually playing ───────
   useEffect(() => {
@@ -323,10 +351,20 @@ export function ProjectDetail() {
     }
 
     // Bunny Stream — iframe.mediadelivery.net/embed/{lib}/{guid}
+    // Params: browsers block audio-autoplay without a prior user gesture,
+    // so the video must start muted for autoplay to work reliably across
+    // Chrome / Safari / mobile. Same tradeoff YouTube/Vimeo hit — Vimeo just
+    // falls back to showing the poster when autoplay is blocked, which is
+    // why some users don't see it play.
     if (url.includes('mediadelivery.net') || url.includes('b-cdn.net')) {
-      return url.includes('autoplay')
-        ? url
-        : `${url}${url.includes('?') ? '&' : '?'}autoplay=true&muted=false`;
+      if (url.includes('autoplay')) return url;
+      const params = new URLSearchParams({
+        autoplay: 'true',
+        muted:    'true',    // required — see comment above
+        loop:     'false',
+        preload:  'true',
+      });
+      return `${url}${url.includes('?') ? '&' : '?'}${params.toString()}`;
     }
 
     // Already an embed URL - add autoplay if not present
@@ -392,13 +430,30 @@ export function ProjectDetail() {
         >
           <GlassCard neonBorder className="aspect-video overflow-hidden mb-12">
             {showVideo && embedUrl ? (
-              <iframe
-                ref={iframeRef}
-                src={embedUrl}
-                className="w-full h-full"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-              />
+              <div className="relative w-full h-full">
+                <iframe
+                  ref={iframeRef}
+                  src={embedUrl}
+                  className="w-full h-full"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
+                {/* Unmute prompt — only shown for Bunny (which starts muted). */}
+                {unmutePromptVisible && (
+                  <button
+                    type="button"
+                    onClick={handleUnmute}
+                    className="absolute bottom-4 right-4 z-10 flex items-center gap-2 px-3.5 py-2 rounded-full
+                      bg-black/70 backdrop-blur-sm border border-white/15 text-white text-sm font-semibold
+                      shadow-lg shadow-black/40 hover:bg-black/85 hover:border-white/30 transition-all
+                      animate-in fade-in slide-in-from-bottom-2 duration-300"
+                    aria-label="Unmute video"
+                  >
+                    <Volume2 className="w-4 h-4" />
+                    <span>Click to unmute</span>
+                  </button>
+                )}
+              </div>
             ) : (
               <div 
                 className="w-full h-full bg-cover bg-center relative group cursor-pointer"
