@@ -26,12 +26,32 @@ interface VideoStat {
   slug:              string | null;
   imageUrl:          string | null;
   hasVideo:          boolean;
+  videoUrl?:         string | null;
   isShowreel?:       boolean;
   views:             number;
   totalWatchSeconds: number;
   avgWatchSeconds:   number;
   lastViewed:        string | null;
 }
+
+type Provider = 'vimeo' | 'bunny' | 'youtube' | 'direct' | 'unknown';
+function detectProvider(url: string | null | undefined): Provider {
+  if (!url) return 'unknown';
+  const u = url.toLowerCase();
+  if (u.includes('iframe.mediadelivery.net') || u.includes('b-cdn.net')) return 'bunny';
+  if (u.includes('vimeo.com') || u.includes('player.vimeo')) return 'vimeo';
+  if (u.includes('youtube.com') || u.includes('youtu.be')) return 'youtube';
+  if (/\.(mp4|webm|mov|avi|m3u8)(\?|$)/i.test(url)) return 'direct';
+  return 'unknown';
+}
+
+const PROVIDER_META: Record<Provider, { label: string; cls: string }> = {
+  vimeo:   { label: 'Vimeo',   cls: 'bg-sky-500/15 text-sky-300 border-sky-500/30' },
+  bunny:   { label: 'Bunny',   cls: 'bg-orange-500/15 text-orange-300 border-orange-500/30' },
+  youtube: { label: 'YouTube', cls: 'bg-red-500/15 text-red-300 border-red-500/30' },
+  direct:  { label: 'Direct',  cls: 'bg-slate-500/15 text-slate-300 border-slate-500/30' },
+  unknown: { label: '—',       cls: 'bg-white/5 text-white/40 border-white/10' },
+};
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -112,6 +132,7 @@ export function VideoStatsTab() {
   const [refreshing,  setRefreshing]  = useState(false);
   const [sortBy,      setSortBy]      = useState<'views' | 'totalWatchSeconds' | 'avgWatchSeconds'>('views');
   const [chartMetric, setChartMetric] = useState<'views' | 'totalWatchSeconds' | 'avgWatchSeconds'>('views');
+  const [providerFilter, setProviderFilter] = useState<'all' | Provider>('all');
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -138,7 +159,12 @@ export function VideoStatsTab() {
 
   // Separate showreel from project rows
   const showreelStat = stats.find(s => s.isShowreel);
-  const projectStats = stats.filter(s => !s.isShowreel);
+  const projectStatsAll = stats.filter(s => !s.isShowreel);
+  // Provider filter — 'all' shows everything (including videoless projects);
+  // any other value narrows to that provider only.
+  const projectStats = providerFilter === 'all'
+    ? projectStatsAll
+    : projectStatsAll.filter(s => detectProvider(s.videoUrl) === providerFilter);
 
   // ── Sorted table data ────────────────────────────────────────────────────────
   const sorted = [...projectStats].sort((a, b) => b[sortBy] - a[sortBy]);
@@ -304,24 +330,44 @@ export function VideoStatsTab() {
             <Play className="w-4 h-4 text-blue-400" />
             <h3 className="text-white font-semibold">All Projects</h3>
           </div>
-          <div className="flex gap-1 p-1 rounded-lg bg-white/5 border border-white/8">
-            {([
-              { id: 'views',             label: 'Views'      },
-              { id: 'totalWatchSeconds', label: 'Watch Time' },
-              { id: 'avgWatchSeconds',   label: 'Avg Watch'  },
-            ] as const).map(opt => (
-              <button
-                key={opt.id}
-                onClick={() => setSortBy(opt.id)}
-                className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
-                  sortBy === opt.id
-                    ? 'bg-blue-500/20 text-white border border-blue-500/30'
-                    : 'text-white/40 hover:text-white/70'
-                }`}
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Provider filter — narrows the table to videos hosted on a
+                specific provider. Vimeo is here so you can still see the
+                old-account stats after the Bunny migration. */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-white/40 text-[10px] uppercase tracking-wider font-bold">Provider</span>
+              <select
+                value={providerFilter}
+                onChange={e => setProviderFilter(e.target.value as 'all' | Provider)}
+                className="bg-white/5 border border-white/10 rounded-md px-2 py-1 text-xs text-white/80 focus:outline-none focus:border-blue-400/50"
               >
-                {opt.label}
-              </button>
-            ))}
+                <option value="all"     className="bg-[#0a0a0f]">All</option>
+                <option value="bunny"   className="bg-[#0a0a0f]">Bunny</option>
+                <option value="vimeo"   className="bg-[#0a0a0f]">Vimeo</option>
+                <option value="youtube" className="bg-[#0a0a0f]">YouTube</option>
+                <option value="direct"  className="bg-[#0a0a0f]">Direct MP4</option>
+                <option value="unknown" className="bg-[#0a0a0f]">No video / Other</option>
+              </select>
+            </div>
+            <div className="flex gap-1 p-1 rounded-lg bg-white/5 border border-white/8">
+              {([
+                { id: 'views',             label: 'Views'      },
+                { id: 'totalWatchSeconds', label: 'Watch Time' },
+                { id: 'avgWatchSeconds',   label: 'Avg Watch'  },
+              ] as const).map(opt => (
+                <button
+                  key={opt.id}
+                  onClick={() => setSortBy(opt.id)}
+                  className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
+                    sortBy === opt.id
+                      ? 'bg-blue-500/20 text-white border border-blue-500/30'
+                      : 'text-white/40 hover:text-white/70'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -368,7 +414,17 @@ export function VideoStatsTab() {
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5">
                           <p className="text-white/85 text-sm font-medium truncate">{stat.title}</p>
-                          {!stat.hasVideo && (
+                          {stat.hasVideo ? (
+                            (() => {
+                              const p = detectProvider(stat.videoUrl);
+                              const meta = PROVIDER_META[p];
+                              return (
+                                <span className={`shrink-0 text-[9px] px-1.5 py-0.5 rounded-full border ${meta.cls}`}>
+                                  {meta.label}
+                                </span>
+                              );
+                            })()
+                          ) : (
                             <span className="shrink-0 text-[9px] px-1.5 py-0.5 rounded-full bg-white/5 text-white/25 border border-white/8">
                               no video
                             </span>

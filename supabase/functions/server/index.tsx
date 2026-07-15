@@ -3101,6 +3101,9 @@ app.get("/make-server-e07959ec/admin/video-stats", requireAuth, async (c) => {
         slug:            project.slug,
         imageUrl:        project.image_url,
         hasVideo:        !!project.video_url,
+        // Sent so the client can filter/label by provider (vimeo | bunny |
+        // youtube | direct | none). Not sensitive — same URL is public.
+        videoUrl:        project.video_url ?? null,
         isShowreel:      false,
         views,
         totalWatchSeconds,
@@ -3112,21 +3115,33 @@ app.get("/make-server-e07959ec/admin/video-stats", requireAuth, async (c) => {
     // Sort projects by views descending
     result.sort((a, b) => b.views - a.views);
 
-    // Prepend showreel (always pinned at the top)
-    const showreelRaw = (await kv.get('showreel_video_stats')) ?? { views: 0, totalWatchSeconds: 0, lastViewed: null };
-    const srViews     = showreelRaw.views || 0;
-    const srWatch     = showreelRaw.totalWatchSeconds || 0;
+    // Prepend showreel (always pinned at the top). Also pull the current
+    // showreel URL from home content so the client can label it with the
+    // right provider (Vimeo / Bunny / etc).
+    const [showreelRaw, homeRaw] = await Promise.all([
+      kv.get('showreel_video_stats'),
+      kv.get('home_content'),
+    ]);
+    const srStats     = showreelRaw ?? { views: 0, totalWatchSeconds: 0, lastViewed: null };
+    const srViews     = srStats.views || 0;
+    const srWatch     = srStats.totalWatchSeconds || 0;
+    let srUrl: string | null = null;
+    try {
+      const home = typeof homeRaw === 'string' ? JSON.parse(homeRaw) : homeRaw;
+      srUrl = home?.showreelUrl ?? null;
+    } catch { /* keep srUrl null */ }
     result.unshift({
       projectId:        'showreel',
       title:            'Showreel',
       slug:             null,
       imageUrl:         null,
-      hasVideo:         true,
+      hasVideo:         !!srUrl,
+      videoUrl:         srUrl,
       isShowreel:       true,
       views:            srViews,
       totalWatchSeconds: srWatch,
       avgWatchSeconds:  srViews > 0 ? Math.round(srWatch / srViews) : 0,
-      lastViewed:       showreelRaw.lastViewed ?? null,
+      lastViewed:       srStats.lastViewed ?? null,
     });
 
     return c.json({ success: true, data: result });
