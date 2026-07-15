@@ -29,8 +29,9 @@ function fmtTime(secs: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-function detectType(url: string): "direct" | "youtube" | "vimeo" | "unknown" {
+function detectType(url: string): "direct" | "youtube" | "vimeo" | "bunny" | "unknown" {
   if (/\.(mp4|webm|mov|avi)(\?|$)/i.test(url)) return "direct";
+  if (url.includes("iframe.mediadelivery.net") || url.includes("b-cdn.net")) return "bunny";
   if (url.includes("youtube.com") || url.includes("youtu.be")) return "youtube";
   if (url.includes("vimeo.com")) return "vimeo";
   return "unknown";
@@ -43,6 +44,30 @@ function getYouTubeId(url: string): string | null {
 
 function getVimeoId(url: string): string | null {
   return url.split("vimeo.com/")[1]?.split("?")[0]?.split("/").pop() ?? null;
+}
+
+// Bunny embed URLs: iframe.mediadelivery.net/embed/{lib}/{guid}
+// Or raw CDN URLs: {cdn}.b-cdn.net/{guid}/...
+function getBunnyGuid(url: string): string | null {
+  const embed = url.match(/mediadelivery\.net\/(?:embed|play)\/\d+\/([0-9a-f-]+)/i);
+  if (embed) return embed[1];
+  const cdn = url.match(/b-cdn\.net\/([0-9a-f-]+)/i);
+  if (cdn) return cdn[1];
+  return null;
+}
+
+const BUNNY_CDN_FALLBACK = "vz-869cc91d-3f3.b-cdn.net";
+function getBunnyCdnHost(url: string): string {
+  const m = url.match(/(vz-[a-f0-9-]+\.b-cdn\.net)/i);
+  return m ? m[1] : BUNNY_CDN_FALLBACK;
+}
+
+// The 720p MP4 that always ships once encoding is done — good for a
+// scrubbable <video> element (same code path as direct MP4 uploads).
+function getBunnyDirectMp4(url: string): string | null {
+  const guid = getBunnyGuid(url);
+  if (!guid) return null;
+  return `https://${getBunnyCdnHost(url)}/${guid}/play_720p.mp4`;
 }
 
 /** Draws the cropped region onto a canvas and returns a JPEG data URL (800×800). */
@@ -103,6 +128,15 @@ export function VideoThumbnailCapture({ videoUrl, initialFrames = [], onApply, o
   const type = detectType(videoUrl);
   const vmId = type === "vimeo"   ? getVimeoId(videoUrl)   : null;
   const ytId = type === "youtube" ? getYouTubeId(videoUrl) : null;
+  // Bunny: route through the existing "direct" video element by feeding it
+  // the auto-published 720p MP4 URL. Same scrub-and-capture code path.
+  const bunnyGuid    = type === "bunny" ? getBunnyGuid(videoUrl) : null;
+  const bunnyMp4Url  = type === "bunny" ? getBunnyDirectMp4(videoUrl) : null;
+  const bunnyCdnHost = type === "bunny" ? getBunnyCdnHost(videoUrl) : "";
+  // Whether the direct-video code path should be active (native direct URL,
+  // or Bunny which we route through the same path via the 720p MP4).
+  const isDirectPath = type === "direct" || type === "bunny";
+  const directSrc    = type === "bunny" ? bunnyMp4Url ?? "" : videoUrl;
 
   // ── Direct video ──────────────────────────────────────────────────────
   const videoRef       = useRef<HTMLVideoElement>(null);
@@ -149,13 +183,14 @@ export function VideoThumbnailCapture({ videoUrl, initialFrames = [], onApply, o
   useEffect(() => {
     if (type === "vimeo"   && vmId && initialFrames.length === 0) loadVimeoThumbnails();
     if (type === "youtube" && ytId && initialFrames.length === 0) loadYouTubeThumbnails();
+    if (type === "bunny"   && bunnyGuid && initialFrames.length === 0) loadBunnyThumbnails();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ─── Direct video event listeners ───────────────────────────────────
   useEffect(() => {
     const v = videoRef.current;
-    if (!v || type !== "direct") return;
+    if (!v || !isDirectPath) return;
     const onTime = () => setCurrentTime(v.currentTime);
     const onDur  = () => setDuration(v.duration);
     const onLoad = () => { setVideoLoaded(true); setDuration(v.duration); };
@@ -174,7 +209,7 @@ export function VideoThumbnailCapture({ videoUrl, initialFrames = [], onApply, o
 
   // ─── Keyboard shortcuts (direct) ────────────────────────────────────
   useEffect(() => {
-    if (type !== "direct" || cropMode) return;
+    if (!isDirectPath || cropMode) return;
     const handler = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA") return;
@@ -260,6 +295,20 @@ export function VideoThumbnailCapture({ videoUrl, initialFrames = [], onApply, o
       }
     } catch (err) { setStatusMsg(`⚠️ Error: ${String(err)}`); }
     finally { setLoading(false); setTimeout(() => setStatusMsg(""), 4000); }
+  };
+
+  // ─── Load Bunny auto thumbnail ───────────────────────────────────────
+  // Bunny publishes one auto-generated thumbnail per video at a stable URL.
+  // We seed the frame list with it so the admin has something immediately;
+  // beyond that they can scrub through the 720p MP4 (direct branch) to
+  // capture custom frames — best of both worlds.
+  const loadBunnyThumbnails = () => {
+    if (!bunnyGuid) return;
+    const auto = `https://${bunnyCdnHost}/${bunnyGuid}/thumbnail.jpg`;
+    setFrames([auto]);
+    setSelectedIndex(0);
+    setStatusMsg("✅ Bunny auto thumbnail loaded — scrub the video below to capture more");
+    setTimeout(() => setStatusMsg(""), 3500);
   };
 
   // ─── Load YouTube thumbnails ─────────────────────────────────────────
@@ -352,7 +401,9 @@ export function VideoThumbnailCapture({ videoUrl, initialFrames = [], onApply, o
             <p className="text-xs text-white/40 mt-0.5">
               {cropMode
                 ? "Drag to reposition · Scroll or use the slider to zoom · Locked to 1:1 square"
-                : type === "direct"
+                : type === "bunny"
+                ? "Bunny auto thumbnail loaded · scrub the 720p stream to capture more · crop any"
+                : isDirectPath
                 ? "Play · Pause · Step frame-by-frame · Capture HD frame · Crop any thumbnail"
                 : type === "vimeo"
                 ? "Thumbnails from Vimeo Pictures API — select one, then crop to square"
@@ -371,12 +422,13 @@ export function VideoThumbnailCapture({ videoUrl, initialFrames = [], onApply, o
           <div className="flex flex-col w-[55%] shrink-0 border-r border-white/10 bg-black">
             <div className="relative flex-1 bg-black flex items-center justify-center overflow-hidden min-h-0">
 
-              {/* Direct MP4 */}
-              {type === "direct" && (
+              {/* Direct MP4 (also used for Bunny — the 720p ladder step is
+                  published at a predictable CDN URL, same code path). */}
+              {isDirectPath && (
                 <>
                   <video
                     ref={videoRef}
-                    src={videoUrl}
+                    src={directSrc}
                     crossOrigin="anonymous"
                     className="max-w-full max-h-full object-contain"
                     preload="metadata"
@@ -411,8 +463,8 @@ export function VideoThumbnailCapture({ videoUrl, initialFrames = [], onApply, o
               )}
             </div>
 
-            {/* ── Direct MP4 controls ── */}
-            {type === "direct" && (
+            {/* ── Direct MP4 / Bunny controls ── */}
+            {isDirectPath && (
               <div className="shrink-0 px-4 py-3 bg-black/80 border-t border-white/10 space-y-3">
                 <div className="flex items-center gap-3">
                   <span className="text-xs tabular-nums text-white/50 w-10 text-right shrink-0">{fmtTime(currentTime)}</span>
@@ -574,10 +626,10 @@ export function VideoThumbnailCapture({ videoUrl, initialFrames = [], onApply, o
               <>
                 <div className="px-4 py-3 border-b border-white/10 shrink-0 flex items-center justify-between">
                   <h4 className="text-sm font-semibold text-white">
-                    {type === "direct" ? "Captured Frames" : "Available Thumbnails"}
+                    {isDirectPath ? "Captured Frames" : "Available Thumbnails"}
                     {frames.length > 0 && <span className="text-white/40 font-normal ml-1">({frames.length})</span>}
                   </h4>
-                  {frames.length > 0 && type === "direct" && (
+                  {frames.length > 0 && isDirectPath && (
                     <button onClick={() => { setFrames([]); setSelectedIndex(null); }}
                       className="text-xs text-red-400/70 hover:text-red-400 transition-colors">
                       Clear all
@@ -599,7 +651,7 @@ export function VideoThumbnailCapture({ videoUrl, initialFrames = [], onApply, o
                     </div>
                   ) : frames.length === 0 ? (
                     <div className="h-full flex items-center justify-center text-center text-white/25 text-sm px-6 leading-relaxed">
-                      {type === "direct"
+                      {isDirectPath
                         ? "Play the video, step to the exact frame, then click \"Capture Frame\""
                         : type === "vimeo"
                         ? "Loading Vimeo thumbnails…"
