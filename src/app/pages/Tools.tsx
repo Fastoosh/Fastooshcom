@@ -208,7 +208,27 @@ export function Tools() {
 
         {/* Tools Grid */}
         {loading ? (
-          <div className="text-center text-white/60 py-12">{t('tools.loading')}</div>
+          // Skeleton grid — mirrors the flex-wrap layout of the real cards,
+          // with an aspect-square image area on top and a shorter content
+          // block below (matching name + description + CTA). Pulses so the
+          // user knows something is loading vs. broken.
+          <div className="flex flex-wrap justify-center gap-8 mb-24">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div
+                key={`skeleton-${i}`}
+                className="w-full md:w-[calc(50%-1rem)] lg:w-[calc(33.333%-1.334rem)]
+                  rounded-2xl border border-white/8 overflow-hidden bg-white/[0.02] animate-pulse"
+              >
+                <div className="aspect-square bg-white/5" />
+                <div className="p-6 space-y-3">
+                  <div className="h-5 w-2/3 rounded bg-white/8" />
+                  <div className="h-3 w-full rounded bg-white/5" />
+                  <div className="h-3 w-4/5 rounded bg-white/5" />
+                  <div className="h-10 w-full rounded-xl bg-white/5 mt-2" />
+                </div>
+              </div>
+            ))}
+          </div>
         ) : (
           <div className="flex flex-wrap justify-center gap-8 mb-24">
             {tools.map((tool, index) => (

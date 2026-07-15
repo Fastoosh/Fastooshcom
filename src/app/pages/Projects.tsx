@@ -178,7 +178,17 @@ export function Projects() {
 
         {/* Projects Grid */}
         {loading ? (
-          <div className="text-center text-white/60 py-12">{t('projects.loading')}</div>
+          // Skeleton grid — same aspect-square layout the real content will
+          // use, pulsing so the user knows something is loading. Nine squares
+          // (three rows of three at lg+) fills the viewport nicely.
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {Array.from({ length: 9 }).map((_, i) => (
+              <div
+                key={`skeleton-${i}`}
+                className="aspect-square rounded-2xl bg-white/5 border border-white/8 animate-pulse"
+              />
+            ))}
+          </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {filteredProjects.map((project, index) => (
