@@ -36,14 +36,12 @@ export function Home() {
   const { t, i18n } = useTranslation();
   const { isRTL } = useLanguage();
   const [homeContent, setHomeContent] = useState<HomeContent>(DEFAULT_HOME_CONTENT);
-  const [featuredProjects, setFeaturedProjects] = useState<any[]>([
-    { id: "fintech-explainer",  title: "FinTech Product Launch",  outcome: "2.3M views, 340% increase in sign-ups",  thumbnail: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800&q=80" },
-    { id: "saas-onboarding",    title: "SaaS Onboarding Flow",    outcome: "40% faster user activation",            thumbnail: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=800&q=80" },
-    { id: "brand-identity",     title: "Tech Brand Identity",     outcome: "Complete visual system in 3 weeks",     thumbnail: "https://images.unsplash.com/photo-1558655146-9f40138edfeb?w=800&q=80" },
-    { id: "product-demo",       title: "Product Demo Video",      outcome: "Featured at TechCrunch Disrupt",        thumbnail: "https://images.unsplash.com/photo-1551434678-e076c223a692?w=800&q=80" },
-    { id: "social-campaign",    title: "Social Media Campaign",   outcome: "5M impressions in 2 weeks",            thumbnail: "https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=800&q=80" },
-    { id: "ui-animations",      title: "App UI Animations",       outcome: "150+ micro-interactions",              thumbnail: "https://images.unsplash.com/photo-1581291518857-4e27b48ff24e?w=800&q=80" },
-  ]);
+  // Start empty and render skeleton squares while /projects is in flight.
+  // Previously seeded with 6 Unsplash placeholders — a fast scroller would
+  // see the wrong images for ~200ms before the real featured work swapped in
+  // (visible flicker). Empty + skeleton avoids that entirely.
+  const [featuredProjects, setFeaturedProjects] = useState<any[]>([]);
+  const [featuredLoading,  setFeaturedLoading]  = useState(true);
   const [availability, setAvailability] = useState<{ 
     status: 'available' | 'busy' | 'booked'; 
     message: string;
@@ -130,6 +128,8 @@ export function Home() {
       }
     } catch (error) {
       console.error('Error fetching featured projects:', error);
+    } finally {
+      setFeaturedLoading(false);
     }
   };
 
@@ -373,32 +373,45 @@ export function Home() {
             <h2 className="text-4xl md:text-5xl tracking-tight mb-4">{c.featuredHeading}</h2>
             <p className="text-xl text-white/60">{c.featuredSubtitle}</p>
           </div>
-          <div className={`grid grid-cols-1 gap-8 ${
-            featuredProjects.length === 1
-              ? 'md:grid-cols-1 max-w-md mx-auto'
-              : featuredProjects.length === 2
-                ? 'md:grid-cols-2 max-w-3xl mx-auto'
-                : 'md:grid-cols-2 lg:grid-cols-3'
-          }`}>
-            {featuredProjects.map((project, index) => (
-              <motion.a key={project.id} href={`/projects/${project.slug || project.id}`} initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.5, delay: index * 0.1 }}>
-                <GlassCard hover neonBorder className="overflow-hidden group aspect-square">
-                  {/* Full-bleed image */}
-                  <img
-                    src={project.thumbnail}
-                    alt={project.title}
-                    className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                  />
-                  {/* Title-only hover overlay */}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-6" style={{ zIndex: 5 }}>
-                    <h3 className="text-white text-xl font-semibold leading-snug drop-shadow-lg">
-                      {project.title}
-                    </h3>
-                  </div>
-                </GlassCard>
-              </motion.a>
-            ))}
-          </div>
+          {featuredLoading && featuredProjects.length === 0 ? (
+            // Skeleton grid — same 6-square layout the real content will use,
+            // pulsing so the user knows something is loading vs. broken.
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div
+                  key={`skeleton-${i}`}
+                  className="aspect-square rounded-2xl bg-white/5 border border-white/8 animate-pulse"
+                />
+              ))}
+            </div>
+          ) : (
+            <div className={`grid grid-cols-1 gap-8 ${
+              featuredProjects.length === 1
+                ? 'md:grid-cols-1 max-w-md mx-auto'
+                : featuredProjects.length === 2
+                  ? 'md:grid-cols-2 max-w-3xl mx-auto'
+                  : 'md:grid-cols-2 lg:grid-cols-3'
+            }`}>
+              {featuredProjects.map((project, index) => (
+                <motion.a key={project.id} href={`/projects/${project.slug || project.id}`} initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.5, delay: index * 0.1 }}>
+                  <GlassCard hover neonBorder className="overflow-hidden group aspect-square">
+                    {/* Full-bleed image */}
+                    <img
+                      src={project.thumbnail}
+                      alt={project.title}
+                      className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    />
+                    {/* Title-only hover overlay */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-6" style={{ zIndex: 5 }}>
+                      <h3 className="text-white text-xl font-semibold leading-snug drop-shadow-lg">
+                        {project.title}
+                      </h3>
+                    </div>
+                  </GlassCard>
+                </motion.a>
+              ))}
+            </div>
+          )}
           <div className="text-center mt-12">
             <NeonButton href="/projects" variant="secondary">{t('home.viewAllProjects')}</NeonButton>
           </div>
