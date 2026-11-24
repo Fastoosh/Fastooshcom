@@ -21,7 +21,8 @@ export const BUNNY_CDN_HOSTNAME =
 export function detectVideoProvider(url: string | null | undefined): VideoProvider {
   if (!url) return 'unknown';
   const u = url.toLowerCase();
-  if (u.includes('iframe.mediadelivery.net') || u.includes('b-cdn.net')) return 'bunny';
+  // iframe.mediadelivery.net/embed|play and player.mediadelivery.net/play
+  if (u.includes('mediadelivery.net') || u.includes('b-cdn.net')) return 'bunny';
   if (u.includes('vimeo.com') || u.includes('player.vimeo')) return 'vimeo';
   if (u.includes('youtube.com') || u.includes('youtu.be')) return 'youtube';
   if (/\.(mp4|webm|mov|avi|m3u8)(\?|$)/i.test(url)) return 'direct';

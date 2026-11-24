@@ -11,6 +11,13 @@ import { projectId as supabaseProjectId, publicAnonKey } from '/utils/supabase/i
 import { useTranslation } from 'react-i18next';
 import { fetchTranslations, deepMergeTranslations } from '../utils/translations';
 import { detectVideoProvider, getBunnyEmbedUrl, getBunnyAutoThumbnailUrl, subscribeBunnyPlayerEvents } from '../utils/videoProvider';
+import { useVideoWatchTracking } from '../hooks/useVideoWatchTracking';
+
+// Watch tracking callbacks shared by every gallery tile.
+interface GalleryTracking {
+  onView: () => void;
+  onWatch: (seconds: number, engaged: boolean) => void;
+}
 
 // Gallery tile for a Bunny video: shows the CDN thumbnail with a play button
 // and only mounts the iframe player on click, so a gallery of many videos
@@ -18,15 +25,25 @@ import { detectVideoProvider, getBunnyEmbedUrl, getBunnyAutoThumbnailUrl, subscr
 // Aspect ratio: Bunny renders the thumbnail at the video's own dimensions, so
 // the image's natural size gives the real ratio (vertical, square, etc.).
 // Falls back to 16:9 until it loads or if it fails.
-function BunnyGalleryItem({ url, title, onPlay }: { url: string; title: string; onPlay?: () => void }) {
+function BunnyGalleryItem({ url, title, tracking }: { url: string; title: string; tracking?: GalleryTracking }) {
   const [playing, setPlaying] = useState(false);
   const [ratio, setRatio] = useState<number>(16 / 9);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
   const thumb = getBunnyAutoThumbnailUrl(url);
+  useVideoWatchTracking({
+    elementRef: iframeRef,
+    kind:       tracking ? 'bunny' : null,
+    enabled:    playing,
+    bindKey:    url,
+    onView:     () => tracking?.onView(),
+    onWatch:    (secs, engaged) => tracking?.onWatch(secs, engaged),
+  });
   if (playing) {
     const src = `${getBunnyEmbedUrl(url)}?autoplay=true&preload=true&responsive=true`;
     return (
       <div className="relative w-full bg-black" style={{ aspectRatio: ratio }}>
         <iframe
+          ref={iframeRef}
           src={src}
           title={title}
           className="absolute inset-0 w-full h-full"
@@ -40,7 +57,7 @@ function BunnyGalleryItem({ url, title, onPlay }: { url: string; title: string; 
   return (
     <button
       type="button"
-      onClick={() => { setPlaying(true); onPlay?.(); }}
+      onClick={() => setPlaying(true)}
       className="group relative block w-full bg-black/40 cursor-pointer"
       style={{ aspectRatio: ratio }}
       aria-label={`Play ${title}`}
@@ -67,26 +84,36 @@ function BunnyGalleryItem({ url, title, onPlay }: { url: string; title: string; 
   );
 }
 
+// Gallery tile for a direct video file (mp4/webm…).
+function GalleryDirectVideo({ url, tracking }: { url: string; tracking?: GalleryTracking }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  useVideoWatchTracking({
+    elementRef: videoRef,
+    kind:       tracking ? 'direct' : null,
+    enabled:    true,
+    bindKey:    url,
+    onView:     () => tracking?.onView(),
+    onWatch:    (secs, engaged) => tracking?.onWatch(secs, engaged),
+  });
+  return <video ref={videoRef} src={url} controls className="w-full" preload="metadata" />;
+}
+
 const API_BASE = `https://${supabaseProjectId}.supabase.co/functions/v1/make-server-e07959ec`;
 
 // ── Smart Vimeo embed: detects real aspect ratio via oEmbed ───────────────────
-function SmartVimeoEmbed({ embedSrc, title, onPlay }: { embedSrc: string; title: string; onPlay?: () => void }) {
+function SmartVimeoEmbed({ embedSrc, title, tracking }: { embedSrc: string; title: string; tracking?: GalleryTracking }) {
   const [ratio, setRatio] = useState<number | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const onPlayRef = useRef(onPlay);
-  onPlayRef.current = onPlay;
 
-  // Report the first play (used for gallery video stats).
-  useEffect(() => {
-    if (!onPlay || !iframeRef.current) return;
-    let player: Player | null = null;
-    try {
-      player = new Player(iframeRef.current);
-      player.on('play', () => onPlayRef.current?.());
-    } catch { /* player API unavailable — skip tracking */ }
-    return () => { try { player?.off('play'); } catch { /* ignore */ } };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [embedSrc]);
+  // Gallery video stats: plays, watch time, "stayed".
+  useVideoWatchTracking({
+    elementRef: iframeRef,
+    kind:       tracking ? 'vimeo' : null,
+    enabled:    true,
+    bindKey:    embedSrc,
+    onView:     () => tracking?.onView(),
+    onWatch:    (secs, engaged) => tracking?.onWatch(secs, engaged),
+  });
 
   // Extract numeric video ID from a player.vimeo.com/video/NNNN URL
   const videoId = embedSrc.match(/\/video\/(\d+)/)?.[1];
@@ -179,19 +206,25 @@ export function ProjectDetail() {
   const engagedSentRef     = useRef(false);
   const ENGAGED_SECONDS    = 5;
 
-  // Gallery video plays — counted once per video per page view.
-  const galleryPlayed = useRef<Set<string>>(new Set());
-  const trackGalleryPlay = useCallback((url: string) => {
-    const pid = idRef.current;
-    if (!pid || galleryPlayed.current.has(url)) return;
-    galleryPlayed.current.add(url);
+  // Gallery video stats: one play per video per page view, plus watch time
+  // and "stayed". Takes the project id explicitly (not idRef) so time sent
+  // while leaving a project is still credited to that project.
+  const sendGalleryStat = useCallback((pid: string | undefined, url: string, body: Record<string, unknown>) => {
+    if (!pid) return;
     fetch(`${API_BASE}/projects/${pid}/gallery-play`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${publicAnonKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url }),
+      body: JSON.stringify({ url, ...body }),
       keepalive: true,
     }).catch(() => { /* stats are best-effort */ });
   }, []);
+  const galleryTracking = (url: string): GalleryTracking => {
+    const pid = (project as any).id as string | undefined;
+    return {
+      onView:  () => sendGalleryStat(pid, url, { addPlay: true }),
+      onWatch: (secs, engaged) => sendGalleryStat(pid, url, { addPlay: false, watchSeconds: secs, engaged }),
+    };
+  };
 
   // View is recorded on first play event, not on page load
 
@@ -232,7 +265,6 @@ export function ProjectDetail() {
     onScreenSecondsRef.current = 0;
     engagedSentRef.current  = false;
     videoVisibleRef.current = true;
-    galleryPlayed.current   = new Set();
   }, [slug, drainTimer]);
 
   /** Called when the play button overlay is clicked — shows iframe, records one view. */
@@ -291,6 +323,8 @@ export function ProjectDetail() {
     if (url.includes('mediadelivery.net') || url.includes('b-cdn.net')) {
       const onMessage = (e: MessageEvent) => {
         if (!e.origin.includes('mediadelivery.net')) return;
+        // Only the main player — gallery Bunny players post the same events.
+        if (e.source !== iframeRef.current?.contentWindow) return;
         try {
           const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
           const evt  = data?.event ?? data?.type;
@@ -743,24 +777,18 @@ export function ProjectDetail() {
                         <SmartVimeoEmbed
                           embedSrc={`https://player.vimeo.com/video/${getVimeoEmbedId(url)}?badge=0&autopause=0&player_id=0&app_id=58479&title=0&byline=0&portrait=0`}
                           title={`${t('projects.detail.stills')} ${index + 1}`}
-                          onPlay={() => trackGalleryPlay(url)}
+                          tracking={galleryTracking(url)}
                         />
                       ) : detectVideoProvider(url) === 'bunny' ? (
                         /* ── Bunny Stream video ── */
                         <BunnyGalleryItem
                           url={url}
                           title={`${t('projects.detail.stills')} ${index + 1}`}
-                          onPlay={() => trackGalleryPlay(url)}
+                          tracking={galleryTracking(url)}
                         />
                       ) : isDirectVid(url) ? (
                         /* ── Direct video file ── */
-                        <video
-                          src={url}
-                          controls
-                          className="w-full"
-                          preload="metadata"
-                          onPlay={() => trackGalleryPlay(url)}
-                        />
+                        <GalleryDirectVideo url={url} tracking={galleryTracking(url)} />
                       ) : (
                         /* ── Static image ── */
                         <img

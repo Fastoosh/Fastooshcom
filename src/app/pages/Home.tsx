@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef, useCallback } from "react";
-import { subscribeBunnyPlayerEvents } from '../utils/videoProvider';
+import { useState, useEffect, useRef } from "react";
+import { getBunnyEmbedUrl } from '../utils/videoProvider';
+import { useVideoWatchTracking, trackableKind } from '../hooks/useVideoWatchTracking';
 import { NeonButton } from "../components/shared/NeonButton";
 import { GlassCard } from "../components/shared/GlassCard";
 import { AvailabilityBadge } from "../components/shared/AvailabilityBadge";
@@ -10,7 +11,6 @@ import { motion } from "motion/react";
 import { useTranslation } from "react-i18next";
 import { fetchTranslations, deepMergeTranslations } from "../utils/translations";
 import { useLanguage } from "../hooks/useLanguage";
-import Player from '@vimeo/player';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-e07959ec`;
@@ -170,15 +170,17 @@ export function Home() {
     // Bunny Stream — pass the embed URL through with autoplay params. Muted
     // is required for browsers to allow autoplay without a prior user
     // gesture (same tradeoff as ProjectDetail).
+    // Always use the standard iframe.mediadelivery.net/embed player: the
+    // player.mediadelivery.net/play page (a link Bunny also hands out) never
+    // reports play/pause to the site, so the showreel recorded nothing.
     if (url.includes('mediadelivery.net') || url.includes('b-cdn.net')) {
-      if (url.includes('autoplay')) return url;
       const params = new URLSearchParams({
         autoplay: 'true',
         muted:    'true',
         loop:     'false',
         preload:  'true',
       });
-      return `${url}${url.includes('?') ? '&' : '?'}${params.toString()}`;
+      return `${getBunnyEmbedUrl(url)}?${params.toString()}`;
     }
     return url;
   };
@@ -187,114 +189,25 @@ export function Home() {
   const embedUrl = getEmbedUrl(c.showreelUrl);
   
   // ── Showreel video tracking ────────────────────────────────────────────────
-  const showreelIframeRef  = useRef<HTMLIFrameElement>(null);
-  const srPlayStartRef     = useRef<number | null>(null);
-  const srIsPlayingRef     = useRef(false);
-  const srViewRecordedRef  = useRef(false);
-
-  const postShowreelWatch = useCallback((secs: number) => {
-    if (secs <= 0) return;
+  // Same tracker as the project gallery: a view on first real play, watch time
+  // only while on screen, and one "stayed" once it was watched ≥5s on screen.
+  const showreelIframeRef = useRef<HTMLIFrameElement>(null);
+  const postShowreel = (body: Record<string, unknown>) => {
     fetch(`${API_BASE}/showreel/video-view`, {
       method:    'POST',
       headers:   { 'Authorization': `Bearer ${publicAnonKey}`, 'Content-Type': 'application/json' },
-      body:      JSON.stringify({ addView: false, watchSeconds: secs }),
+      body:      JSON.stringify(body),
       keepalive: true,
     }).catch(err => console.warn('[ShowreelTrack] send failed:', err));
-  }, []);
-
-  const srDrainTimer = useCallback((keepRunning: boolean) => {
-    if (srPlayStartRef.current === null) return;
-    const elapsed = Math.floor((Date.now() - srPlayStartRef.current) / 1000);
-    srPlayStartRef.current = keepRunning ? Date.now() : null;
-    postShowreelWatch(elapsed);
-  }, [postShowreelWatch]);
-
-  // Bind Vimeo / YouTube player events when the embed URL is ready
-  useEffect(() => {
-    if (!embedUrl || !showreelIframeRef.current) return;
-
-    const onPlay = () => {
-      srIsPlayingRef.current = true;
-      srPlayStartRef.current = Date.now();
-      if (!srViewRecordedRef.current) {
-        srViewRecordedRef.current = true;
-        fetch(`${API_BASE}/showreel/video-view`, {
-          method:  'POST',
-          headers: { 'Authorization': `Bearer ${publicAnonKey}`, 'Content-Type': 'application/json' },
-          body:    JSON.stringify({ addView: true, watchSeconds: 0 }),
-        }).catch(err => console.warn('[ShowreelTrack] view record failed:', err));
-      }
-    };
-    const onPause = () => { srIsPlayingRef.current = false; srDrainTimer(false); };
-    const onEnded = () => { srIsPlayingRef.current = false; srDrainTimer(false); };
-
-    // Vimeo
-    if (c.showreelUrl?.includes('vimeo.com') || embedUrl.includes('player.vimeo')) {
-      const vp = new Player(showreelIframeRef.current);
-      vp.on('play',  onPlay);
-      vp.on('pause', onPause);
-      vp.on('ended', onEnded);
-      return () => { vp.off('play', onPlay); vp.off('pause', onPause); vp.off('ended', onEnded); };
-    }
-
-    // Bunny Stream — listens for iframe postMessage events with
-    // {event: 'playing' | 'paused' | 'ended'} shape. Same pattern as
-    // YouTube's postMessage bridge, different vocab.
-    if (c.showreelUrl?.includes('mediadelivery.net') || c.showreelUrl?.includes('b-cdn.net')) {
-      const onMsg = (e: MessageEvent) => {
-        if (!e.origin.includes('mediadelivery.net')) return;
-        try {
-          const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
-          const evt  = data?.event ?? data?.type;
-          // timeupdate = playing, when the autoplay start was missed.
-          if (evt === 'playing' || evt === 'play' || (evt === 'timeupdate' && !srIsPlayingRef.current)) onPlay();
-          else if (evt === 'paused' || evt === 'pause' || evt === 'ended') onPause();
-        } catch { /* ignore */ }
-      };
-      window.addEventListener('message', onMsg);
-      // Bunny only sends play/pause events after we subscribe (player.js).
-      const unsubscribe = subscribeBunnyPlayerEvents(showreelIframeRef.current);
-      return () => { window.removeEventListener('message', onMsg); unsubscribe(); };
-    }
-
-    // YouTube
-    if (c.showreelUrl?.includes('youtube.com') || c.showreelUrl?.includes('youtu.be')) {
-      const onMsg = (e: MessageEvent) => {
-        if (!e.origin.includes('youtube.com')) return;
-        try {
-          const data  = JSON.parse(typeof e.data === 'string' ? e.data : JSON.stringify(e.data));
-          const state = data?.info?.playerState;
-          if (state === 1)            onPlay();
-          else if (state === 2 || state === 0) onPause();
-        } catch { /* ignore */ }
-      };
-      window.addEventListener('message', onMsg);
-      const ping = setTimeout(() => {
-        showreelIframeRef.current?.contentWindow?.postMessage(
-          JSON.stringify({ event: 'listening', id: 2 }), 'https://www.youtube.com'
-        );
-      }, 800);
-      return () => { window.removeEventListener('message', onMsg); clearTimeout(ping); };
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [embedUrl]);
-
-  // 10-second heartbeat
-  useEffect(() => {
-    if (!embedUrl) return;
-    const hb = setInterval(() => srDrainTimer(true), 10_000);
-    return () => clearInterval(hb);
-  }, [embedUrl, srDrainTimer]);
-
-  // Pause timer on tab hide
-  useEffect(() => {
-    const onVis = () => { if (document.hidden && srIsPlayingRef.current) srDrainTimer(false); };
-    document.addEventListener('visibilitychange', onVis);
-    return () => document.removeEventListener('visibilitychange', onVis);
-  }, [srDrainTimer]);
-
-  // Final flush on unmount
-  useEffect(() => { return () => srDrainTimer(false); }, []); // eslint-disable-line
+  };
+  useVideoWatchTracking({
+    elementRef: showreelIframeRef,
+    kind:       trackableKind(c.showreelUrl),
+    enabled:    !!(c.showreelUrl && embedUrl),
+    bindKey:    embedUrl,
+    onView:     () => postShowreel({ addView: true, watchSeconds: 0 }),
+    onWatch:    (secs, engaged) => postShowreel({ addView: false, watchSeconds: secs, engaged }),
+  });
   // ──────────────────────────────────────────────────────────────────────────
 
   return (

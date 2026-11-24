@@ -3234,11 +3234,13 @@ app.post("/make-server-e07959ec/showreel/video-view", async (c) => {
     const addView      = body.addView === true;
     const watchSeconds = typeof body.watchSeconds === 'number' ? Math.max(0, Math.round(body.watchSeconds)) : 0;
 
+    const engaged      = body.engaged === true; // watched ≥5s with the showreel on screen
     const kvKey    = 'showreel_video_stats';
     const existing = (await kv.get(kvKey)) ?? { views: 0, totalWatchSeconds: 0, lastViewed: null };
 
     const updated = {
       views:             (existing.views || 0) + (addView ? 1 : 0),
+      engagedViews:      (existing.engagedViews || 0) + (engaged ? 1 : 0),
       totalWatchSeconds: (existing.totalWatchSeconds || 0) + watchSeconds,
       lastViewed:        addView ? new Date().toISOString() : (existing.lastViewed ?? null),
     };
@@ -3316,6 +3318,7 @@ app.get("/make-server-e07959ec/admin/video-stats", requireAuth, async (c) => {
       videoUrl:         srUrl,
       isShowreel:       true,
       views:            srViews,
+      engagedViews:     srStats.engagedViews || 0,
       totalWatchSeconds: srWatch,
       avgWatchSeconds:  srViews > 0 ? Math.round(srWatch / srViews) : 0,
       lastViewed:       srStats.lastViewed ?? null,
@@ -9630,12 +9633,20 @@ app.get('/make-server-e07959ec/admin/activity', requireAuth, async (c) => {
 // Plays of videos inside a project's media gallery (not the main video).
 // KV gallery_video_stats:{projectId} = { [videoUrl]: { plays, lastPlayed } }
 
-// POST /projects/:id/gallery-play { url } — public, called when a visitor
-// starts a gallery video on the project page.
+// POST /projects/:id/gallery-play — public, sent by the project page.
+// Body: { url, addPlay?, watchSeconds?, engaged? }
+//   addPlay      count one play (a visitor started this video)
+//   watchSeconds on-screen seconds watched since the last report
+//   engaged      this visit has now watched it ≥5s on screen ("stayed")
+// A body with only { url } counts a play (older page versions).
 app.post('/make-server-e07959ec/projects/:id/gallery-play', async (c) => {
   try {
     const projectIdParam = c.req.param('id');
-    const { url } = await c.req.json().catch(() => ({}));
+    const body = await c.req.json().catch(() => ({}));
+    const url = body?.url;
+    const watchSeconds = typeof body?.watchSeconds === 'number' ? Math.max(0, Math.min(3600, Math.round(body.watchSeconds))) : 0;
+    const engaged = body?.engaged === true;
+    const addPlay = body?.addPlay === true || (body?.addPlay === undefined && body?.watchSeconds === undefined);
     if (!url || typeof url !== 'string' || url.length > 600) {
       return c.json({ success: false, error: 'url is required' }, 400);
     }
@@ -9649,7 +9660,12 @@ app.post('/make-server-e07959ec/projects/:id/gallery-play', async (c) => {
     const key = `gallery_video_stats:${project.id}`;
     const stats = (await kv.get(key)) ?? {};
     const prev = stats[url] ?? { plays: 0, lastPlayed: null };
-    stats[url] = { plays: (prev.plays || 0) + 1, lastPlayed: new Date().toISOString() };
+    stats[url] = {
+      plays:             (prev.plays || 0) + (addPlay ? 1 : 0),
+      engagedPlays:      (prev.engagedPlays || 0) + (engaged ? 1 : 0),
+      totalWatchSeconds: (prev.totalWatchSeconds || 0) + watchSeconds,
+      lastPlayed:        addPlay ? new Date().toISOString() : (prev.lastPlayed ?? null),
+    };
     await kv.set(key, stats);
     return c.json({ success: true });
   } catch (err) {
@@ -9675,11 +9691,16 @@ app.get('/make-server-e07959ec/admin/gallery-stats', requireAuth, async (c) => {
         url,
         position: (p.screenshots || []).indexOf(url) + 1,
         plays: stats[url]?.plays ?? 0,
+        engagedPlays: stats[url]?.engagedPlays ?? 0,
+        totalWatchSeconds: stats[url]?.totalWatchSeconds ?? 0,
+        avgWatchSeconds: (stats[url]?.plays ?? 0) > 0 ? Math.round((stats[url]?.totalWatchSeconds ?? 0) / stats[url].plays) : 0,
         lastPlayed: stats[url]?.lastPlayed ?? null,
       }));
       return {
         projectId: p.id, title: p.title, slug: p.slug, imageUrl: p.image_url,
         totalPlays: videos.reduce((s: number, v: any) => s + v.plays, 0),
+        totalEngaged: videos.reduce((s: number, v: any) => s + v.engagedPlays, 0),
+        totalWatchSeconds: videos.reduce((s: number, v: any) => s + v.totalWatchSeconds, 0),
         videos,
       };
     }).sort((a: any, b: any) => b.totalPlays - a.totalPlays);

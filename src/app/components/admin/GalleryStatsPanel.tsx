@@ -1,5 +1,6 @@
-// Plays of the videos inside each project's media gallery (the main project
-// video and the showreel are covered by the table above).
+// Stats for the videos inside each project's media gallery (the main project
+// video and the showreel are covered by the table above): plays, "stayed"
+// (watched ≥5s on screen), on-screen watch time and average per play.
 import { useEffect, useState } from 'react';
 import { ChevronDown, ChevronRight, ExternalLink, Film, Loader2, Play } from 'lucide-react';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
@@ -7,10 +8,13 @@ import { detectVideoProvider, getBunnyAutoThumbnailUrl } from '../../utils/video
 
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-e07959ec`;
 
-interface GalleryVideo { url: string; position: number; plays: number; lastPlayed: string | null }
+interface GalleryVideo {
+  url: string; position: number; plays: number; lastPlayed: string | null;
+  engagedPlays?: number; totalWatchSeconds?: number; avgWatchSeconds?: number;
+}
 interface ProjectGallery {
   projectId: string; title: string; slug: string | null; imageUrl: string | null;
-  totalPlays: number; videos: GalleryVideo[];
+  totalPlays: number; totalEngaged?: number; totalWatchSeconds?: number; videos: GalleryVideo[];
 }
 
 function ago(iso: string | null) {
@@ -19,6 +23,21 @@ function ago(iso: string | null) {
   if (s < 3600) return `${Math.max(1, Math.floor(s / 60))}m ago`;
   if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
   return `${Math.floor(s / 86400)}d ago`;
+}
+
+function fmtDuration(total: number | undefined): string {
+  const t = total ?? 0;
+  if (t <= 0) return '—';
+  const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = t % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+
+function stayedLabel(engaged: number | undefined, plays: number) {
+  if (plays <= 0) return '—';
+  const e = engaged ?? 0;
+  return `${e} · ${Math.round((e / plays) * 100)}%`;
 }
 
 function Thumb({ url }: { url: string }) {
@@ -32,6 +51,18 @@ function Thumb({ url }: { url: string }) {
     </div>
   );
 }
+
+// One small labelled number.
+function Stat({ label, value, tone = 'text-white/80', title }: { label: string; value: string; tone?: string; title?: string }) {
+  return (
+    <div className="min-w-0" title={title}>
+      <p className={`tabular-nums text-sm font-medium ${tone}`}>{value}</p>
+      <p className="text-white/30 text-[10px] uppercase tracking-wider">{label}</p>
+    </div>
+  );
+}
+
+const STAYED_HINT = 'Plays watched at least 5 seconds with the video on screen';
 
 export function GalleryStatsPanel() {
   const [data, setData] = useState<ProjectGallery[] | null>(null);
@@ -60,7 +91,8 @@ export function GalleryStatsPanel() {
         <h3 className="text-white font-semibold">Gallery videos</h3>
       </div>
       <p className="text-white/40 text-xs mb-4">
-        How often visitors start each video in a project's media gallery. Counted once per video per page visit.
+        Videos in each project's media gallery. A play counts once per video per visit. Watch time only counts while
+        the video is playing and on screen; "stayed" means it was watched at least 5 seconds on screen.
       </p>
 
       {error && <p className="text-red-400 text-sm">{error}</p>}
@@ -89,25 +121,37 @@ export function GalleryStatsPanel() {
                     : <div className="w-10 h-7 rounded bg-white/5 flex-shrink-0" />}
                   <span className="flex-1 min-w-0">
                     <span className="block text-white/85 text-sm font-medium truncate">{p.title}</span>
-                    <span className="block text-white/35 text-[11px]">{p.videos.length} video{p.videos.length !== 1 ? 's' : ''} in gallery</span>
+                    <span className="block text-white/35 text-[11px]">
+                      {p.videos.length} video{p.videos.length !== 1 ? 's' : ''} in gallery
+                      <span className="sm:hidden"> · {stayedLabel(p.totalEngaged, p.totalPlays)} stayed · {fmtDuration(p.totalWatchSeconds)}</span>
+                    </span>
                   </span>
-                  <span className="text-white font-semibold tabular-nums text-sm">{p.totalPlays.toLocaleString()}</span>
-                  <span className="text-white/35 text-[11px] hidden sm:inline">plays</span>
+                  <span className="hidden sm:grid grid-cols-3 gap-4 text-right w-64 flex-shrink-0">
+                    <Stat label="Plays" value={p.totalPlays.toLocaleString()} tone="text-white" />
+                    <Stat label="Stayed" value={stayedLabel(p.totalEngaged, p.totalPlays)} tone="text-emerald-300/80" title={STAYED_HINT} />
+                    <Stat label="Watch time" value={fmtDuration(p.totalWatchSeconds)} />
+                  </span>
+                  <span className="sm:hidden text-white font-semibold tabular-nums text-sm">{p.totalPlays.toLocaleString()}</span>
                 </button>
 
                 {isOpen && (
                   <div className="border-t border-white/6 divide-y divide-white/5">
                     {[...p.videos].sort((a, b) => b.plays - a.plays).map(v => (
-                      <div key={v.url} className="flex items-center gap-3 px-3 py-2">
+                      <div key={v.url} className="flex flex-wrap sm:flex-nowrap items-center gap-x-3 gap-y-2 px-3 py-2.5">
                         <span className="text-white/25 text-[11px] font-mono w-6 text-right flex-shrink-0">#{v.position}</span>
                         <Thumb url={v.url} />
-                        <div className="flex-1 min-w-0">
+                        <div className="flex-1 min-w-[120px]">
                           <div className="h-1.5 rounded-full bg-white/8 overflow-hidden">
                             <div className="h-full rounded-full bg-purple-500/70" style={{ width: `${Math.round((v.plays / top) * 100)}%` }} />
                           </div>
                           <p className="text-white/35 text-[11px] mt-1">Last played {ago(v.lastPlayed)}</p>
                         </div>
-                        <span className="text-white/85 tabular-nums text-sm w-10 text-right">{v.plays}</span>
+                        <div className="grid grid-cols-4 gap-3 sm:gap-4 w-full sm:w-80 text-left sm:text-right pl-9 sm:pl-0">
+                          <Stat label="Plays" value={v.plays.toLocaleString()} tone="text-white" />
+                          <Stat label="Stayed" value={stayedLabel(v.engagedPlays, v.plays)} tone="text-emerald-300/80" title={STAYED_HINT} />
+                          <Stat label="Watch" value={fmtDuration(v.totalWatchSeconds)} />
+                          <Stat label="Avg / play" value={fmtDuration(v.avgWatchSeconds)} />
+                        </div>
                       </div>
                     ))}
                     {p.slug && (

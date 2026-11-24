@@ -239,9 +239,16 @@ export function VideoStatsTab() {
               <h3 className="text-white font-semibold">Showreel</h3>
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-300 border border-purple-500/25 font-medium uppercase tracking-wider">Home page</span>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
               {[
                 { label: 'Views',       value: showreelStat.views.toLocaleString(),          color: NEON_PURPLE },
+                {
+                  label: 'Stayed',
+                  value: showreelStat.views > 0
+                    ? `${(showreelStat.engagedViews ?? 0).toLocaleString()} · ${Math.round(((showreelStat.engagedViews ?? 0) / showreelStat.views) * 100)}%`
+                    : '—',
+                  color: '#6ee7b7',
+                },
                 { label: 'Total Watch', value: fmtDuration(showreelStat.totalWatchSeconds),  color: NEON_BLUE   },
                 { label: 'Avg / View',  value: fmtDuration(showreelStat.avgWatchSeconds),    color: NEON_GREEN  },
                 { label: 'Last Played', value: relativeTime(showreelStat.lastViewed),        color: NEON_PINK   },
@@ -445,7 +452,7 @@ export function VideoStatsTab() {
 
                     <div className="w-20 text-right">
                       <span className="text-white font-semibold tabular-nums text-sm">{stat.views.toLocaleString()}</span>
-                      {!stat.isShowreel && stat.views > 0 && (
+                      {stat.views > 0 && (
                         <p className="text-[10px] text-emerald-300/70 tabular-nums leading-tight" title="Visitors who watched at least 5 seconds with the video on screen">
                           {(stat.engagedViews ?? 0).toLocaleString()} stayed · {Math.round(((stat.engagedViews ?? 0) / stat.views) * 100)}%
                         </p>
