@@ -11,7 +11,7 @@ import { useState, useEffect } from 'react';
 import { GlassCard } from '../shared/GlassCard';
 import { Button } from '../ui/button';
 import { AdminSelect } from './AdminSelect';
-import { Trash2, Star, MessageSquare, ShieldCheck, EyeOff, Loader2 } from 'lucide-react';
+import { Trash2, Star, MessageSquare, ShieldCheck, EyeOff, Loader2, Reply } from 'lucide-react';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-e07959ec`;
@@ -26,6 +26,107 @@ interface AdminReview {
   createdAt: string;
   updatedAt: string;
   isFake?: boolean;
+  reply?: { text: string; createdAt: string; updatedAt: string };
+}
+
+// Public reply from the admin, shown under the review on the tool page.
+function ReplyBox({ review, onSaved, headers }: {
+  review: AdminReview;
+  onSaved: (updated: AdminReview) => void;
+  headers: Record<string, string>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(review.reply?.text ?? '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const save = async (value: string) => {
+    setSaving(true);
+    setError('');
+    try {
+      const res = await fetch(`${API_BASE}/admin/reviews/reply`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({ toolId: review.toolId, userId: review.userId, text: value }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Could not save the reply.');
+      onSaved(data.data);
+      setText(data.data.reply?.text ?? '');
+      setEditing(false);
+    } catch (err: any) {
+      setError(err?.message || String(err));
+    }
+    setSaving(false);
+  };
+
+  if (!editing && review.reply) {
+    return (
+      <div className="mt-3 pl-3 border-l-2 border-purple-500/40">
+        <p className="text-[11px] font-semibold text-purple-300 mb-0.5">Your public reply</p>
+        <p className="text-white/60 text-sm leading-relaxed whitespace-pre-line">{review.reply.text}</p>
+        <div className="flex gap-3 mt-1.5">
+          <button type="button" onClick={() => setEditing(true)} className="text-xs text-purple-300/80 hover:text-purple-200">Edit</button>
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => { if (confirm('Remove your reply?')) save(''); }}
+            className="text-xs text-red-400/70 hover:text-red-300 disabled:opacity-50"
+          >
+            Remove
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        className="mt-2 inline-flex items-center gap-1.5 text-xs text-purple-300/80 hover:text-purple-200"
+      >
+        <Reply className="w-3.5 h-3.5" /> Reply publicly
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-3 space-y-2">
+      <textarea
+        value={text}
+        onChange={e => setText(e.target.value)}
+        rows={3}
+        maxLength={2000}
+        autoFocus
+        placeholder={`Reply to ${review.userName}… (shown on the tool page)`}
+        className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-purple-500 resize-y"
+      />
+      {error && <p className="text-red-400 text-xs">{error}</p>}
+      <div className="flex gap-2">
+        <Button
+          type="button"
+          size="sm"
+          disabled={saving || !text.trim()}
+          onClick={() => save(text)}
+          className="cursor-pointer bg-purple-600 hover:bg-purple-500 text-white"
+        >
+          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <Reply className="w-3.5 h-3.5 mr-1.5" />}
+          {review.reply ? 'Update reply' : 'Post reply'}
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => { setEditing(false); setText(review.reply?.text ?? ''); setError(''); }}
+          className="cursor-pointer bg-white/5 border-white/15 text-white/70 hover:bg-white/10"
+        >
+          Cancel
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 interface Tool {
@@ -230,6 +331,16 @@ export function AdminReviewsTab() {
                     </div>
 
                     <p className="text-white/55 text-sm leading-relaxed line-clamp-3">{review.comment}</p>
+
+                    {/* Replies only on customer reviews (admin-written ones are hidden) */}
+                    {!review.isFake && (
+                      <ReplyBox
+                        key={review.reply?.updatedAt ?? 'none'}
+                        review={review}
+                        headers={adminHeaders}
+                        onSaved={updated => setReviews(prev => prev.map(r => (r.id === updated.id ? updated : r)))}
+                      />
+                    )}
                   </div>
 
                   <Button

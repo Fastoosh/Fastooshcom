@@ -7028,6 +7028,8 @@ app.post('/make-server-e07959ec/reviews', requireUserAuth, async (c) => {
       comment: (comment || '').trim(),
       createdAt: existing?.createdAt || now,
       updatedAt: now,
+      // Keep the admin's public reply when the customer edits their review.
+      ...(existing?.reply ? { reply: existing.reply } : {}),
     };
     await kv.set(reviewKey, review);
     console.log(`[reviews POST] ✅ Saved: tool=${toolId} user=${user.id} rating=${ratingNum}`);
@@ -7055,6 +7057,33 @@ app.get('/make-server-e07959ec/admin/reviews', requireAuth, async (c) => {
 
 // (POST /admin/reviews removed — reviews can only be written by license
 // holders via POST /reviews.)
+
+// PUT /admin/reviews/reply — add, edit or remove the admin's public reply to
+// a review. Body: { toolId, userId, text }. Empty text removes the reply.
+app.put('/make-server-e07959ec/admin/reviews/reply', requireAuth, async (c) => {
+  try {
+    const { toolId, userId, text } = await c.req.json();
+    if (!toolId || !userId) return c.json({ success: false, error: 'toolId and userId are required' }, 400);
+    const reviewKey = `review:${toolId}:${userId}`;
+    const existing: any = await kv.get(reviewKey);
+    if (!existing) return c.json({ success: false, error: 'Review not found' }, 404);
+
+    const clean = String(text ?? '').trim().slice(0, 2000);
+    const now = new Date().toISOString();
+    const updated = { ...existing };
+    if (clean) {
+      updated.reply = { text: clean, createdAt: existing.reply?.createdAt || now, updatedAt: now };
+    } else {
+      delete updated.reply;
+    }
+    await kv.set(reviewKey, updated);
+    console.log(`[admin/reviews/reply] ✅ ${clean ? 'Saved' : 'Removed'} reply: tool=${toolId} user=${userId}`);
+    return c.json({ success: true, data: updated });
+  } catch (error) {
+    console.log('[admin/reviews/reply] error:', error);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+});
 
 // DELETE /admin/reviews — delete any review by toolId + userId
 app.delete('/make-server-e07959ec/admin/reviews', requireAuth, async (c) => {

@@ -2328,6 +2328,14 @@ export function ToolDetail() {
                           ✓ Verified
                         </span>
                       </div>
+
+                      {/* Public reply from Fastoosh */}
+                      {review.reply?.text && (
+                        <div className="mt-3 rounded-lg bg-purple-500/8 border border-purple-500/20 px-3 py-2.5">
+                          <p className="text-[11px] font-semibold text-purple-300 mb-1">Response from Fastoosh</p>
+                          <p className="text-white/60 text-xs leading-relaxed whitespace-pre-line">{review.reply.text}</p>
+                        </div>
+                      )}
                     </GlassCard>
                   </motion.div>
                 ))}
