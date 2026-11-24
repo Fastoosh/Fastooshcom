@@ -57,6 +57,8 @@ function pageKeyToPath(pageKey: string): string {
   if (pageKey === 'tools')        return '/tools';
   if (pageKey === 'about')        return '/about';
   if (pageKey === 'work-with-us') return '/work-with-us';
+  if (pageKey === 'use-cases')         return '/use-cases';
+  if (pageKey.startsWith('use-case--')) return `/use-cases/${pageKey.replace('use-case--', '')}`;
   if (pageKey.startsWith('tool--'))    return `/tools/${pageKey.replace('tool--', '')}`;
   if (pageKey.startsWith('project--')) return `/projects/${pageKey.replace('project--', '')}`;
   return `/${pageKey}`;

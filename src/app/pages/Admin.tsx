@@ -12,6 +12,7 @@ import { Textarea } from '../components/ui/textarea';
 import { AdminSelect } from '../components/admin/AdminSelect';
 import { Plus, Pencil, Trash2, Save, X, LogOut, Upload, Sparkles, Menu, Search } from 'lucide-react';
 import { ActivityTab } from '../components/admin/ActivityTab';
+import { UseCasesTab } from '../components/admin/UseCasesTab';
 import { StudioProfileEditor, type StudioProfile } from '../components/admin/StudioProfileEditor';
 import { AdminSearch, type AdminSearchResult } from '../components/admin/AdminSearch';
 import { AIImproveModal, type AIImproveContext } from '../components/admin/AIImproveModal';
@@ -165,6 +166,7 @@ const ADMIN_NAV: { label: string; items: { value: string; label: string; danger?
     { value: 'team',      label: 'Team' },
     { value: 'home',      label: 'Home' },
     { value: 'reviews',   label: 'Reviews' },
+    { value: 'usecases',  label: '🧩 Use cases' },
   ]},
   { label: 'Audience', items: [
     { value: 'leads',     label: '🎯 Leads' },
@@ -1108,6 +1110,10 @@ export function Admin() {
           </TabsContent>
 
           {/* GUIDE TAB */}
+          <TabsContent value="usecases">
+            <UseCasesTab />
+          </TabsContent>
+
           <TabsContent value="activity">
             <ActivityTab />
           </TabsContent>

@@ -21,6 +21,8 @@ import { Terms } from "./pages/Terms";
 import { Privacy } from "./pages/Privacy";
 import { Refunds } from "./pages/Refunds";
 import { Disclaimer } from "./pages/Disclaimer";
+import { UseCases } from "./pages/UseCases";
+import { UseCase } from "./pages/UseCase";
 
 export const router = createBrowserRouter([
   // Auth routes — dedicated pages, no navbar
@@ -46,6 +48,8 @@ export const router = createBrowserRouter([
       { path: "tools",             Component: Tools         },
       { path: "tools/:slug",       Component: ToolDetail    },
       { path: "tools/:slug/guide", Component: ToolGuide     },
+      { path: "use-cases",         Component: UseCases      },
+      { path: "use-cases/:slug",   Component: UseCase       },
       { path: "about",             Component: About         },
       { path: "work-with-us",      Component: WorkWithUs    },
       // /account renders the layout, /account/:tab selects which section is

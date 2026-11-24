@@ -166,7 +166,7 @@ function stripSeo(html) {
 }
 
 const NAV = [
-  ['/', 'Home'], ['/projects', 'Projects'], ['/tools', 'Tools'],
+  ['/', 'Home'], ['/projects', 'Projects'], ['/tools', 'Tools'], ['/use-cases', 'Automation guides'],
   ['/about', 'About'], ['/work-with-us', 'Work with us'],
 ];
 
@@ -212,7 +212,12 @@ const para = (t) => t ? `<p>${esc(plain(t))}</p>` : '';
 
 // ── main ─────────────────────────────────────────────────────────────────────
 async function main() {
-  TEMPLATE = readFileSync(join(DIST, 'index.html'), 'utf8');
+  // Re-runnable: if dist/index.html was already prerendered (running the
+  // script twice on one build), strip the previous page back to the shell.
+  TEMPLATE = readFileSync(join(DIST, 'index.html'), 'utf8')
+    .replace(/\s*<script type="application\/ld\+json" data-prerender-ld>[\s\S]*?<\/script>/g, '')
+    .replace(/\s*<(?:title|meta|link)\s+data-prerender[^>]*>(?:[^<]*<\/title>)?/g, '')
+    .replace(/<div id="root">[\s\S]*<\/div>(\s*<\/body>)/, '<div id="root"></div>$1');
 
   // Neutral shell for every route we don't prerender (admin, account, auth,
   // and projects/tools added since the last deploy): no canonical, no page
@@ -236,9 +241,17 @@ async function main() {
 
   const projects = projectsRaw.filter(p => p.slug);
   const tools = toolsRaw.filter(t => t.slug);
+  // Admin → Use cases (settings.useCases / settings.toolExtras).
+  const useCases = (Array.isArray(settings?.useCases) ? settings.useCases : [])
+    .filter(u => u && u.published && u.slug && u.title);
+  const toolExtras = (settings?.toolExtras && typeof settings.toolExtras === 'object') ? settings.toolExtras : {};
+  const toolBySlug = Object.fromEntries(tools.map(t => [t.slug, t]));
+  // Some descriptions end with a stray "How it works" heading line.
+  const toolDesc = (t) => String(t.description || '').replace(/\n\s*How it works\s*$/i, '').trim();
 
   // Admin-saved SEO overrides (Admin → SEO). Empty fields fall back to ours.
   const seoKeys = ['home', 'projects', 'tools', 'about', 'work-with-us', 'terms', 'privacy', 'refunds', 'disclaimer',
+    'use-cases', ...useCases.map(u => `use-case--${u.slug}`),
     ...projects.map(p => `project--${p.slug}`), ...tools.map(t => `tool--${t.slug}`)];
   const seo = {};
   for (let i = 0; i < seoKeys.length; i += 8) {
@@ -262,7 +275,7 @@ async function main() {
       twitterDescription: pick(s.twitterDescription, undefined),
       image:              pick(s.ogImage, page.image),
       canonical:          pick(s.canonicalUrl, page.canonical),
-      noIndex:            !!s.noIndex,
+      noIndex:            !!s.noIndex || !!page.noIndex,
       jsonLd:             [...(page.jsonLd || []), ...extraLd],
     };
   };
@@ -286,7 +299,7 @@ async function main() {
     aboutCopy.story3, aboutCopy.story4,
   ].filter(Boolean);
   const ONE_LINER = profile.oneLiner?.trim()
-    || 'Fastoosh is a motion design studio creating high-impact videos, After Effects tools and creative workflows for brands.';
+    || 'Fastoosh is a motion design studio and maker of After Effects automation tools that help designers, studios, motion designers and videographers automate repetitive work.';
   const [locCity, ...locRest] = String(profile.location || '').split(',').map(s => s.trim()).filter(Boolean);
 
   const ORG = {
@@ -412,7 +425,7 @@ async function main() {
 
   // ── Tools list ──
   pages.push({ route: '/tools', key: 'tools', page: {
-    title: 'After Effects Tools & Scripts for Motion Designers | Fastoosh',
+    title: 'After Effects Automation Tools for Designers & Studios | Fastoosh',
     description: clip(`Tools by Fastoosh for motion designers: ${tools.map(t => `${t.name}${t.tagline ? ` (${t.tagline})` : ''}`).join(', ')}.`, 160),
     image: (await bestImage('tools', tools[0]?.imageUrl)) || DEFAULT_IMAGE, canonical: url('/tools'),
     jsonLd: [{
@@ -420,13 +433,15 @@ async function main() {
       mainEntity: { '@type': 'ItemList', itemListElement: tools.map((t, i) => ({ '@type': 'ListItem', position: i + 1, url: url(`/tools/${t.slug}`), name: t.name })) },
     }, crumbs([['Home', '/'], ['Tools', '/tools']])],
     body: `<h1 style="color:#fff;font-size:30px">Tools for motion designers</h1>
-      ${list(tools.map(t => `<a href="/tools/${esc(t.slug)}" style="color:#c4b5fd">${esc(t.name)}</a>${t.tagline ? ` — ${esc(t.tagline)}` : ''}<br/>${esc(clip(t.description, 240))}`))}`,
+      <p>Fastoosh builds tools for designers, studios, motion designers and videographers that automate repetitive After Effects work — versioning, name titles, localization, packaging and more.</p>
+      ${list(tools.map(t => `<a href="/tools/${esc(t.slug)}" style="color:#c4b5fd">${esc(t.name)}</a>${t.tagline ? ` — ${esc(t.tagline)}` : ''}<br/>${esc(clip(toolDesc(t), 240))}`))}
+      ${useCases.length ? h2('Automation guides') + list(useCases.map(u => `<a href="/use-cases/${esc(u.slug)}" style="color:#c4b5fd">${esc(u.title)}</a>`)) : ''}`,
   }, sitemap: { priority: '0.8' } });
 
   // ── Tool pages ──
   for (const t of tools) {
     const image = (await bestImage(`tool-${t.slug}`, t.imageUrl)) || DEFAULT_IMAGE;
-    const desc = clip(t.description || t.tagline || `${t.name} by Fastoosh.`, 160);
+    const desc = clip(toolDesc(t) || t.tagline || `${t.name} by Fastoosh.`, 160);
     const versions = (t.versions || []).filter(v => v.versionType);
     const offers = versions.map(v => {
       const free = /free/i.test(v.versionType) || /free/i.test(v.pricingDisplay || '');
@@ -438,10 +453,15 @@ async function main() {
     const faqs = (t.faqs || []).filter(f => f?.question && f?.answer);
     const steps = (t.howItWorks || []).filter(s => s?.title);
     const feats = (t.richFeatures || []).filter(f => f?.title);
+    const ex = toolExtras[t.slug] || {};
+    const audience = (ex.audience || []).filter(Boolean);
+    const automates = (ex.automates || []).filter(Boolean);
+    const guides = useCases.filter(u => u.toolSlug === t.slug);
     const ld = [
       {
         '@context': 'https://schema.org', '@type': 'SoftwareApplication', '@id': `${url(`/tools/${t.slug}`)}#app`,
-        name: t.name, description: plain(t.description || desc), url: url(`/tools/${t.slug}`),
+        name: t.name, description: plain(toolDesc(t) || desc), url: url(`/tools/${t.slug}`),
+        ...(audience.length ? { audience: audience.map(a => ({ '@type': 'Audience', audienceType: a })) } : {}),
         applicationCategory: 'MultimediaApplication', applicationSubCategory: 'Adobe After Effects extension',
         operatingSystem: 'Windows, macOS', ...(image ? { image } : {}),
         ...(t.systemRequirements ? { softwareRequirements: plain(t.systemRequirements) } : {}),
@@ -464,13 +484,68 @@ async function main() {
         <h1 style="color:#fff;font-size:30px">${esc(t.name)}</h1>
         ${t.tagline ? `<p style="color:#c4b5fd">${esc(t.tagline)}</p>` : ''}
         ${image ? `<img src="${esc(image)}" alt="${esc(t.name)}" style="max-width:100%;border-radius:12px" loading="lazy" />` : ''}
-        ${para(t.description)}
+        ${para(toolDesc(t))}
+        ${audience.length ? h2(`Who ${t.name} is for`) + list(audience.map(esc)) : ''}
+        ${automates.length ? h2('What it automates') + list(automates.map(esc)) : ''}
+        ${guides.length ? h2('Use cases and guides') + list(guides.map(u => `<a href="/use-cases/${esc(u.slug)}" style="color:#c4b5fd">${esc(u.title)}</a>`)) : ''}
         ${steps.length ? h2('How it works') + `<ol>${steps.map(s => `<li><strong>${esc(s.title)}</strong>${s.description ? ` — ${esc(s.description)}` : ''}</li>`).join('')}</ol>` : ''}
         ${feats.length ? h2('Features') + list(feats.map(f => `<strong>${esc(f.title)}</strong>${f.description ? ` — ${esc(f.description)}` : ''}`)) : ''}
         ${versions.length ? h2('Pricing') + list(versions.map(v => `${esc(v.versionType)}${v.pricingDisplay ? ` — ${esc(v.pricingDisplay)}` : ''}`)) : ''}
         ${t.systemRequirements ? h2('System requirements') + para(t.systemRequirements) : ''}
         ${faqs.length ? h2('Frequently asked questions') + faqs.map(f => `<h3 style="color:#fff;font-size:16px;margin:16px 0 4px">${esc(plain(f.question))}</h3>${para(f.answer)}`).join('') : ''}`,
     }, sitemap: { priority: '0.8', lastmod: t.updatedAt || t.createdAt, images: [image].filter(Boolean) } });
+  }
+
+  // ── Use cases ──
+  pages.push({ route: '/use-cases', key: 'use-cases', page: {
+    title: 'After Effects Automation Use Cases | Fastoosh',
+    description: clip(`Step-by-step guides to automating repetitive After Effects work: ${useCases.map(u => u.title).join('; ')}.`, 160),
+    image: DEFAULT_IMAGE, canonical: url('/use-cases'), noIndex: useCases.length === 0, // empty until a guide is published
+    jsonLd: [{
+      '@context': 'https://schema.org', '@type': 'CollectionPage', name: 'Fastoosh automation guides', url: url('/use-cases'),
+      mainEntity: { '@type': 'ItemList', itemListElement: useCases.map((u, i) => ({ '@type': 'ListItem', position: i + 1, url: url(`/use-cases/${u.slug}`), name: u.title })) },
+    }, crumbs([['Home', '/'], ['Automation guides', '/use-cases']])],
+    body: `<h1 style="color:#fff;font-size:30px">Automate the repetitive parts of your work</h1>
+      <p>Fastoosh builds tools for designers, studios, motion designers and videographers. These guides show how to turn hours of manual After Effects work into a spreadsheet and one click.</p>
+      ${list(useCases.map(u => `<a href="/use-cases/${esc(u.slug)}" style="color:#c4b5fd">${esc(u.title)}</a><br/>${esc(u.summary)}`))}`,
+  }, sitemap: { priority: '0.7' } });
+
+  for (const u of useCases) {
+    const tool = toolBySlug[u.toolSlug];
+    const toolImage = tool ? ((await bestImage(`tool-${tool.slug}`, tool.imageUrl)) || DEFAULT_IMAGE) : DEFAULT_IMAGE;
+    const steps = (u.steps || []).filter(st => st?.title || st?.text);
+    const faq = (u.faq || []).filter(f => f?.q?.trim() && f?.a?.trim());
+    const pageUrl = url(`/use-cases/${u.slug}`);
+    pages.push({ route: `/use-cases/${u.slug}`, key: `use-case--${u.slug}`, page: {
+      title: `${u.title} | Fastoosh`.slice(0, 100),
+      description: clip(u.summary, 160), image: toolImage, canonical: pageUrl, ogType: 'article',
+      jsonLd: [
+        {
+          '@context': 'https://schema.org', '@type': 'HowTo', '@id': `${pageUrl}#howto`,
+          name: u.title, description: plain(u.summary), url: pageUrl, image: toolImage,
+          ...(tool ? { tool: [{ '@type': 'HowToTool', name: tool.name }, { '@type': 'HowToTool', name: 'Adobe After Effects' }] } : {}),
+          step: steps.map((st, i) => ({ '@type': 'HowToStep', position: i + 1, name: plain(st.title), text: plain(st.text || st.title), url: `${pageUrl}#step-${i + 1}` })),
+          ...(u.updatedAt ? { dateModified: u.updatedAt } : {}),
+          publisher: { '@id': `${SITE}/#organization` },
+          ...(tool ? { about: { '@id': `${url(`/tools/${tool.slug}`)}#app` } } : {}),
+        },
+        ...(faq.length ? [{
+          '@context': 'https://schema.org', '@type': 'FAQPage',
+          mainEntity: faq.map(f => ({ '@type': 'Question', name: plain(f.q), acceptedAnswer: { '@type': 'Answer', text: plain(f.a) } })),
+        }] : []),
+        crumbs([['Home', '/'], ['Automation guides', '/use-cases'], [u.title, `/use-cases/${u.slug}`]]),
+      ],
+      body: `<p><a href="/use-cases" style="color:#a1a1aa">← All automation guides</a></p>
+        <h1 style="color:#fff;font-size:30px">${esc(u.title)}</h1>
+        ${tool ? `<p style="color:#c4b5fd">With ${esc(tool.name)}</p>` : ''}
+        ${para(u.summary)}
+        ${(u.audience || []).length ? h2('Who this is for') + list(u.audience.map(esc)) : ''}
+        ${u.problem ? h2('The problem') + para(u.problem) : ''}
+        ${steps.length ? h2(`How to do it${tool ? ` with ${tool.name}` : ''}`) + `<ol>${steps.map((st, i) => `<li id="step-${i + 1}"><strong>${esc(st.title)}</strong>${st.text ? ` — ${esc(st.text)}` : ''}</li>`).join('')}</ol>` : ''}
+        ${u.example ? h2('Example') + para(u.example) : ''}
+        ${tool ? `<p><a href="/tools/${esc(tool.slug)}" style="color:#c4b5fd">See ${esc(tool.name)}</a>${tool.tagline ? ` — ${esc(tool.tagline)}` : ''}</p>` : ''}
+        ${faq.length ? h2('Questions') + faq.map(f => `<h3 style="color:#fff;font-size:16px;margin:16px 0 4px">${esc(plain(f.q))}</h3>${para(f.a)}`).join('') : ''}`,
+    }, sitemap: { priority: '0.7', lastmod: u.updatedAt, images: [toolImage].filter(Boolean) } });
   }
 
   // ── About ──
@@ -578,7 +653,10 @@ async function main() {
   ].filter(Boolean);
   const projectLine = (p) => `- [${md(p.title)}](${url(`/projects/${p.slug}`)})${[p.client, p.category, p.year].filter(Boolean).length ? ` (${[p.client, p.category, p.year].filter(Boolean).join(', ')})` : ''}: ${clip(p.description, 200)}`;
   const toolPrice = (t) => (t.versions || []).filter(v => v.versionType).map(v => `${v.versionType}${v.pricingDisplay ? ` ${v.pricingDisplay}` : ''}`).join(', ');
-  const toolLine = (t) => `- [${md(t.name)}](${url(`/tools/${t.slug}`)})${t.tagline ? ` — ${md(t.tagline)}` : ''}: ${clip(t.description, 220)}${toolPrice(t) ? ` Pricing: ${toolPrice(t)}.` : ''}`;
+  const toolLine = (t) => {
+    const aud = (toolExtras[t.slug]?.audience || []).filter(Boolean);
+    return `- [${md(t.name)}](${url(`/tools/${t.slug}`)})${t.tagline ? ` — ${md(t.tagline)}` : ''}: ${clip(toolDesc(t), 220)}${aud.length ? ` For: ${aud.join(', ')}.` : ''}${toolPrice(t) ? ` Pricing: ${toolPrice(t)}.` : ''}`;
+  };
   const llms = [
     `# ${BRAND}`,
     '',
@@ -590,11 +668,14 @@ async function main() {
     ...(services.length ? ['## Services', '', ...services.map(s => `- ${md(s)}`), ''] : []),
     ...(industries.length ? ['## Industries', '', ...industries.map(s => `- ${md(s)}`), ''] : []),
     '## Projects', '', ...projects.map(projectLine), '',
-    '## Tools for After Effects', '', ...tools.map(toolLine), '',
+    '## Tools for After Effects', '',
+    'Fastoosh builds tools for designers, studios, motion designers and videographers that automate repetitive After Effects work.', '',
+    ...tools.map(toolLine), '',
+    ...(useCases.length ? ['## Automation guides', '', ...useCases.map(u => `- [${md(u.title)}](${url(`/use-cases/${u.slug}`)}): ${clip(u.summary, 200)}`), ''] : []),
     ...(studioFaq.length ? ['## FAQ', '', ...studioFaq.flatMap(f => [`### ${md(f.q)}`, '', md(f.a), '']) ] : []),
     '## Pages', '',
     `- [Home](${url('/')})`, `- [All projects](${url('/projects')})`, `- [All tools](${url('/tools')})`,
-    `- [About](${url('/about')})`, `- [Work with us / contact](${url('/work-with-us')})`,
+    `- [Automation guides](${url('/use-cases')})`, `- [About](${url('/about')})`, `- [Work with us / contact](${url('/work-with-us')})`,
     '',
     '## Optional', '',
     `- [Full project and tool details](${url('/llms-full.txt')})`,
@@ -617,7 +698,7 @@ async function main() {
     '# Tool details', '',
     ...tools.flatMap(t => [
       `## ${md(t.name)}`, '', `URL: ${url(`/tools/${t.slug}`)}`, '',
-      md(t.description), '',
+      md(toolDesc(t)), '',
       ...((t.howItWorks || []).filter(s => s?.title).length ? ['How it works:', ...(t.howItWorks || []).filter(s => s?.title).map((s, i) => `${i + 1}. ${md(s.title)}${s.description ? ` — ${md(s.description)}` : ''}`), ''] : []),
       ...((t.richFeatures || []).filter(f => f?.title).length ? ['Features:', ...(t.richFeatures || []).filter(f => f?.title).map(f => `- ${md(f.title)}${f.description ? ` — ${md(f.description)}` : ''}`), ''] : []),
       ...(toolPrice(t) ? [`Pricing: ${toolPrice(t)}`, ''] : []),

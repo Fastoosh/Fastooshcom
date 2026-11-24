@@ -7,6 +7,7 @@ import { ToolSupportModal } from '../components/shared/ToolSupportModal';
 import { UserAuthModal } from '../components/shared/UserAuthModal';
 import { ReviewModal } from '../components/shared/ReviewModal';
 import { SeoHead } from '../components/shared/SeoHead';
+import { ToolAudience } from '../components/shared/ToolAudience';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import { buildGumroadCheckoutUrl, openGumroadCheckout } from '../utils/gumroad';
 import {
@@ -2237,6 +2238,9 @@ export function ToolDetail() {
             })}
           />
         )}
+
+        {/* ── Who it's for / what it automates / guides (Admin → Use cases) ── */}
+        {tool.slug && <ToolAudience toolSlug={tool.slug} toolName={tool.name} />}
 
         {/* ── How it works ──────────────────────────────────────────────────── */}
         {tool.howItWorks && tool.howItWorks.length > 0 && (
