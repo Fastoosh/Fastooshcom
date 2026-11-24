@@ -246,7 +246,8 @@ export function Home() {
         try {
           const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
           const evt  = data?.event ?? data?.type;
-          if (evt === 'playing' || evt === 'play') onPlay();
+          // timeupdate = playing, when the autoplay start was missed.
+          if (evt === 'playing' || evt === 'play' || (evt === 'timeupdate' && !srIsPlayingRef.current)) onPlay();
           else if (evt === 'paused' || evt === 'pause' || evt === 'ended') onPause();
         } catch { /* ignore */ }
       };

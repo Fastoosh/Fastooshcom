@@ -85,7 +85,10 @@ export function getYouTubeId(url: string | null | undefined): string | null {
 // Returns a cleanup function.
 export function subscribeBunnyPlayerEvents(iframe: HTMLIFrameElement | null): () => void {
   if (!iframe) return () => {};
-  const EVENTS = ['play', 'pause', 'ended'];
+  // 'timeupdate' matters: with autoplay the video usually starts before we
+  // subscribe, so 'play' is never delivered. timeupdate keeps arriving while
+  // it plays, so callers treat it as "playing" when they missed 'play'.
+  const EVENTS = ['play', 'pause', 'ended', 'timeupdate'];
   const subscribe = () => {
     const win = iframe.contentWindow;
     if (!win) return;

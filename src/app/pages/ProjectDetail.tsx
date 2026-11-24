@@ -280,7 +280,10 @@ export function ProjectDetail() {
         try {
           const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
           const evt  = data?.event ?? data?.type;
-          if (evt === 'playing' || evt === 'play') {
+          // timeupdate only counts as "started playing" when we missed the
+          // play event (autoplay begins before we subscribe).
+          const started = evt === 'playing' || evt === 'play' || (evt === 'timeupdate' && !isPlayingRef.current);
+          if (started) {
             isPlayingRef.current = true;
             if (videoVisibleRef.current && !document.hidden) playStartRef.current = Date.now();
             // Bunny video started (muted). Surface the unmute prompt unless
