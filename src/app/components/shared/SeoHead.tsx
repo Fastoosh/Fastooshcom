@@ -52,7 +52,7 @@ async function getSiteSettings(): Promise<SiteSettings> {
 
 // ── Page key → path helper ────────────────────────────────────────────────────
 function pageKeyToPath(pageKey: string): string {
-  if (pageKey === 'home')         return '/home';
+  if (pageKey === 'home')         return '/';
   if (pageKey === 'projects')     return '/projects';
   if (pageKey === 'tools')        return '/tools';
   if (pageKey === 'about')        return '/about';
@@ -118,9 +118,12 @@ export function SeoHead({ pageKey, fallback }: SeoHeadProps) {
   const ogImage = merged.ogImage || fallback?.ogImage || global.defaultOgImage || '';
 
   // Resolve canonical: page → auto from siteUrl
-  const autoCanonical = global.siteUrl
-    ? `${global.siteUrl.replace(/\/$/, '')}${pageKeyToPath(pageKey)}`
-    : '';
+  // The live site is served on www (fastoosh.com redirects there), so the
+  // canonical must use www too, or Google sees two copies of every page.
+  const origin = (global.siteUrl || 'https://www.fastoosh.com')
+    .replace(/\/$/, '')
+    .replace(/^https?:\/\/fastoosh\.com/i, 'https://www.fastoosh.com');
+  const autoCanonical = `${origin}${pageKeyToPath(pageKey)}`;
   const canonicalUrl = merged.canonicalUrl || autoCanonical;
 
   return (
