@@ -63,7 +63,13 @@ async function apiGet(path: string) {
 async function apiPost(path: string, body: object) {
   const r = await fetch(`${API_BASE}${path}`, {
     method: 'POST',
-    headers: { ...authHeaders, 'Content-Type': 'application/json' },
+    headers: {
+      ...authHeaders,
+      'Content-Type': 'application/json',
+      // Sent once the wizard has created + signed in the first admin, so
+      // protected setup steps (e.g. /setup/brand) pass requireAuth.
+      'X-Admin-Token': localStorage.getItem('admin_token') ?? '',
+    },
     body: JSON.stringify(body),
   });
   return r.json();

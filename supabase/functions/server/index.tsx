@@ -3596,33 +3596,8 @@ app.delete("/make-server-e07959ec/tools/:id", requireAuth, async (c) => {
   }
 });
 
-// ── DEBUG: raw tool_versions rows (public, read-only) ─────────────────────────
-app.get("/make-server-e07959ec/debug/tool-versions", async (c) => {
-  try {
-    const { data, error } = await supabase
-      .from('tool_versions')
-      .select('*')
-      .limit(50);
-    if (error) return c.json({ success: false, error: error.message }, 500);
-    return c.json({ success: true, count: (data || []).length, data });
-  } catch (err) {
-    return c.json({ success: false, error: String(err) }, 500);
-  }
-});
-
-// ── DEBUG: raw tools rows with joined tool_versions (public, read-only) ────────
-app.get("/make-server-e07959ec/debug/tools-raw", async (c) => {
-  try {
-    const { data, error } = await supabase
-      .from('tools')
-      .select('id, name, slug, tool_versions(*)')
-      .limit(10);
-    if (error) return c.json({ success: false, error: error.message }, 500);
-    return c.json({ success: true, data });
-  } catch (err) {
-    return c.json({ success: false, error: String(err) }, 500);
-  }
-});
+// (Public /debug/tool-versions and /debug/tools-raw endpoints removed —
+// they exposed raw DB rows to anyone.)
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ========== TEAM MEMBERS ENDPOINTS ==========
@@ -6917,8 +6892,9 @@ app.get('/make-server-e07959ec/reviews', async (c) => {
   if (!toolId) return c.json({ success: false, error: 'toolId query param required' }, 400);
   try {
     const reviews: any[] = await kv.getByPrefix(`review:${toolId}:`);
+    // Admin-written (isFake) reviews are never shown publicly.
     const cleaned = reviews
-      .filter(Boolean)
+      .filter((r: any) => r && !r.isFake)
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     return c.json({ success: true, data: cleaned });
   } catch (error) {
@@ -6934,6 +6910,7 @@ app.get('/make-server-e07959ec/tools-ratings', async (c) => {
     const ratings: Record<string, { avg: number; count: number }> = {};
     for (const review of allReviews.filter(Boolean)) {
       if (!review?.toolId || !review?.rating) continue;
+      if (review.isFake) continue; // admin-written — excluded from public ratings
       if (!ratings[review.toolId]) ratings[review.toolId] = { avg: 0, count: 0 };
       ratings[review.toolId].count++;
       ratings[review.toolId].avg += review.rating;
@@ -7076,42 +7053,8 @@ app.get('/make-server-e07959ec/admin/reviews', requireAuth, async (c) => {
   }
 });
 
-// POST /admin/reviews — create or update a fake review (no purchase check)
-app.post('/make-server-e07959ec/admin/reviews', requireAuth, async (c) => {
-  try {
-    const { toolId, userId: existingUserId, userName, rating, comment, createdAt } = await c.req.json();
-    if (!toolId) return c.json({ success: false, error: 'toolId is required' }, 400);
-    const ratingNum = Number(rating);
-    if (!ratingNum || ratingNum < 1 || ratingNum > 5)
-      return c.json({ success: false, error: 'rating must be 1–5' }, 400);
-
-    const { data: toolRow } = await supabase.from('tools').select('id').eq('id', toolId).maybeSingle();
-    if (!toolRow) return c.json({ success: false, error: 'Tool not found' }, 404);
-
-    const now = new Date().toISOString();
-    const userId = existingUserId || `admin_${crypto.randomUUID()}`;
-    const reviewKey = `review:${toolId}:${userId}`;
-    const existing: any = await kv.get(reviewKey);
-
-    const review = {
-      id: existing?.id || crypto.randomUUID(),
-      toolId,
-      userId,
-      userName: (userName || 'Anonymous').trim(),
-      rating: ratingNum,
-      comment: (comment || '').trim(),
-      createdAt: createdAt ? new Date(createdAt).toISOString() : (existing?.createdAt || now),
-      updatedAt: now,
-      isFake: true,
-    };
-    await kv.set(reviewKey, review);
-    console.log(`[admin/reviews POST] ✅ Saved fake review: tool=${toolId} user=${userId} rating=${ratingNum}`);
-    return c.json({ success: true, data: review });
-  } catch (error) {
-    console.log('[admin/reviews POST] error:', error);
-    return c.json({ success: false, error: String(error) }, 500);
-  }
-});
+// (POST /admin/reviews removed — reviews can only be written by license
+// holders via POST /reviews.)
 
 // DELETE /admin/reviews — delete any review by toolId + userId
 app.delete('/make-server-e07959ec/admin/reviews', requireAuth, async (c) => {
@@ -7209,8 +7152,11 @@ app.post('/make-server-e07959ec/setup/create-admin', async (c) => {
   }
 });
 
-/** POST /setup/brand — saves initial brand settings to site_settings */
-app.post('/make-server-e07959ec/setup/brand', async (c) => {
+/** POST /setup/brand — saves initial brand settings to site_settings.
+ *  Admin-only: the wizard creates + signs in the first admin before this
+ *  step. Previously unauthenticated, which let anyone overwrite contactEmail
+ *  (where contact forms and security alerts are delivered). */
+app.post('/make-server-e07959ec/setup/brand', requireAuth, async (c) => {
   try {
     const body = await c.req.json();
 
@@ -9181,143 +9127,7 @@ Return ONLY the formatted HTML. No explanations, no markdown fences, no preamble
   }
 });
 
-// ── AI FAKE REVIEW GENERATOR ──────────────────────────────────────────────────
-// POST /admin/generate-fake-reviews
-// Body: { toolId: string, count: number (1-10) }
-// Calls Gemini to produce realistic positive reviews, then bulk-saves to KV.
-app.post('/make-server-e07959ec/admin/generate-fake-reviews', requireAuth, async (c) => {
-  try {
-    const { toolId, count = 3 } = await c.req.json();
-    if (!toolId) return c.json({ success: false, error: 'toolId is required' }, 400);
-
-    const safeCount = Math.min(10, Math.max(1, Number(count) || 3));
-
-    const { apiKey, model: geminiModel } = await getGeminiConfig();
-    if (!apiKey) return c.json({ success: false, error: 'GEMINI_API_KEY not configured' }, 500);
-
-    // Fetch tool metadata from Supabase
-    const { data: tool, error: toolErr } = await supabase
-      .from('tools')
-      .select('id, name, description, created_at')
-      .eq('id', toolId)
-      .single();
-
-    if (toolErr || !tool) {
-      return c.json({ success: false, error: `Tool not found: ${toolErr?.message || 'unknown'}` }, 404);
-    }
-
-    const toolName        = tool.name || 'this tool';
-    const toolDescription = tool.description || '';
-    const toolCreatedAt   = tool.created_at ? new Date(tool.created_at) : new Date('2024-01-01');
-    const today           = new Date('2026-03-05');
-
-    const releaseIso = toolCreatedAt.toISOString().slice(0, 10);
-    const todayIso   = today.toISOString().slice(0, 10);
-
-    const prompt = `You are helping a motion design studio populate realistic product reviews for their After Effects plugin called "${toolName}".
-
-Tool description:
-"""
-${toolDescription.trim() || 'A powerful motion design plugin for After Effects.'}
-"""
-
-Generate exactly ${safeCount} distinct fake customer reviews that sound like real humans wrote them — not marketing copy.
-
-LENGTH — vary naturally across the batch, like a real review section looks:
-  • ~40% SHORT: 1 punchy sentence, strictly under 100 characters (e.g. "Saves me hours every week." or "Best AE plugin I bought this year.")
-  • ~30% MEDIUM: 2 sentences, 100–220 characters total
-  • ~30% DETAILED: 3–4 sentences, 220–400 characters max — mention a specific workflow win or feature
-  Never exceed 400 characters. No padding, no filler, no repetition.
-
-TONE & CONTENT:
-  - Always positive (5 stars). Short ones = punchy reactions. Medium ones add one specific detail. Long ones explain a concrete benefit.
-  - Reference the tool's actual purpose from the description — no generic "great product" reviews
-  - Write casually, like a real user. No em-dashes (—), no overly formal language, no hashtags, no exclamation marks on every sentence.
-
-NAMES — diverse international mix: English, French, Arabic, Spanish, Italian, German, Japanese (romanised). Use realistic full names.
-
-DATES — createdAt must be BETWEEN ${releaseIso} (inclusive) and ${todayIso} (inclusive). Spread them naturally across that range.
-
-Return ONLY a valid JSON array. No markdown, no commentary, no code fences:
-[
-  {
-    "userName": "Full Name",
-    "comment": "Review text here.",
-    "createdAt": "YYYY-MM-DD"
-  }
-]`;
-
-    console.log(`[generate-fake-reviews] tool="${toolName}" count=${safeCount} dateRange=${releaseIso}→${todayIso}`);
-
-    const geminiRes = await fetch(
-      geminiUrl(geminiModel, apiKey),
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature: 0.85,
-            maxOutputTokens: 4096,
-            responseMimeType: 'application/json',
-          },
-        }),
-      }
-    );
-
-    if (!geminiRes.ok) {
-      const errText = await geminiRes.text();
-      return c.json({ success: false, error: `Gemini API error (${geminiRes.status}): ${errText}` }, 500);
-    }
-
-    const geminiData = await geminiRes.json();
-    const rawText    = geminiData.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-    if (!rawText) return c.json({ success: false, error: 'Gemini returned an empty response' }, 500);
-
-    // Strip any accidental markdown fences
-    const cleaned = rawText.replace(/^```[\w]*\n?/m, '').replace(/```$/m, '').trim();
-
-    let generated: Array<{ userName: string; comment: string; createdAt: string }>;
-    try {
-      generated = JSON.parse(cleaned);
-      if (!Array.isArray(generated)) throw new Error('Not an array');
-    } catch (parseErr) {
-      console.log('[generate-fake-reviews] JSON parse error:', parseErr, 'raw:', cleaned.slice(0, 300));
-      return c.json({ success: false, error: `Failed to parse Gemini response as JSON: ${parseErr}` }, 500);
-    }
-
-    // Bulk-save each generated review
-    const saved: any[] = [];
-    const now = new Date().toISOString();
-
-    for (const item of generated) {
-      const userId    = `ai-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      const reviewKey = `review:${toolId}:${userId}`;
-      const review = {
-        id:        reviewKey,
-        toolId,
-        userId,
-        userName:  (item.userName || 'Anonymous').trim(),
-        rating:    5,
-        comment:   (item.comment  || '').trim(),
-        createdAt: item.createdAt ? new Date(item.createdAt).toISOString() : now,
-        updatedAt: now,
-        isFake:    true,
-      };
-      await kv.set(reviewKey, review);
-      saved.push(review);
-      // Small delay to ensure unique timestamps in userId
-      await new Promise(r => setTimeout(r, 5));
-    }
-
-    console.log(`[generate-fake-reviews] ✅ Saved ${saved.length} AI reviews for tool="${toolName}"`);
-    return c.json({ success: true, data: saved, count: saved.length });
-
-  } catch (error) {
-    console.log('[generate-fake-reviews] error:', error);
-    return c.json({ success: false, error: `AI review generation failed: ${String(error)}` }, 500);
-  }
-});
+// (AI fake-review generator removed.)
 
 // ── Image proxy — strips CORS so the browser can draw any thumbnail to canvas ─
 app.get("/make-server-e07959ec/admin/proxy-image", requireAuth, async (c) => {
