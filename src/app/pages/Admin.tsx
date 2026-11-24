@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import React from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useSearchParams, useBlocker } from 'react-router';
+import { useDirtyTracking } from '../hooks/useDirtyTracking';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
@@ -180,6 +181,7 @@ const ADMIN_NAV: { label: string; items: { value: string; label: string; danger?
     { value: 'reset', label: '⚠️ Reset', danger: true },
   ]},
 ];
+const ADMIN_TAB_VALUES = new Set(ADMIN_NAV.flatMap(g => g.items.map(i => i.value)));
 
 export function Admin() {
   const navigate = useNavigate();
@@ -208,7 +210,45 @@ export function Admin() {
   const [loadError, setLoadError] = useState(false);
   const [authChecking, setAuthChecking] = useState(true);
   const [networkError, setNetworkError] = useState(false);
-  const [activeTab, setActiveTab] = useState('dashboard');
+  // Current tab lives in the URL (?tab=leads) so refresh keeps it and the
+  // browser back button moves between tabs.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab');
+  const activeTab = tabParam && ADMIN_TAB_VALUES.has(tabParam) ? tabParam : 'dashboard';
+  const setActiveTab = useCallback((value: string) => {
+    if (value === activeTab) return;
+    setSearchParams({ tab: value });
+  }, [activeTab, setSearchParams]);
+
+  // Unsaved changes in the project / tool editor. Anything that would throw
+  // the edits away asks first.
+  const [formDirty, setFormDirty] = useState(false);
+  const formDirtyRef = useRef(false);
+  formDirtyRef.current = formDirty;
+  const UNSAVED_MSG = 'You have unsaved changes. Leave without saving?';
+  // For in-page actions (open another item, cancel, add new).
+  const leaveForm = useCallback((action: () => void) => {
+    if (formDirtyRef.current && !window.confirm(UNSAVED_MSG)) return;
+    setFormDirty(false);
+    action();
+  }, []);
+  // For navigation (sidebar tab switch, browser back/forward, leaving /admin).
+  const blocker = useBlocker(({ currentLocation, nextLocation }) =>
+    formDirtyRef.current &&
+    (currentLocation.pathname !== nextLocation.pathname || currentLocation.search !== nextLocation.search),
+  );
+  useEffect(() => {
+    if (blocker.state !== 'blocked') return;
+    if (window.confirm(UNSAVED_MSG)) { setFormDirty(false); blocker.proceed(); }
+    else blocker.reset();
+  }, [blocker]);
+  // Closing the browser tab / reloading.
+  useEffect(() => {
+    if (!formDirty) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [formDirty]);
   // Phone/tablet: the sidebar becomes a slide-in drawer opened from a top bar.
   const [navOpen, setNavOpen] = useState(false);
   // Close the drawer on Escape and lock page scroll while it is open.
@@ -990,7 +1030,7 @@ export function Admin() {
                 <div className="flex items-center justify-between px-4 lg:px-5 py-3 lg:py-4 border-b border-white/8 sticky top-14 lg:top-0 bg-black/90 backdrop-blur-md z-10">
                   <h2 className="text-base font-bold text-white">Projects</h2>
                   <Button
-                    onClick={() => setEditingProject({
+                    onClick={() => leaveForm(() => setEditingProject({
                       id: `project-${Date.now()}`,
                       title: '',
                       description: '',
@@ -1006,7 +1046,7 @@ export function Admin() {
                       deliverables: [],
                       outcome: '',
                       screenshots: [],
-                    })}
+                    }))}
                     className="cursor-pointer bg-violet-600 hover:bg-violet-500 text-white h-8 px-3 text-xs"
                   >
                     <Plus className="w-3.5 h-3.5 mr-1" />
@@ -1027,7 +1067,7 @@ export function Admin() {
                           project={project}
                           index={index}
                           moveProject={moveProject}
-                          onEdit={() => { setEditingProject(project); window.scrollTo({ top: 0 }); }}
+                          onEdit={() => leaveForm(() => { setEditingProject(project); window.scrollTo({ top: 0 }); })}
                           onDelete={() => deleteProject(project.id)}
                           onDragEnd={reorderProjects}
                           isExpanded={editingProject?.id === project.id}
@@ -1070,7 +1110,7 @@ export function Admin() {
                   <div className="p-3 sm:p-5 lg:p-6">
                     <button
                       type="button"
-                      onClick={() => { setEditingProject(null); window.scrollTo({ top: 0 }); }}
+                      onClick={() => leaveForm(() => { setEditingProject(null); window.scrollTo({ top: 0 }); })}
                       className="lg:hidden mb-3 -ml-1 flex items-center gap-1.5 px-2 py-2 rounded-lg text-sm text-white/70 hover:text-white hover:bg-white/8"
                     >
                       <span aria-hidden="true">←</span> All projects
@@ -1079,7 +1119,8 @@ export function Admin() {
                       key={editingProject.id}
                       project={editingProject}
                       onSave={saveProject}
-                      onCancel={() => setEditingProject(null)}
+                      onCancel={() => leaveForm(() => setEditingProject(null))}
+                      onDirtyChange={setFormDirty}
                       categories={settings.projectCategories || ['Motion Design', 'Branding', '3D Animation', 'Video Editing', 'VFX', 'UI/UX Animation', 'Other']}
                     />
                   </div>
@@ -1106,7 +1147,7 @@ export function Admin() {
                 <div className="flex items-center justify-between px-4 lg:px-5 py-3 lg:py-4 border-b border-white/8 sticky top-14 lg:top-0 bg-black/90 backdrop-blur-md z-10">
                   <h2 className="text-base font-bold text-white">Tools</h2>
                   <Button
-                    onClick={() => setEditingTool({
+                    onClick={() => leaveForm(() => setEditingTool({
                       id: `tool-${Date.now()}`,
                       name: '',
                       description: '',
@@ -1116,7 +1157,7 @@ export function Admin() {
                       slug: '',
                       faqs: [],
                       versions: [],
-                    })}
+                    }))}
                     className="cursor-pointer bg-violet-600 hover:bg-violet-500 text-white h-8 px-3 text-xs"
                   >
                     <Plus className="w-3.5 h-3.5 mr-1" />
@@ -1137,7 +1178,7 @@ export function Admin() {
                           tool={tool}
                           index={index}
                           moveTool={moveTool}
-                          onEdit={() => { setEditingTool(tool); window.scrollTo({ top: 0 }); }}
+                          onEdit={() => leaveForm(() => { setEditingTool(tool); window.scrollTo({ top: 0 }); })}
                           onDelete={() => deleteTool(tool.id)}
                           onDragEnd={reorderTools}
                           isExpanded={editingTool?.id === tool.id}
@@ -1212,7 +1253,7 @@ export function Admin() {
                   <div className="p-3 sm:p-5 lg:p-6">
                     <button
                       type="button"
-                      onClick={() => { setEditingTool(null); window.scrollTo({ top: 0 }); }}
+                      onClick={() => leaveForm(() => { setEditingTool(null); window.scrollTo({ top: 0 }); })}
                       className="lg:hidden mb-3 -ml-1 flex items-center gap-1.5 px-2 py-2 rounded-lg text-sm text-white/70 hover:text-white hover:bg-white/8"
                     >
                       <span aria-hidden="true">←</span> All tools
@@ -1221,7 +1262,8 @@ export function Admin() {
                       key={editingTool.id}
                       tool={editingTool}
                       onSave={saveTool}
-                      onCancel={() => setEditingTool(null)}
+                      onCancel={() => leaveForm(() => setEditingTool(null))}
+                      onDirtyChange={setFormDirty}
                       statuses={(settings.toolStatuses || []).map(s => s.label)}
                       toolCategories={settings.toolCategories || []}
                     />
@@ -1731,11 +1773,13 @@ function ProjectForm({
   onSave,
   onCancel,
   categories,
+  onDirtyChange,
 }: {
   project: Project;
   onSave: (project: Project) => Promise<{ success: boolean; message: string }>;
   onCancel: () => void;
   categories: string[];
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const [formData, setFormData] = useState({
     ...project,
@@ -1749,6 +1793,7 @@ function ProjectForm({
     year: project.year || new Date().getFullYear(),
     featured: project.featured || false,
   });
+  const markSaved = useDirtyTracking(formData, onDirtyChange);
   const [uploading, setUploading] = useState(false);
   const [imageInputMode, setImageInputMode] = useState<'url' | 'upload'>('url');
   const [screenshotsInputMode, setScreenshotsInputMode] = useState<'url' | 'upload' | 'bunny' | 'bunny-lib' | 'vimeo'>('url');
@@ -1893,6 +1938,42 @@ function ProjectForm({
       ...prev,
       screenshots: (prev.screenshots || []).filter((_, i) => i !== index)
     }));
+    setGallerySelected(new Set());
+  };
+
+  // ── Gallery management: reorder (drag / arrows), multi-select remove ──
+  const [gallerySelectMode, setGallerySelectMode] = useState(false);
+  const [gallerySelected, setGallerySelected] = useState<Set<number>>(new Set());
+  const [galleryDragFrom, setGalleryDragFrom] = useState<number | null>(null);
+  const [galleryDragOver, setGalleryDragOver] = useState<number | null>(null);
+
+  const moveScreenshot = (from: number, to: number) => {
+    setFormData(prev => {
+      const list = [...(prev.screenshots || [])];
+      if (from < 0 || from >= list.length || to < 0 || to >= list.length || from === to) return prev;
+      const [item] = list.splice(from, 1);
+      list.splice(to, 0, item);
+      return { ...prev, screenshots: list };
+    });
+  };
+
+  const toggleGallerySelected = (index: number) => {
+    setGallerySelected(prev => {
+      const next = new Set(prev);
+      next.has(index) ? next.delete(index) : next.add(index);
+      return next;
+    });
+  };
+
+  const removeSelectedScreenshots = () => {
+    if (!gallerySelected.size) return;
+    if (!confirm(`Remove ${gallerySelected.size} item${gallerySelected.size !== 1 ? 's' : ''} from the gallery?`)) return;
+    setFormData(prev => ({
+      ...prev,
+      screenshots: (prev.screenshots || []).filter((_, i) => !gallerySelected.has(i)),
+    }));
+    setGallerySelected(new Set());
+    setGallerySelectMode(false);
   };
 
   // AI helpers
@@ -1998,6 +2079,7 @@ function ProjectForm({
       setSaving(true);
       setFormMessage(null);
       const result = await onSave(formData);
+      if (result.success) markSaved();
       setSaving(false);
       setFormMessage({ type: result.success ? 'success' : 'error', text: result.message });
       if (result.success) {
@@ -2717,13 +2799,55 @@ function ProjectForm({
                 </div>
               )}
 
-              {/* ── Gallery preview ── */}
-              {formData.screenshots && formData.screenshots.filter(u => u.trim()).length > 0 && (
+              {/* ── Gallery: numbered, reorderable, multi-select ── */}
+              {formData.screenshots && formData.screenshots.filter(u => u.trim()).length > 0 && (() => {
+                const count = formData.screenshots.filter(u => u.trim()).length;
+                const total = formData.screenshots.length;
+                return (
                 <div className="mt-4 space-y-2">
-                  <p className="text-xs text-gray-400 font-medium">
-                    Gallery ({formData.screenshots.filter(u => u.trim()).length} item{formData.screenshots.filter(u => u.trim()).length !== 1 ? 's' : ''})
-                  </p>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-64 overflow-y-auto pr-1">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs text-gray-400 font-medium">
+                      Gallery ({count} item{count !== 1 ? 's' : ''})
+                      <span className="hidden lg:inline text-white/25"> · drag to reorder</span>
+                    </p>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {gallerySelectMode ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setGallerySelected(gallerySelected.size === total ? new Set() : new Set(formData.screenshots.map((_, i) => i)))}
+                            className="px-2.5 py-1 rounded-md text-xs bg-white/8 text-white/70 hover:bg-white/15"
+                          >
+                            {gallerySelected.size === total ? 'Select none' : 'Select all'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={removeSelectedScreenshots}
+                            disabled={!gallerySelected.size}
+                            className="px-2.5 py-1 rounded-md text-xs bg-red-500/80 text-white hover:bg-red-500 disabled:opacity-40"
+                          >
+                            Remove {gallerySelected.size || ''}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setGallerySelectMode(false); setGallerySelected(new Set()); }}
+                            className="px-2.5 py-1 rounded-md text-xs text-white/60 hover:text-white"
+                          >
+                            Done
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setGallerySelectMode(true)}
+                          className="px-2.5 py-1 rounded-md text-xs bg-white/8 text-white/70 hover:bg-white/15"
+                        >
+                          Select
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-[28rem] overflow-y-auto pr-1">
                     {formData.screenshots.map((url, index) => {
                       if (!url.trim()) return null;
                       const isVimeo = url.includes('vimeo.com');
@@ -2731,8 +2855,23 @@ function ProjectForm({
                       const bunnyThumb = isBunny ? getBunnyAutoThumbnailUrl(url) : null;
                       const isDirectVideo = !isBunny && /\.(mp4|webm|mov|avi)(\?|$)/i.test(url);
                       const vimeoId = isVimeo ? url.split('vimeo.com/').pop()?.split('?')[0]?.split('/').pop() : null;
+                      const selected = gallerySelected.has(index);
                       return (
-                        <div key={index} className="relative group rounded-lg overflow-hidden border border-white/10 bg-black/30 aspect-video">
+                        <div
+                          key={`${index}-${url}`}
+                          draggable={!gallerySelectMode}
+                          onDragStart={(e) => { setGalleryDragFrom(index); e.dataTransfer.effectAllowed = 'move'; }}
+                          onDragOver={(e) => { if (galleryDragFrom === null) return; e.preventDefault(); setGalleryDragOver(index); }}
+                          onDragLeave={() => setGalleryDragOver(o => (o === index ? null : o))}
+                          onDrop={(e) => { e.preventDefault(); if (galleryDragFrom !== null) moveScreenshot(galleryDragFrom, index); setGalleryDragFrom(null); setGalleryDragOver(null); }}
+                          onDragEnd={() => { setGalleryDragFrom(null); setGalleryDragOver(null); }}
+                          onClick={gallerySelectMode ? () => toggleGallerySelected(index) : undefined}
+                          className={`relative group rounded-lg overflow-hidden border bg-black/30 aspect-video transition-all ${
+                            selected ? 'border-purple-400 ring-2 ring-purple-400/50' :
+                            galleryDragOver === index && galleryDragFrom !== index ? 'border-purple-400 ring-2 ring-purple-400/40' :
+                            'border-white/10'
+                          } ${galleryDragFrom === index ? 'opacity-40' : ''} ${gallerySelectMode ? 'cursor-pointer' : 'lg:cursor-grab'}`}
+                        >
                           {isVimeo ? (
                             /* Vimeo card — real thumbnail fetched via oEmbed */
                             <VimeoThumb url={url} vimeoId={vimeoId!} />
@@ -2743,7 +2882,8 @@ function ProjectForm({
                                 src={bunnyThumb}
                                 alt={`Media ${index + 1}`}
                                 loading="lazy"
-                                className="w-full h-full object-cover"
+                                draggable={false}
+                                className="w-full h-full object-cover pointer-events-none"
                                 onError={(e) => { e.currentTarget.style.opacity = '0.2'; }}
                               />
                             ) : (
@@ -2751,24 +2891,63 @@ function ProjectForm({
                             )
                           ) : isDirectVideo ? (
                             /* Direct video */
-                            <video src={url} className="w-full h-full object-cover" muted preload="metadata" />
+                            <video src={url} className="w-full h-full object-cover pointer-events-none" muted preload="metadata" />
                           ) : (
                             /* Image */
                             <img
                               src={url}
                               alt={`Media ${index + 1}`}
-                              className="w-full h-full object-cover"
+                              draggable={false}
+                              className="w-full h-full object-cover pointer-events-none"
                               onError={(e) => { e.currentTarget.style.opacity = '0.2'; }}
                             />
                           )}
-                          {/* Remove button */}
-                          <button
-                            type="button"
-                            onClick={() => removeScreenshot(index)}
-                            className="absolute top-1 right-1 w-6 h-6 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg z-10"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
+
+                          {/* Position */}
+                          <span className="absolute top-1 left-1 min-w-5 h-5 px-1 rounded-full bg-black/75 text-white text-[10px] font-bold flex items-center justify-center z-10">
+                            {index + 1}
+                          </span>
+
+                          {gallerySelectMode ? (
+                            /* Selection tick */
+                            <span className={`absolute top-1 right-1 w-6 h-6 rounded-full border-2 flex items-center justify-center z-10 ${selected ? 'bg-purple-500 border-purple-300' : 'bg-black/50 border-white/60'}`}>
+                              {selected && <svg className="w-3.5 h-3.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}><path d="M5 13l4 4L19 7" /></svg>}
+                            </span>
+                          ) : (
+                            <>
+                              {/* Remove — always visible on touch, on hover with a mouse */}
+                              <button
+                                type="button"
+                                onClick={() => removeScreenshot(index)}
+                                aria-label={`Remove item ${index + 1}`}
+                                className="absolute top-1 right-1 w-7 h-7 lg:w-6 lg:h-6 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center lg:opacity-0 lg:group-hover:opacity-100 transition-opacity shadow-lg z-10"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                              {/* Move left / right (touch-friendly reordering) */}
+                              <div className="absolute bottom-1 right-1 flex gap-1 z-10 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
+                                <button
+                                  type="button"
+                                  onClick={() => moveScreenshot(index, index - 1)}
+                                  disabled={index === 0}
+                                  aria-label="Move earlier"
+                                  className="w-7 h-7 lg:w-6 lg:h-6 rounded-full bg-black/75 text-white text-xs flex items-center justify-center hover:bg-purple-600 disabled:opacity-30"
+                                >
+                                  ◀
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => moveScreenshot(index, index + 1)}
+                                  disabled={index === total - 1}
+                                  aria-label="Move later"
+                                  className="w-7 h-7 lg:w-6 lg:h-6 rounded-full bg-black/75 text-white text-xs flex items-center justify-center hover:bg-purple-600 disabled:opacity-30"
+                                >
+                                  ▶
+                                </button>
+                              </div>
+                            </>
+                          )}
+
                           {/* Type badge */}
                           <div className="absolute bottom-1 left-1 text-[9px] px-1.5 py-0.5 rounded bg-black/70 text-gray-300 font-mono opacity-0 group-hover:opacity-100 transition-opacity">
                             {isVimeo ? 'Vimeo' : isBunny ? 'Bunny' : isDirectVideo ? 'Video' : 'Image'}
@@ -2778,7 +2957,8 @@ function ProjectForm({
                     })}
                   </div>
                 </div>
-              )}
+                );
+              })()}
             </div>
           </div>
         </div>

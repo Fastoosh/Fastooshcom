@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useDirtyTracking } from '../../hooks/useDirtyTracking';
 import { createPortal } from 'react-dom';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -166,10 +167,12 @@ export function ToolFormNew({
   onCancel,
   statuses,
   toolCategories = [],
+  onDirtyChange,
 }: {
   tool: Tool;
   onSave: (tool: Tool) => Promise<{ success: boolean; message: string }>;
   onCancel: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
   statuses: string[];
   toolCategories?: string[];
 }) {
@@ -204,6 +207,8 @@ export function ToolFormNew({
   const [uploadSuccess, setUploadSuccess] = useState(false);
   const [faqText, setFaqText] = useState('');
   const [howItWorksText, setHowItWorksText] = useState('');
+  // FAQ / How-it-works text areas hold their own state, so track them too.
+  const markSaved = useDirtyTracking([formData, faqText, howItWorksText], onDirtyChange);
   const [formMessage, setFormMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -775,6 +780,7 @@ export function ToolFormNew({
         })),
       };
       const result = await onSave(cleanedData);
+      if (result.success) markSaved();
       setSaving(false);
       setFormMessage({ type: result.success ? 'success' : 'error', text: result.message });
       if (result.success) {
