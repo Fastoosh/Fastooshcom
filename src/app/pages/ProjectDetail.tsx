@@ -179,8 +179,6 @@ export function ProjectDetail() {
   const engagedSentRef     = useRef(false);
   const ENGAGED_SECONDS    = 5;
 
-  useEffect(() => { idRef.current = slug; }, [slug]);
-
   // Gallery video plays — counted once per video per page view.
   const galleryPlayed = useRef<Set<string>>(new Set());
   const trackGalleryPlay = useCallback((url: string) => {
@@ -220,6 +218,22 @@ export function ProjectDetail() {
     playStartRef.current = keepRunning ? Date.now() : null;
     postWatchSeconds(elapsed);
   }, [postWatchSeconds]);
+
+  // Moving to another project keeps this component mounted. Close out the
+  // previous project's watch time under ITS id, then start a fresh page view
+  // for the new one — otherwise time and views landed on the wrong project.
+  useEffect(() => {
+    if (idRef.current === slug) return;
+    drainTimer(false);                 // still uses the previous project's id
+    idRef.current           = slug;
+    isPlayingRef.current    = false;
+    playStartRef.current    = null;
+    viewRecordedRef.current = false;
+    onScreenSecondsRef.current = 0;
+    engagedSentRef.current  = false;
+    videoVisibleRef.current = true;
+    galleryPlayed.current   = new Set();
+  }, [slug, drainTimer]);
 
   /** Called when the play button overlay is clicked — shows iframe, records one view. */
   const handleVideoPlay = useCallback(() => {
