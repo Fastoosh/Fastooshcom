@@ -347,7 +347,10 @@ export function ProjectDetail() {
       };
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showVideo]); // re-bind only when the iframe mounts
+  // Re-bind when the iframe actually mounts: it only renders after the project
+  // has loaded, so depending on showVideo alone (true from the start for
+  // autoplay) ran this once with no iframe and never again.
+  }, [showVideo, loading, project.videoUrl]);
 
   // ── Bunny unmute prompt auto-hide (6s) ──────────────────────────────────────
   useEffect(() => {
@@ -385,7 +388,7 @@ export function ProjectDetail() {
     }, { threshold: [0, 0.5, 1] });
     io.observe(iframeRef.current);
     return () => io.disconnect();
-  }, [showVideo, drainTimer]);
+  }, [showVideo, drainTimer, loading, project.videoUrl]);
 
   // ── 10-second heartbeat: flush chunks while video is actually playing ───────
   useEffect(() => {
