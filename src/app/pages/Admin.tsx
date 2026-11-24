@@ -12,6 +12,7 @@ import { Textarea } from '../components/ui/textarea';
 import { AdminSelect } from '../components/admin/AdminSelect';
 import { Plus, Pencil, Trash2, Save, X, LogOut, Upload, Sparkles, Menu, Search } from 'lucide-react';
 import { ActivityTab } from '../components/admin/ActivityTab';
+import { StudioProfileEditor, type StudioProfile } from '../components/admin/StudioProfileEditor';
 import { AdminSearch, type AdminSearchResult } from '../components/admin/AdminSearch';
 import { AIImproveModal, type AIImproveContext } from '../components/admin/AIImproveModal';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
@@ -132,6 +133,7 @@ interface Settings {
   faviconUrl?: string;
   siteUrl?: string;
   defaultOgImage?: string;
+  studioProfile?: StudioProfile;
   calendlyUrl?: string;
   contactEmail?: string;
   emailReplyTo?: string;
@@ -3812,6 +3814,20 @@ function SettingsForm({
               )}
             </div>
           </div>
+        </div>
+
+        {/* Studio facts — for Google and AI assistants */}
+        <div className="mt-6 pt-6 border-t border-white/10">
+          <h4 className="text-lg font-semibold text-white mb-1">Studio facts (Google &amp; AI assistants)</h4>
+          <p className="text-sm text-gray-400 mb-4">
+            Plain facts about the studio. They appear on the About page and in the data search engines and
+            AI assistants (ChatGPT, Claude, Gemini, Perplexity) read. Only write what is true. Changes reach
+            crawlers after the next site deploy.
+          </p>
+          <StudioProfileEditor
+            value={formData.studioProfile}
+            onChange={(studioProfile) => setFormData({ ...formData, studioProfile })}
+          />
         </div>
 
         {/* Contact Email Section */}

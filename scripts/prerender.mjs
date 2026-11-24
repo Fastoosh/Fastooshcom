@@ -273,14 +273,35 @@ async function main() {
   const LOGO = await bestImage('logo', settings?.logoDarkUrl, settings?.logoUrl);
   const sameAs = Object.values(settings?.socialLinks || {}).filter(isHttp);
 
+  // Studio facts (Admin → Settings → Studio facts) + the About page copy.
+  const profile = (settings?.studioProfile && typeof settings.studioProfile === 'object') ? settings.studioProfile : {};
+  const services   = (profile.services || []).filter(Boolean);
+  const industries = (profile.industries || []).filter(Boolean);
+  const studioFaq  = (profile.faq || []).filter(f => f?.q?.trim() && f?.a?.trim());
+  let aboutCopy = {};
+  try { aboutCopy = JSON.parse(readFileSync(join(ROOT, 'src/locales/en.json'), 'utf8')).about || {}; } catch { /* optional */ }
+  const aboutStory = [
+    aboutCopy.story1,
+    [aboutCopy.story2Pre, aboutCopy.story2Bold1, aboutCopy.story2Mid1, aboutCopy.story2Bold2, aboutCopy.story2Mid2, aboutCopy.story2Bold3, aboutCopy.story2Post].filter(Boolean).join(''),
+    aboutCopy.story3, aboutCopy.story4,
+  ].filter(Boolean);
+  const ONE_LINER = profile.oneLiner?.trim()
+    || 'Fastoosh is a motion design studio creating high-impact videos, After Effects tools and creative workflows for brands.';
+  const [locCity, ...locRest] = String(profile.location || '').split(',').map(s => s.trim()).filter(Boolean);
+
   const ORG = {
     '@type': 'Organization', '@id': `${SITE}/#organization`,
     name: BRAND, url: `${SITE}/`,
     ...(LOGO ? { logo: LOGO } : {}),
     ...(sameAs.length ? { sameAs } : {}),
     ...(settings?.contactEmail ? { email: settings.contactEmail, contactPoint: { '@type': 'ContactPoint', contactType: 'sales', email: settings.contactEmail, url: `${SITE}/work-with-us` } } : {}),
-    description: 'Fastoosh is a motion design studio creating high-impact videos, After Effects tools and creative workflows for brands.',
-    knowsAbout: ['Motion design', 'Animation', 'After Effects', 'Video production', 'Brand video', 'Event videos', 'After Effects scripts and extensions'],
+    description: ONE_LINER,
+    knowsAbout: services.length ? services : ['Motion design', 'Animation', 'After Effects', 'Video production', 'Brand video', 'Event videos', 'After Effects scripts and extensions'],
+    ...(profile.founded ? { foundingDate: String(profile.founded) } : {}),
+    ...(locCity ? { address: { '@type': 'PostalAddress', addressLocality: locCity, ...(locRest.length ? { addressCountry: locRest.join(', ') } : {}) } } : {}),
+    ...(profile.areaServed ? { areaServed: profile.areaServed } : {}),
+    ...(profile.languages ? { knowsLanguage: profile.languages.split(/[,/]/).map(s => s.trim()).filter(Boolean) } : {}),
+    ...(services.length ? { makesOffer: services.map(s => ({ '@type': 'Offer', itemOffered: { '@type': 'Service', name: s, provider: { '@id': `${SITE}/#organization` } } })) } : {}),
   };
   const crumbs = (items) => ({
     '@context': 'https://schema.org', '@type': 'BreadcrumbList',
@@ -298,6 +319,8 @@ async function main() {
     const body = `
       <h1 style="color:#fff;font-size:32px">${esc(heading || 'Fastoosh — Motion Design Studio')}</h1>
       ${para(home?.heroSubtitle)}
+      ${para(ONE_LINER)}
+      ${services.length ? h2('Services') + list(services.map(esc)) : ''}
       ${caps.length ? h2(home?.capabilitiesHeading || 'What we do') + list(caps) : ''}
       ${h2(home?.featuredHeading || 'Featured work')}
       ${list(featured.filter((p, i, a) => a.indexOf(p) === i).map(p => `<a href="/projects/${esc(p.slug)}" style="color:#c4b5fd">${esc(p.title)}</a>${p.client ? ` — ${esc(p.client)}` : ''}`))}
@@ -452,14 +475,26 @@ async function main() {
 
   // ── About ──
   pages.push({ route: '/about', key: 'about', page: {
-    title: 'About Fastoosh — Motion Design Studio', description: clip(plain(settings?.aboutText) || ORG.description, 160),
+    title: 'About Fastoosh — Motion Design Studio', description: clip(ONE_LINER, 160),
     image: DEFAULT_IMAGE, canonical: url('/about'),
     jsonLd: [{ '@context': 'https://schema.org', '@type': 'AboutPage', url: url('/about'), mainEntity: { '@id': `${SITE}/#organization` } },
+      { '@context': 'https://schema.org', ...ORG },
       ...(Array.isArray(team) ? team.filter(m => m?.name).map(m => ({ '@context': 'https://schema.org', '@type': 'Person', name: m.name, jobTitle: m.role || undefined, description: plain(m.bio) || undefined, worksFor: { '@id': `${SITE}/#organization` } })) : []),
+      // Same questions are shown on the About page (StudioProfile FAQ).
+      ...(studioFaq.length ? [{
+        '@context': 'https://schema.org', '@type': 'FAQPage',
+        mainEntity: studioFaq.map(f => ({ '@type': 'Question', name: plain(f.q), acceptedAnswer: { '@type': 'Answer', text: plain(f.a) } })),
+      }] : []),
       crumbs([['Home', '/'], ['About', '/about']])],
     body: `<h1 style="color:#fff;font-size:30px">About Fastoosh</h1>
-      ${para(settings?.aboutText || ORG.description)}
-      ${Array.isArray(team) && team.length ? h2('Team') + list(team.filter(m => m?.name).map(m => `<strong>${esc(m.name)}</strong>${m.role ? ` — ${esc(m.role)}` : ''}${m.bio ? `<br/>${esc(plain(m.bio))}` : ''}`)) : ''}`,
+      ${para(ONE_LINER)}
+      ${aboutStory.map(para).join('')}
+      ${[['Based in', profile.location], ['Founded', profile.founded], ['Clients', profile.areaServed], ['Languages', profile.languages]].some(([, x]) => x)
+        ? h2('Studio facts') + list([['Based in', profile.location], ['Founded', profile.founded], ['Clients', profile.areaServed], ['Languages', profile.languages]].filter(([, x]) => x).map(([k, x]) => `${esc(k)}: ${esc(x)}`)) : ''}
+      ${services.length ? h2('Services') + list(services.map(esc)) : ''}
+      ${industries.length ? h2('Industries') + list(industries.map(esc)) : ''}
+      ${Array.isArray(team) && team.length ? h2('Team') + list(team.filter(m => m?.name).map(m => `<strong>${esc(m.name)}</strong>${m.role ? ` — ${esc(m.role)}` : ''}${m.bio ? `<br/>${esc(plain(m.bio))}` : ''}`)) : ''}
+      ${studioFaq.length ? h2('Frequently asked questions') + studioFaq.map(f => `<h3 style="color:#fff;font-size:16px;margin:16px 0 4px">${esc(plain(f.q))}</h3>${para(f.a)}`).join('') : ''}`,
   }, sitemap: { priority: '0.6' } });
 
   // ── Work with us ──
@@ -512,8 +547,85 @@ async function main() {
   writeFileSync(join(DIST, 'sitemap.xml'),
     `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1" xmlns:video="http://www.google.com/schemas/sitemap-video/1.1">\n${urls.join('\n')}\n</urlset>\n`);
 
-  // robots.txt pointing at the www sitemap.
-  writeFileSync(join(DIST, 'robots.txt'), `User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /account\nDisallow: /auth/\nDisallow: /dl/\nDisallow: /setup\nDisallow: /init\n\nSitemap: ${SITE}/sitemap.xml\n`);
+  // ── robots.txt ──
+  // Public pages are open to search engines AND AI assistants (answer/search
+  // bots and the crawlers that teach models who Fastoosh is). Only private
+  // areas are excluded. Note: Cloudflare's "Managed robots.txt" / "Block AI
+  // bots" settings replace or override this file — they must be off.
+  const PRIVATE = ['/admin', '/account', '/auth/', '/dl/', '/setup', '/init'];
+  const AI_BOTS = [
+    'GPTBot', 'OAI-SearchBot', 'ChatGPT-User',               // OpenAI
+    'ClaudeBot', 'Claude-SearchBot', 'Claude-User',          // Anthropic
+    'Google-Extended', 'Applebot-Extended',                  // Gemini, Apple Intelligence
+    'PerplexityBot', 'Perplexity-User', 'meta-externalagent', 'Amazonbot', 'CCBot',
+  ];
+  const group = (agents) => `${agents.map(a => `User-agent: ${a}`).join('\n')}\nAllow: /\n${PRIVATE.map(p => `Disallow: ${p}`).join('\n')}\n`;
+  writeFileSync(join(DIST, 'robots.txt'),
+    `# Fastoosh — public pages are welcome in search engines and AI assistants.\n\n${group(['*'])}\n${group(AI_BOTS)}\nSitemap: ${SITE}/sitemap.xml\n`);
+
+  // ── llms.txt (llmstxt.org) ──
+  // A plain-Markdown summary AI assistants can read in one request: who we
+  // are, what we do, every project and tool with a link. llms-full.txt adds
+  // the full project and tool write-ups.
+  const md = (s) => plain(s).replace(/\s+/g, ' ');
+  const factLines = [
+    profile.location && `- Based in: ${profile.location}`,
+    profile.founded && `- Founded: ${profile.founded}`,
+    profile.areaServed && `- Clients: ${profile.areaServed}`,
+    profile.languages && `- Languages: ${profile.languages}`,
+    settings?.contactEmail && `- Contact: ${settings.contactEmail} · ${SITE}/work-with-us`,
+    sameAs.length && `- Elsewhere: ${sameAs.join(', ')}`,
+  ].filter(Boolean);
+  const projectLine = (p) => `- [${md(p.title)}](${url(`/projects/${p.slug}`)})${[p.client, p.category, p.year].filter(Boolean).length ? ` (${[p.client, p.category, p.year].filter(Boolean).join(', ')})` : ''}: ${clip(p.description, 200)}`;
+  const toolPrice = (t) => (t.versions || []).filter(v => v.versionType).map(v => `${v.versionType}${v.pricingDisplay ? ` ${v.pricingDisplay}` : ''}`).join(', ');
+  const toolLine = (t) => `- [${md(t.name)}](${url(`/tools/${t.slug}`)})${t.tagline ? ` — ${md(t.tagline)}` : ''}: ${clip(t.description, 220)}${toolPrice(t) ? ` Pricing: ${toolPrice(t)}.` : ''}`;
+  const llms = [
+    `# ${BRAND}`,
+    '',
+    `> ${md(ONE_LINER)}`,
+    '',
+    ...aboutStory.map(md),
+    '',
+    ...(factLines.length ? ['## Studio facts', '', ...factLines, ''] : []),
+    ...(services.length ? ['## Services', '', ...services.map(s => `- ${md(s)}`), ''] : []),
+    ...(industries.length ? ['## Industries', '', ...industries.map(s => `- ${md(s)}`), ''] : []),
+    '## Projects', '', ...projects.map(projectLine), '',
+    '## Tools for After Effects', '', ...tools.map(toolLine), '',
+    ...(studioFaq.length ? ['## FAQ', '', ...studioFaq.flatMap(f => [`### ${md(f.q)}`, '', md(f.a), '']) ] : []),
+    '## Pages', '',
+    `- [Home](${url('/')})`, `- [All projects](${url('/projects')})`, `- [All tools](${url('/tools')})`,
+    `- [About](${url('/about')})`, `- [Work with us / contact](${url('/work-with-us')})`,
+    '',
+    '## Optional', '',
+    `- [Full project and tool details](${url('/llms-full.txt')})`,
+    '',
+  ].join('\n');
+  writeFileSync(join(DIST, 'llms.txt'), llms);
+
+  const full = [
+    llms.split('\n## Pages')[0].trimEnd(), '',
+    '# Project details', '',
+    ...projects.flatMap(p => [
+      `## ${md(p.title)}`, '', `URL: ${url(`/projects/${p.slug}`)}`,
+      ...[['Client', p.client], ['Category', p.category], ['Year', p.year]].filter(([, x]) => x).map(([k, x]) => `${k}: ${x}`), '',
+      md(p.description), '',
+      ...(p.goal ? ['Goal: ' + md(p.goal), ''] : []),
+      ...(p.approach ? ['Approach: ' + md(p.approach), ''] : []),
+      ...((p.deliverables || []).filter(Boolean).length ? ['Deliverables: ' + p.deliverables.filter(Boolean).map(md).join('; '), ''] : []),
+      ...(p.outcome ? ['Outcome: ' + md(p.outcome), ''] : []),
+    ]),
+    '# Tool details', '',
+    ...tools.flatMap(t => [
+      `## ${md(t.name)}`, '', `URL: ${url(`/tools/${t.slug}`)}`, '',
+      md(t.description), '',
+      ...((t.howItWorks || []).filter(s => s?.title).length ? ['How it works:', ...(t.howItWorks || []).filter(s => s?.title).map((s, i) => `${i + 1}. ${md(s.title)}${s.description ? ` — ${md(s.description)}` : ''}`), ''] : []),
+      ...((t.richFeatures || []).filter(f => f?.title).length ? ['Features:', ...(t.richFeatures || []).filter(f => f?.title).map(f => `- ${md(f.title)}${f.description ? ` — ${md(f.description)}` : ''}`), ''] : []),
+      ...(toolPrice(t) ? [`Pricing: ${toolPrice(t)}`, ''] : []),
+      ...(t.systemRequirements ? [`System requirements: ${md(t.systemRequirements)}`, ''] : []),
+      ...((t.faqs || []).filter(f => f?.question && f?.answer).flatMap(f => [`Q: ${md(f.question)}`, `A: ${md(f.answer)}`, ''])),
+    ]),
+  ].join('\n');
+  writeFileSync(join(DIST, 'llms-full.txt'), full);
 
   console.log(`[prerender] ✓ ${pages.length} pages, sitemap with ${urls.length} URLs (origin ${SITE})`);
 }

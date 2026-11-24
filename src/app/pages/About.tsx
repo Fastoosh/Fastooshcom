@@ -9,6 +9,7 @@ import { faLinkedin, faInstagram, faBehance, faDribbble } from "@fortawesome/fre
 import { useTranslation } from "react-i18next";
 import { fetchTranslations, deepMergeTranslations } from "../utils/translations";
 import { api } from "../utils/api";
+import type { StudioProfile } from "../components/admin/StudioProfileEditor";
 
 // (projectId / publicAnonKey no longer needed — team is fetched via api.getTeam())
 
@@ -31,6 +32,9 @@ export function About() {
   const [loading,      setLoading]      = useState(true);
   const [clientLogos,  setClientLogos]  = useState<ClientLogo[]>([]);
   const [marqueeSpeed, setMarqueeSpeed] = useState(28);
+  // Admin → Settings → Studio facts. Also used for structured data and
+  // /llms.txt, so the FAQ shown here must match what crawlers are told.
+  const [profile,      setProfile]      = useState<StudioProfile | null>(null);
 
   // Covers initial mount AND language changes — fetches team + translations in
   // one Promise.all so members always render translated on the first paint.
@@ -55,6 +59,9 @@ export function About() {
       }
       if (settingsRes.success && Array.isArray(settingsRes.data?.clientLogos) && settingsRes.data.clientLogos.length > 0) {
         setClientLogos(settingsRes.data.clientLogos as ClientLogo[]);
+      }
+      if (settingsRes.success && settingsRes.data?.studioProfile && typeof settingsRes.data.studioProfile === 'object') {
+        setProfile(settingsRes.data.studioProfile as StudioProfile);
       }
       if (settingsRes.success && typeof settingsRes.data?.marqueeSpeed === 'number') {
         setMarqueeSpeed(settingsRes.data.marqueeSpeed);
@@ -299,6 +306,72 @@ export function About() {
           </GlassCard>
         </motion.div>
         )}
+
+        {/* Studio facts + FAQ (Admin → Settings → Studio facts) */}
+        {profile && (() => {
+          const facts = [
+            ['Based in', profile.location],
+            ['Founded', profile.founded],
+            ['Clients', profile.areaServed],
+            ['Languages', profile.languages],
+          ].filter(([, v]) => v && String(v).trim());
+          const services = (profile.services || []).filter(Boolean);
+          const industries = (profile.industries || []).filter(Boolean);
+          const faq = (profile.faq || []).filter(f => f.q?.trim() && f.a?.trim());
+          if (!facts.length && !services.length && !faq.length && !profile.oneLiner) return null;
+          return (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              className="mb-24 space-y-8"
+            >
+              {(facts.length > 0 || services.length > 0 || profile.oneLiner) && (
+                <GlassCard className="p-8 md:p-10">
+                  <h2 className="text-3xl mb-4">Studio facts</h2>
+                  {profile.oneLiner && <p className="text-white/70 text-lg mb-6">{profile.oneLiner}</p>}
+                  {facts.length > 0 && (
+                    <dl className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                      {facts.map(([k, v]) => (
+                        <div key={k as string} className="rounded-xl bg-white/5 border border-white/10 p-4">
+                          <dt className="text-xs uppercase tracking-wider text-white/40">{k}</dt>
+                          <dd className="text-white mt-1">{v}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  )}
+                  <div className="grid md:grid-cols-2 gap-6">
+                    {services.length > 0 && (
+                      <div>
+                        <h3 className="text-white/90 font-semibold mb-2">Services</h3>
+                        <ul className="space-y-1 text-white/60">{services.map(s => <li key={s}>• {s}</li>)}</ul>
+                      </div>
+                    )}
+                    {industries.length > 0 && (
+                      <div>
+                        <h3 className="text-white/90 font-semibold mb-2">Industries</h3>
+                        <ul className="space-y-1 text-white/60">{industries.map(s => <li key={s}>• {s}</li>)}</ul>
+                      </div>
+                    )}
+                  </div>
+                </GlassCard>
+              )}
+              {faq.length > 0 && (
+                <GlassCard className="p-8 md:p-10">
+                  <h2 className="text-3xl mb-6">Frequently asked questions</h2>
+                  <div className="divide-y divide-white/10">
+                    {faq.map(f => (
+                      <div key={f.q} className="py-4">
+                        <h3 className="text-white font-medium mb-1">{f.q}</h3>
+                        <p className="text-white/60 whitespace-pre-line">{f.a}</p>
+                      </div>
+                    ))}
+                  </div>
+                </GlassCard>
+              )}
+            </motion.div>
+          );
+        })()}
 
         {/* CTA */}
         <motion.div
