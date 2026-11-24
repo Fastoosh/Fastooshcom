@@ -15,13 +15,17 @@ import { detectVideoProvider, getBunnyEmbedUrl, getBunnyAutoThumbnailUrl } from 
 // Gallery tile for a Bunny video: shows the CDN thumbnail with a play button
 // and only mounts the iframe player on click, so a gallery of many videos
 // doesn't spin up dozens of players at once.
+// Aspect ratio: Bunny renders the thumbnail at the video's own dimensions, so
+// the image's natural size gives the real ratio (vertical, square, etc.).
+// Falls back to 16:9 until it loads or if it fails.
 function BunnyGalleryItem({ url, title }: { url: string; title: string }) {
   const [playing, setPlaying] = useState(false);
+  const [ratio, setRatio] = useState<number>(16 / 9);
   const thumb = getBunnyAutoThumbnailUrl(url);
   if (playing) {
     const src = `${getBunnyEmbedUrl(url)}?autoplay=true&preload=true&responsive=true`;
     return (
-      <div className="relative w-full aspect-video bg-black">
+      <div className="relative w-full bg-black" style={{ aspectRatio: ratio }}>
         <iframe
           src={src}
           title={title}
@@ -37,7 +41,8 @@ function BunnyGalleryItem({ url, title }: { url: string; title: string }) {
     <button
       type="button"
       onClick={() => setPlaying(true)}
-      className="group relative block w-full aspect-video bg-black/40 cursor-pointer"
+      className="group relative block w-full bg-black/40 cursor-pointer"
+      style={{ aspectRatio: ratio }}
       aria-label={`Play ${title}`}
     >
       {thumb && (
@@ -46,6 +51,10 @@ function BunnyGalleryItem({ url, title }: { url: string; title: string }) {
           alt={title}
           loading="lazy"
           className="absolute inset-0 w-full h-full object-cover"
+          onLoad={(e) => {
+            const { naturalWidth: w, naturalHeight: h } = e.currentTarget;
+            if (w > 0 && h > 0) setRatio(w / h);
+          }}
           onError={(e) => { e.currentTarget.style.display = 'none'; }}
         />
       )}
@@ -615,7 +624,7 @@ export function ProjectDetail() {
             const isDirectVid = (url: string) => /\.(mp4|webm|mov|avi)(\?|$)/i.test(url);
 
             return (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
                 {project.images.filter((u: string) => u?.trim()).map((url: string, index: number) => (
                   <motion.div
                     key={index}
