@@ -10,6 +10,53 @@ import { api } from "../utils/api";
 import { projectId as supabaseProjectId, publicAnonKey } from '/utils/supabase/info';
 import { useTranslation } from 'react-i18next';
 import { fetchTranslations, deepMergeTranslations } from '../utils/translations';
+import { detectVideoProvider, getBunnyEmbedUrl, getBunnyAutoThumbnailUrl } from '../utils/videoProvider';
+
+// Gallery tile for a Bunny video: shows the CDN thumbnail with a play button
+// and only mounts the iframe player on click, so a gallery of many videos
+// doesn't spin up dozens of players at once.
+function BunnyGalleryItem({ url, title }: { url: string; title: string }) {
+  const [playing, setPlaying] = useState(false);
+  const thumb = getBunnyAutoThumbnailUrl(url);
+  if (playing) {
+    const src = `${getBunnyEmbedUrl(url)}?autoplay=true&preload=true&responsive=true`;
+    return (
+      <div className="relative w-full aspect-video bg-black">
+        <iframe
+          src={src}
+          title={title}
+          className="absolute inset-0 w-full h-full"
+          style={{ border: 0 }}
+          allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture; fullscreen"
+          allowFullScreen
+        />
+      </div>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => setPlaying(true)}
+      className="group relative block w-full aspect-video bg-black/40 cursor-pointer"
+      aria-label={`Play ${title}`}
+    >
+      {thumb && (
+        <img
+          src={thumb}
+          alt={title}
+          loading="lazy"
+          className="absolute inset-0 w-full h-full object-cover"
+          onError={(e) => { e.currentTarget.style.display = 'none'; }}
+        />
+      )}
+      <span className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/40 transition-colors">
+        <span className="w-14 h-14 rounded-full bg-white/15 backdrop-blur-md border border-white/30 flex items-center justify-center group-hover:scale-110 transition-transform">
+          <Play className="w-6 h-6 text-white ml-0.5" fill="currentColor" />
+        </span>
+      </span>
+    </button>
+  );
+}
 
 const API_BASE = `https://${supabaseProjectId}.supabase.co/functions/v1/make-server-e07959ec`;
 
@@ -582,6 +629,12 @@ export function ProjectDetail() {
                         /* ── Vimeo embed ── */
                         <SmartVimeoEmbed
                           embedSrc={`https://player.vimeo.com/video/${getVimeoEmbedId(url)}?badge=0&autopause=0&player_id=0&app_id=58479&title=0&byline=0&portrait=0`}
+                          title={`${t('projects.detail.stills')} ${index + 1}`}
+                        />
+                      ) : detectVideoProvider(url) === 'bunny' ? (
+                        /* ── Bunny Stream video ── */
+                        <BunnyGalleryItem
+                          url={url}
                           title={`${t('projects.detail.stills')} ${index + 1}`}
                         />
                       ) : isDirectVid(url) ? (
