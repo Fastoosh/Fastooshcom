@@ -1012,7 +1012,7 @@ export function Admin() {
         </div>
 
         {/* ── Main content area (offset by sidebar on desktop, by top bar on mobile) ── */}
-        <div className="lg:ml-52 flex-1 min-w-0 bg-black/80 min-h-screen pt-14 lg:pt-0 overflow-x-hidden">
+        <div className="lg:ml-52 flex-1 min-w-0 bg-black/80 min-h-screen pt-14 lg:pt-0 overflow-x-clip">
           <div className="admin-shell p-3 sm:p-5 lg:p-8">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
 
@@ -1077,12 +1077,12 @@ export function Admin() {
                 </div>
 
                 {/* Project list */}
-                <div className="flex-1 p-3 space-y-1">
+                <div className="flex-1 px-3 pt-4 pb-3 lg:p-3 space-y-1">
                   {projects.length > 0 && (
                     <p className="text-xs text-white/30 px-2 pb-2"><span className="hidden lg:inline">Drag or use ▲▼ to reorder</span><span className="lg:hidden">Use ▲▼ to reorder</span></p>
                   )}
                   <DndProvider backend={HTML5Backend}>
-                    <div className="space-y-1">
+                    <div className="space-y-2 lg:space-y-1">
                       {projects.map((project, index) => (
                         <DraggableProjectCard
                           key={project.id}
@@ -1190,12 +1190,12 @@ export function Admin() {
                 </div>
 
                 {/* Tool list */}
-                <div className="flex-1 p-3 space-y-1">
+                <div className="flex-1 px-3 pt-4 pb-3 lg:p-3 space-y-1">
                   {tools.length > 0 && (
                     <p className="text-xs text-white/30 px-2 pb-2">Drag to reorder</p>
                   )}
                   <DndProvider backend={HTML5Backend}>
-                    <div className="space-y-1">
+                    <div className="space-y-2 lg:space-y-1">
                       {tools.map((tool, index) => (
                         <DraggableToolCard
                           key={tool.id}
