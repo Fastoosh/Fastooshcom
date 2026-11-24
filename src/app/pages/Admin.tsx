@@ -3508,6 +3508,47 @@ function SettingsForm({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [geminiTest, setGeminiTest] = useState<{ status: 'idle' | 'testing' | 'ok' | 'err'; message: string }>({ status: 'idle', message: '' });
 
+  // Live list of Gemini models available to this API key, fetched from
+  // Google's ListModels endpoint — so new models appear without code changes.
+  const [geminiModels, setGeminiModels] = useState<{ id: string; label: string; description: string }[]>([]);
+  const [geminiModelsState, setGeminiModelsState] = useState<{ status: 'idle' | 'loading' | 'ok' | 'err'; message: string }>({ status: 'idle', message: '' });
+
+  const loadGeminiModels = async (keyOverride?: string) => {
+    const key = (keyOverride ?? formData.geminiApiKey ?? '').trim();
+    if (!key) {
+      setGeminiModelsState({ status: 'err', message: 'Enter an API key to load the model list.' });
+      return;
+    }
+    setGeminiModelsState({ status: 'loading', message: 'Loading models from Google…' });
+    try {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000&key=${encodeURIComponent(key)}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error?.message || `HTTP ${res.status}`);
+      const list = (data.models || [])
+        // Only models that can generate text (what the admin AI features use)
+        .filter((m: any) => (m.supportedGenerationMethods || []).includes('generateContent'))
+        .map((m: any) => ({
+          id: String(m.name || '').replace(/^models\//, ''),
+          label: m.displayName || String(m.name || '').replace(/^models\//, ''),
+          description: m.description || '',
+        }))
+        .filter((m: any) => m.id)
+        // Newest versions first (gemini-3 before gemini-2.5 …)
+        .sort((a: any, b: any) => b.id.localeCompare(a.id, undefined, { numeric: true }));
+      setGeminiModels(list);
+      setGeminiModelsState({ status: 'ok', message: `${list.length} models available for this key.` });
+    } catch (err: any) {
+      setGeminiModels([]);
+      setGeminiModelsState({ status: 'err', message: err?.message || 'Could not load models.' });
+    }
+  };
+
+  // Load the list automatically when the form opens with a saved key.
+  useEffect(() => {
+    if (formData.geminiApiKey?.trim()) loadGeminiModels(formData.geminiApiKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleTestGemini = async () => {
     const key = formData.geminiApiKey?.trim();
     const model = formData.geminiModel || 'gemini-2.5-flash';
@@ -3869,14 +3910,51 @@ function SettingsForm({
               <label className="block text-sm font-medium text-gray-300 mb-2">
                 Model
               </label>
+              <div className="flex gap-2">
+                <select
+                  value={geminiModels.some(m => m.id === formData.geminiModel) ? formData.geminiModel : ''}
+                  onChange={(e) => {
+                    if (!e.target.value) return;
+                    setFormData({ ...formData, geminiModel: e.target.value });
+                    setGeminiTest({ status: 'idle', message: '' });
+                  }}
+                  disabled={!geminiModels.length}
+                  className="flex-1 min-w-0 bg-black/50 border border-white/20 rounded-md px-3 py-2 text-sm text-white disabled:opacity-50 [&>option]:bg-[#0a0a0f]"
+                >
+                  <option value="">
+                    {geminiModels.length ? 'Choose a model…' : 'Load the list to choose a model'}
+                  </option>
+                  {geminiModels.map(m => (
+                    <option key={m.id} value={m.id}>{m.label} — {m.id}</option>
+                  ))}
+                </select>
+                <Button
+                  type="button"
+                  onClick={() => loadGeminiModels()}
+                  disabled={geminiModelsState.status === 'loading'}
+                  className="cursor-pointer bg-white/10 hover:bg-white/20 text-white border border-white/20 text-xs px-3 shrink-0"
+                >
+                  {geminiModelsState.status === 'loading' ? '…' : geminiModels.length ? 'Refresh list' : 'Load models'}
+                </Button>
+              </div>
+              {geminiModelsState.status !== 'idle' && (
+                <p className={`text-xs mt-1 ${geminiModelsState.status === 'err' ? 'text-red-400' : 'text-white/40'}`}>
+                  {geminiModelsState.message}
+                </p>
+              )}
+              {(() => {
+                const picked = geminiModels.find(m => m.id === formData.geminiModel);
+                return picked?.description ? <p className="text-white/35 text-xs mt-1 line-clamp-2">{picked.description}</p> : null;
+              })()}
+              {/* Manual entry — for a model ID not in the list (e.g. a brand-new preview) */}
               <Input
                 type="text"
-                placeholder="gemini-2.5-flash"
+                placeholder="or type a model ID, e.g. gemini-2.5-flash"
                 value={formData.geminiModel || ''}
                 onChange={(e) => { setFormData({ ...formData, geminiModel: e.target.value }); setGeminiTest({ status: 'idle', message: '' }); }}
-                className="bg-black/50 border-white/20 text-white font-mono"
+                className="bg-black/50 border-white/20 text-white font-mono mt-2"
               />
-              <p className="text-gray-500 text-xs mt-1">Enter the exact model ID from your Gemini API page. Use the Test button above to verify it works.</p>
+              <p className="text-gray-500 text-xs mt-1">The list comes live from Google, so new models appear automatically. Use Test above to check the chosen model works, then Save.</p>
             </div>
           </div>
         </div>
