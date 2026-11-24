@@ -135,6 +135,16 @@ export function ProjectDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showVideo, setShowVideo] = useState(true); // Changed to true for autoplay
+  // Gallery uses 2 masonry columns from the md breakpoint (768px), 1 below.
+  const [isWideGallery, setIsWideGallery] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px)');
+    const onChange = () => setIsWideGallery(mq.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
   // Bunny videos autoplay muted (browser policy); this chip lets the user
   // click once to unmute. Hidden after ~6s if ignored, or on click.
   const [unmutePromptVisible, setUnmutePromptVisible] = useState(false);
@@ -623,18 +633,28 @@ export function ProjectDetail() {
             const isVimeo     = (url: string) => url.includes('vimeo.com');
             const isDirectVid = (url: string) => /\.(mp4|webm|mov|avi)(\?|$)/i.test(url);
 
+            // Masonry: items are dealt into columns left, right, left, right…
+            // so the reading order follows rows, and each tile stays in its
+            // column (no reflow when thumbnails load and change height).
+            const items = project.images.filter((u: string) => u?.trim());
+            const columnCount = isWideGallery ? 2 : 1;
+            const columns: { url: string; index: number }[][] =
+              Array.from({ length: columnCount }, () => []);
+            items.forEach((url: string, index: number) => columns[index % columnCount].push({ url, index }));
+
             return (
-              /* Masonry: CSS columns stack tiles of different heights (vertical
-                 / square / wide videos) without leaving gaps between them. */
-              <div className="columns-1 md:columns-2 gap-6">
-                {project.images.filter((u: string) => u?.trim()).map((url: string, index: number) => (
+              <div className="flex gap-6 items-start">
+                {columns.map((col, ci) => (
+                <div key={ci} className="flex-1 min-w-0 flex flex-col gap-6">
+                {col.map(({ url, index }) => (
                   <motion.div
                     key={index}
-                    className="break-inside-avoid mb-6"
                     initial={{ opacity: 0, y: 20 }}
                     whileInView={{ opacity: 1, y: 0 }}
                     viewport={{ once: true }}
-                    transition={{ delay: index * 0.1 }}
+                    // Small stagger within a row only — a cumulative delay
+                    // made later tiles wait seconds before appearing.
+                    transition={{ delay: (index % columnCount) * 0.1 }}
                   >
                     <GlassCard className="overflow-hidden">
                       {isVimeo(url) ? (
@@ -667,6 +687,8 @@ export function ProjectDetail() {
                       )}
                     </GlassCard>
                   </motion.div>
+                ))}
+                </div>
                 ))}
               </div>
             );
