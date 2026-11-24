@@ -8105,6 +8105,7 @@ app.get('/make-server-e07959ec/admin/bunny/videos', requireAuth, async (c) => {
     const itemsPerPage = c.req.query('itemsPerPage') || '20';
     const search       = c.req.query('search')       || '';
     const orderBy      = c.req.query('orderBy')      || 'date';
+    const collection   = c.req.query('collection')   || '';
 
     // Bunny recognizes date | title | -date | -title (- prefix means descending).
     // Default to newest-first, which is what admins usually want.
@@ -8117,6 +8118,8 @@ app.get('/make-server-e07959ec/admin/bunny/videos', requireAuth, async (c) => {
       orderBy: safeOrder,
     });
     if (search.trim()) qs.set('search', search.trim());
+    // Collection GUID filter — only accept GUID-shaped values.
+    if (/^[0-9a-f-]{8,64}$/i.test(collection)) qs.set('collection', collection);
 
     const res = await fetch(`https://video.bunnycdn.com/library/${libraryId}/videos?${qs}`, {
       headers: { AccessKey: apiKey, Accept: 'application/json' },
@@ -8153,6 +8156,53 @@ app.get('/make-server-e07959ec/admin/bunny/videos', requireAuth, async (c) => {
     });
   } catch (err) {
     console.error('[bunny] list-videos unexpected error:', err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// GET /admin/bunny/collections
+// Lists the collections (folders) in the Bunny library so the admin can load
+// every video from one collection into a project gallery in one go.
+// Query params: page (1-based), itemsPerPage (default 100), search.
+app.get('/make-server-e07959ec/admin/bunny/collections', requireAuth, async (c) => {
+  try {
+    const { apiKey, libraryId } = bunnyConfig();
+    if (!apiKey) {
+      console.error('[bunny] BUNNY_STREAM_API_KEY is not set');
+      return c.json({ success: false, error: 'Bunny Stream API key not configured on server.' }, 500);
+    }
+
+    const page         = c.req.query('page')         || '1';
+    const itemsPerPage = c.req.query('itemsPerPage') || '100';
+    const search       = c.req.query('search')       || '';
+
+    const qs = new URLSearchParams({ page, itemsPerPage, orderBy: 'date' });
+    if (search.trim()) qs.set('search', search.trim());
+
+    const res = await fetch(`https://video.bunnycdn.com/library/${libraryId}/collections?${qs}`, {
+      headers: { AccessKey: apiKey, Accept: 'application/json' },
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`[bunny] list-collections ${res.status}:`, errText);
+      return c.json({ success: false, error: `Bunny API returned ${res.status}: ${errText}` });
+    }
+    const data = await res.json();
+
+    const collections = (data.items || []).map((col: any) => ({
+      guid:       col.guid,
+      name:       col.name || '(Untitled collection)',
+      videoCount: col.videoCount ?? 0,
+    }));
+
+    return c.json({
+      success: true,
+      collections,
+      total:      data.totalItems ?? collections.length,
+      totalPages: Math.ceil((data.totalItems ?? collections.length) / Number(itemsPerPage)),
+    });
+  } catch (err) {
+    console.error('[bunny] list-collections unexpected error:', err);
     return c.json({ success: false, error: String(err) }, 500);
   }
 });

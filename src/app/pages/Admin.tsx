@@ -28,6 +28,7 @@ import { ResetTab } from '../components/admin/ResetTab';
 import { VimeoPicker } from '../components/admin/VimeoPicker';
 import { BunnyUploader } from '../components/admin/BunnyUploader';
 import { BunnyPicker }   from '../components/admin/BunnyPicker';
+import { detectVideoProvider, getBunnyAutoThumbnailUrl } from '../utils/videoProvider';
 import { GuideTab } from '../components/admin/GuideTab';
 import { LegalTab } from '../components/admin/LegalTab';
 import { BroadcastTab } from '../components/admin/BroadcastTab';
@@ -2350,6 +2351,20 @@ function ProjectForm({
               });
               // Keep picker open so user can select multiple
             }}
+            onSelectMany={(items) => {
+              setFormData(prev => {
+                const current = prev.screenshots || [];
+                const fresh = items.map(i => i.url).filter(u => !current.includes(u));
+                return { ...prev, screenshots: [...current, ...fresh] };
+              });
+              setShowScreenshotsBunnyPicker(false);
+              setFormMessage({
+                type: 'success',
+                text: items.length
+                  ? `✅ Added ${items.length} video${items.length !== 1 ? 's' : ''} from the collection — remove any you don't want below`
+                  : 'All videos in that collection are already in the gallery',
+              });
+            }}
             onClose={() => setShowScreenshotsBunnyPicker(false)}
           />
         )}
@@ -2644,13 +2659,28 @@ function ProjectForm({
                     {formData.screenshots.map((url, index) => {
                       if (!url.trim()) return null;
                       const isVimeo = url.includes('vimeo.com');
-                      const isDirectVideo = /\.(mp4|webm|mov|avi)(\?|$)/i.test(url);
+                      const isBunny = detectVideoProvider(url) === 'bunny';
+                      const bunnyThumb = isBunny ? getBunnyAutoThumbnailUrl(url) : null;
+                      const isDirectVideo = !isBunny && /\.(mp4|webm|mov|avi)(\?|$)/i.test(url);
                       const vimeoId = isVimeo ? url.split('vimeo.com/').pop()?.split('?')[0]?.split('/').pop() : null;
                       return (
                         <div key={index} className="relative group rounded-lg overflow-hidden border border-white/10 bg-black/30 aspect-video">
                           {isVimeo ? (
                             /* Vimeo card — real thumbnail fetched via oEmbed */
                             <VimeoThumb url={url} vimeoId={vimeoId!} />
+                          ) : isBunny ? (
+                            /* Bunny card — CDN auto thumbnail */
+                            bunnyThumb ? (
+                              <img
+                                src={bunnyThumb}
+                                alt={`Media ${index + 1}`}
+                                loading="lazy"
+                                className="w-full h-full object-cover"
+                                onError={(e) => { e.currentTarget.style.opacity = '0.2'; }}
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-orange-300 text-xs">Bunny video</div>
+                            )
                           ) : isDirectVideo ? (
                             /* Direct video */
                             <video src={url} className="w-full h-full object-cover" muted preload="metadata" />
@@ -2673,7 +2703,7 @@ function ProjectForm({
                           </button>
                           {/* Type badge */}
                           <div className="absolute bottom-1 left-1 text-[9px] px-1.5 py-0.5 rounded bg-black/70 text-gray-300 font-mono opacity-0 group-hover:opacity-100 transition-opacity">
-                            {isVimeo ? 'Vimeo' : isDirectVideo ? 'Video' : 'Image'}
+                            {isVimeo ? 'Vimeo' : isBunny ? 'Bunny' : isDirectVideo ? 'Video' : 'Image'}
                           </div>
                         </div>
                       );

@@ -7,7 +7,7 @@
 // case is "find the video I just uploaded" which just needs search + recent-
 // first ordering.
 import { useEffect, useRef, useState } from "react";
-import { X, Search, Loader2, Video, Check, ChevronLeft, ChevronRight, Play } from "lucide-react";
+import { X, Search, Loader2, Video, Check, ChevronLeft, ChevronRight, Play, Folder, ListPlus } from "lucide-react";
 import { projectId, publicAnonKey } from "/utils/supabase/info";
 
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-e07959ec`;
@@ -32,6 +32,16 @@ interface BunnyPickerProps {
   // Optional — if provided, videos whose embedUrl is already in the set get a
   // subtle "selected" indicator. Same shape VimeoPicker uses for gallery mode.
   selectedUrls?: string[];
+  // Optional — when provided, picking a collection shows an "Add all" button
+  // that loads every playable video in it and hands them over in one call.
+  // Used by the project media gallery; the parent then lets the admin prune.
+  onSelectMany?: (items: { url: string; title: string }[]) => void;
+}
+
+interface BunnyCollection {
+  guid: string;
+  name: string;
+  videoCount: number;
 }
 
 function fmtDuration(seconds: number): string {
@@ -48,7 +58,11 @@ function fmtDate(iso: string | null): string {
   } catch { return ''; }
 }
 
-export function BunnyPicker({ onSelect, onClose, selectedUrls = [] }: BunnyPickerProps) {
+export function BunnyPicker({ onSelect, onClose, selectedUrls = [], onSelectMany }: BunnyPickerProps) {
+  const [collections, setCollections] = useState<BunnyCollection[]>([]);
+  const [collectionId, setCollectionId] = useState('');
+  const [addingAll, setAddingAll] = useState(false);
+  const [addAllError, setAddAllError] = useState('');
   const [videos,   setVideos]   = useState<BunnyVideo[]>([]);
   const [loading,  setLoading]  = useState(true);
   const [error,    setError]    = useState('');
@@ -66,7 +80,7 @@ export function BunnyPicker({ onSelect, onClose, selectedUrls = [] }: BunnyPicke
     };
   };
 
-  const load = async (nextPage = page, nextQuery = query) => {
+  const load = async (nextPage = page, nextQuery = query, nextCollection = collectionId) => {
     setLoading(true);
     setError('');
     try {
@@ -76,6 +90,7 @@ export function BunnyPicker({ onSelect, onClose, selectedUrls = [] }: BunnyPicke
         orderBy:      '-date',   // newest first
       });
       if (nextQuery.trim()) qs.set('search', nextQuery.trim());
+      if (nextCollection) qs.set('collection', nextCollection);
       const res = await fetch(`${API_BASE}/admin/bunny/videos?${qs}`, { headers: authHeaders() });
       const data = await res.json();
       if (!data?.success) throw new Error(data?.error || 'Server refused the list.');
@@ -92,6 +107,64 @@ export function BunnyPicker({ onSelect, onClose, selectedUrls = [] }: BunnyPicke
 
   // Initial load
   useEffect(() => { load(1, ''); /* eslint-disable-next-line */ }, []);
+
+  // Collections list (for the filter dropdown). Failure is non-fatal — the
+  // dropdown simply stays empty and the picker works as before.
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/admin/bunny/collections?itemsPerPage=100`, { headers: authHeaders() });
+        const data = await res.json();
+        if (data?.success) setCollections(data.collections ?? []);
+      } catch (err) {
+        console.warn('[BunnyPicker] collections load failed:', err);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const changeCollection = (id: string) => {
+    setCollectionId(id);
+    setAddAllError('');
+    setPage(1);
+    load(1, query, id);
+  };
+
+  // Fetch every playable video in the selected collection (all pages) and
+  // hand the ones not already in the gallery to the parent in one batch.
+  const addAllFromCollection = async () => {
+    if (!collectionId || !onSelectMany) return;
+    setAddingAll(true);
+    setAddAllError('');
+    try {
+      const all: BunnyVideo[] = [];
+      let p = 1;
+      let pages = 1;
+      do {
+        const qs = new URLSearchParams({
+          page: String(p), itemsPerPage: '100', orderBy: '-date', collection: collectionId,
+        });
+        const res = await fetch(`${API_BASE}/admin/bunny/videos?${qs}`, { headers: authHeaders() });
+        const data = await res.json();
+        if (!data?.success) throw new Error(data?.error || 'Server refused the list.');
+        all.push(...(data.videos ?? []));
+        pages = data.totalPages ?? 1;
+        p++;
+      } while (p <= pages && p <= 50);
+
+      const items = all
+        .filter(v => v.status >= 4 && !selectedUrls.includes(v.embedUrl))
+        .map(v => ({ url: v.embedUrl, title: v.title }));
+      onSelectMany(items);
+    } catch (err: any) {
+      console.error('[BunnyPicker] add-all error:', err);
+      setAddAllError(err?.message || 'Could not load the collection.');
+    } finally {
+      setAddingAll(false);
+    }
+  };
+
+  const activeCollection = collections.find(c => c.guid === collectionId);
 
   // Debounced search — kick off a new load 400ms after typing stops
   useEffect(() => {
@@ -144,9 +217,28 @@ export function BunnyPicker({ onSelect, onClose, selectedUrls = [] }: BunnyPicke
           </button>
         </div>
 
-        {/* Search */}
-        <div className="px-6 py-3 border-b border-white/5 shrink-0">
-          <div className="relative">
+        {/* Search + collection filter */}
+        <div className="px-6 py-3 border-b border-white/5 shrink-0 space-y-3">
+          <div className="flex flex-col sm:flex-row gap-2">
+          {collections.length > 0 && (
+            <div className="relative sm:w-64 shrink-0">
+              <Folder className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none" />
+              <select
+                value={collectionId}
+                onChange={e => changeCollection(e.target.value)}
+                className="w-full appearance-none bg-white/5 border border-white/10 rounded-lg pl-9 pr-3 py-2 text-white focus:outline-none focus:border-orange-500/50 focus:ring-1 focus:ring-orange-500/30 transition text-sm [&>option]:bg-[#0a0a0f]"
+                aria-label="Filter by collection"
+              >
+                <option value="">All videos</option>
+                {collections.map(col => (
+                  <option key={col.guid} value={col.guid}>
+                    {col.name} ({col.videoCount})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none" />
             <input
               type="text"
@@ -166,6 +258,28 @@ export function BunnyPicker({ onSelect, onClose, selectedUrls = [] }: BunnyPicke
               </button>
             )}
           </div>
+          </div>
+
+          {/* Add-all bar — only in gallery mode with a collection chosen */}
+          {onSelectMany && activeCollection && (
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-lg border border-orange-500/30 bg-orange-500/10 px-3 py-2">
+              <p className="text-orange-200 text-xs">
+                Load every video from <span className="font-semibold">{activeCollection.name}</span> into the gallery,
+                then remove the ones you don't want from the gallery list.
+                {addAllError && <span className="block text-red-300 mt-1">{addAllError}</span>}
+              </p>
+              <button
+                type="button"
+                onClick={addAllFromCollection}
+                disabled={addingAll}
+                className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-orange-500 hover:bg-orange-400 text-white text-xs font-semibold whitespace-nowrap disabled:opacity-60 disabled:cursor-wait transition"
+              >
+                {addingAll
+                  ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading…</>
+                  : <><ListPlus className="w-3.5 h-3.5" /> Add all ({activeCollection.videoCount})</>}
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Content */}
@@ -201,7 +315,9 @@ export function BunnyPicker({ onSelect, onClose, selectedUrls = [] }: BunnyPicke
               <p className="text-white/30 text-sm text-center max-w-xs">
                 {query
                   ? `Nothing matches "${query}". Try a different search.`
-                  : 'Your Bunny library is empty. Upload one from the project form.'}
+                  : activeCollection
+                    ? `The "${activeCollection.name}" collection has no videos.`
+                    : 'Your Bunny library is empty. Upload one from the project form.'}
               </p>
             </div>
           )}
