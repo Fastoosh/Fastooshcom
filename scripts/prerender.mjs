@@ -72,9 +72,47 @@ function videoInfo(url) {
   return null;
 }
 
-/** First usable https image: project/tool image, else video thumbnail, else default. */
-function pickImage(...candidates) {
-  for (const c of candidates) if (isHttp(c)) return c;
+// ── Preview images hosted on our own domain ──────────────────────────────────
+// Bunny's CDN refuses requests without a fastoosh.com Referer (403), so
+// LinkedIn, Facebook, Pinterest and Google Images could not load project
+// thumbnails. Many project covers are also stored as base64 data: URIs, which
+// can't be an og:image at all. Both are written to dist/og/ at build time and
+// served from www.fastoosh.com/og/… instead.
+let SITE_ORIGIN = 'https://www.fastoosh.com';
+const ogCache = new Map(); // source → public URL (null when unusable)
+
+async function localImage(name, src) {
+  if (!src) return null;
+  if (ogCache.has(src)) return ogCache.get(src);
+  let out = null;
+  try {
+    const dataUri = src.match(/^data:image\/([a-z+]+);base64,(.+)$/i);
+    if (dataUri) {
+      const ext = dataUri[1].toLowerCase() === 'jpeg' ? 'jpg' : dataUri[1].toLowerCase().replace('svg+xml', 'svg');
+      mkdirSync(join(DIST, 'og'), { recursive: true });
+      writeFileSync(join(DIST, 'og', `${name}.${ext}`), Buffer.from(dataUri[2], 'base64'));
+      out = `${SITE_ORIGIN}/og/${name}.${ext}`;
+    } else if (/b-cdn\.net\//i.test(src)) {
+      const res = await fetch(src, { headers: { Referer: `${SITE_ORIGIN}/` }, signal: AbortSignal.timeout(15000) });
+      if (res.ok) {
+        mkdirSync(join(DIST, 'og'), { recursive: true });
+        writeFileSync(join(DIST, 'og', `${name}.jpg`), Buffer.from(await res.arrayBuffer()));
+        out = `${SITE_ORIGIN}/og/${name}.jpg`;
+      }
+    } else if (isHttp(src)) {
+      out = src; // other hosts (Supabase storage, Vimeo, YouTube) are public
+    }
+  } catch { out = null; }
+  ogCache.set(src, out);
+  return out;
+}
+
+/** First candidate that yields a publicly loadable image. */
+async function bestImage(name, ...candidates) {
+  for (const c of candidates) {
+    const u = await localImage(name, c);
+    if (u) return u;
+  }
   return null;
 }
 
@@ -194,6 +232,7 @@ async function main() {
   let SITE = String(settings?.siteUrl || process.env.SITE_URL || 'https://www.fastoosh.com').replace(/\/$/, '');
   SITE = SITE.replace(/^https?:\/\/fastoosh\.com/i, 'https://www.fastoosh.com');
   const url = (path) => `${SITE}${path === '/' ? '/' : path}`;
+  SITE_ORIGIN = SITE;
 
   const projects = projectsRaw.filter(p => p.slug);
   const tools = toolsRaw.filter(t => t.slug);
@@ -229,8 +268,9 @@ async function main() {
   };
 
   const showreel = videoInfo(home?.showreelUrl || settings?.showreelUrl);
-  const DEFAULT_IMAGE = pickImage(settings?.defaultOgImage, showreel?.thumb);
-  const LOGO = pickImage(settings?.logoDarkUrl, settings?.logoUrl);
+  const DEFAULT_IMAGE = await bestImage('default', settings?.defaultOgImage, showreel?.thumb);
+  const SHOWREEL_THUMB = showreel ? await bestImage('showreel', showreel.thumb) : null;
+  const LOGO = await bestImage('logo', settings?.logoDarkUrl, settings?.logoUrl);
   const sameAs = Object.values(settings?.socialLinks || {}).filter(isHttp);
 
   const ORG = {
@@ -277,12 +317,12 @@ async function main() {
         ...(showreel ? [{
           '@context': 'https://schema.org', '@type': 'VideoObject', name: 'Fastoosh showreel',
           description: clip(home?.heroSubtitle || ORG.description, 300),
-          thumbnailUrl: showreel.thumb || DEFAULT_IMAGE, uploadDate: new Date().toISOString().slice(0, 10),
+          thumbnailUrl: SHOWREEL_THUMB || DEFAULT_IMAGE, uploadDate: new Date().toISOString().slice(0, 10),
           embedUrl: showreel.embed, publisher: { '@id': `${SITE}/#organization` },
         }] : []),
       ],
       body,
-    }, sitemap: { priority: '1.0', images: [DEFAULT_IMAGE].filter(Boolean), video: showreel && { ...showreel, title: 'Fastoosh showreel', description: clip(home?.heroSubtitle || ORG.description, 300) } } });
+    }, sitemap: { priority: '1.0', images: [DEFAULT_IMAGE].filter(Boolean), video: showreel && { ...showreel, thumb: SHOWREEL_THUMB || DEFAULT_IMAGE, title: 'Fastoosh showreel', description: clip(home?.heroSubtitle || ORG.description, 300) } } });
   }
 
   // ── Projects list ──
@@ -301,8 +341,10 @@ async function main() {
   // ── Project pages ──
   for (const p of projects) {
     const v = videoInfo(p.videoUrl);
-    const image = pickImage(p.imageUrl, v?.thumb, DEFAULT_IMAGE);
-    const galleryImgs = (p.screenshots || []).map(u => isHttp(u) && !videoInfo(u) && /\.(jpe?g|png|webp|gif)(\?|$)/i.test(u) ? u : (videoInfo(u)?.thumb || null)).filter(Boolean).slice(0, 20);
+    const image = (await bestImage(`project-${p.slug}`, p.imageUrl, v?.thumb)) || DEFAULT_IMAGE;
+    const videoThumb = v ? ((await bestImage(`video-${p.slug}`, v.thumb)) || image) : null;
+    // Gallery stills on public hosts only (Bunny thumbnails would 403 for Google Images).
+    const galleryImgs = (p.screenshots || []).filter(u => isHttp(u) && !videoInfo(u) && !/b-cdn\.net/i.test(u) && /\.(jpe?g|png|webp|gif)(\?|$)/i.test(u)).slice(0, 20);
     const desc = clip(p.description || p.goal || `${p.title} — a ${p.category || 'motion design'} project by Fastoosh.`, 160);
     const facts = [['Client', p.client], ['Category', p.category], ['Year', p.year]].filter(([, x]) => x);
     const ld = [
@@ -318,7 +360,7 @@ async function main() {
       ...(v ? [{
         '@context': 'https://schema.org', '@type': 'VideoObject', '@id': `${url(`/projects/${p.slug}`)}#video`,
         name: p.title, description: clip(p.description || desc, 500),
-        thumbnailUrl: pickImage(v.thumb, image), uploadDate: (p.createdAt || new Date().toISOString()).slice(0, 10),
+        thumbnailUrl: videoThumb, uploadDate: (p.createdAt || new Date().toISOString()).slice(0, 10),
         embedUrl: v.embed, publisher: { '@id': `${SITE}/#organization` },
       }] : []),
       crumbs([['Home', '/'], ['Projects', '/projects'], [p.title, `/projects/${p.slug}`]]),
@@ -341,7 +383,7 @@ async function main() {
     }, sitemap: {
       priority: '0.7', lastmod: p.updatedAt || p.createdAt,
       images: [image, ...galleryImgs].filter(Boolean),
-      video: v && { ...v, thumb: pickImage(v.thumb, image), title: p.title, description: clip(p.description || desc, 2000) },
+      video: v && { ...v, thumb: videoThumb, title: p.title, description: clip(p.description || desc, 2000) },
     } });
   }
 
@@ -349,7 +391,7 @@ async function main() {
   pages.push({ route: '/tools', key: 'tools', page: {
     title: 'After Effects Tools & Scripts for Motion Designers | Fastoosh',
     description: clip(`Tools by Fastoosh for motion designers: ${tools.map(t => `${t.name}${t.tagline ? ` (${t.tagline})` : ''}`).join(', ')}.`, 160),
-    image: pickImage(tools[0]?.imageUrl, DEFAULT_IMAGE), canonical: url('/tools'),
+    image: (await bestImage('tools', tools[0]?.imageUrl)) || DEFAULT_IMAGE, canonical: url('/tools'),
     jsonLd: [{
       '@context': 'https://schema.org', '@type': 'CollectionPage', name: 'Fastoosh tools', url: url('/tools'),
       mainEntity: { '@type': 'ItemList', itemListElement: tools.map((t, i) => ({ '@type': 'ListItem', position: i + 1, url: url(`/tools/${t.slug}`), name: t.name })) },
@@ -360,7 +402,7 @@ async function main() {
 
   // ── Tool pages ──
   for (const t of tools) {
-    const image = pickImage(t.imageUrl, DEFAULT_IMAGE);
+    const image = (await bestImage(`tool-${t.slug}`, t.imageUrl)) || DEFAULT_IMAGE;
     const desc = clip(t.description || t.tagline || `${t.name} by Fastoosh.`, 160);
     const versions = (t.versions || []).filter(v => v.versionType);
     const offers = versions.map(v => {
