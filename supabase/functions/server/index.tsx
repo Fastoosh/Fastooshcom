@@ -249,6 +249,113 @@ app.use(
   }),
 );
 
+
+// ========== ADMIN ACTIVITY LOG ==========
+// Records every change an admin makes (any non-GET request that passed
+// requireAuth). Stored at KV audit:{ISO time}:{rand} so keys sort by time.
+// Only a short label is kept from the request body (title / name / email /
+// license key) — never passwords or full payloads.
+
+// Endpoints that change nothing worth auditing (AI drafts, previews, tests).
+const AUDIT_SKIP = [
+  /\/admin\/generate-/, /\/admin\/improve-field$/, /\/admin\/translate/, /\/admin\/format-legal-html$/,
+  /\/admin\/vimeo-/, /\/admin\/proxy-image$/, /\/logout$/,
+];
+
+// Human-readable action names, first match wins.
+const AUDIT_LABELS: Array<[RegExp, string, string?]> = [
+  [/^POST \/projects\/reorder$/,                'Reordered projects'],
+  [/^POST \/projects$/,                         'Created project'],
+  [/^PUT \/projects\/[^/]+$/,                   'Updated project'],
+  [/^DELETE \/projects\/[^/]+$/,                'Deleted project'],
+  [/^POST \/tools\/reorder$/,                   'Reordered tools'],
+  [/^POST \/tools$/,                            'Created tool'],
+  [/^PUT \/tools\/[^/]+$/,                      'Updated tool'],
+  [/^DELETE \/tools\/[^/]+$/,                   'Deleted tool'],
+  [/^POST \/tools\/[^/]+\/(guide|generate-guide)$/, 'Updated tool guide'],
+  [/^DELETE \/tools\/[^/]+\/guide$/,            'Deleted tool guide'],
+  [/^POST \/tools\/[^/]+\/changelog$/,          'Saved changelog entry'],
+  [/^DELETE \/tools\/[^/]+\/changelog\/.+$/,    'Deleted changelog entry'],
+  [/^POST \/team$/,                             'Added team member'],
+  [/^PUT \/team\/[^/]+$/,                       'Updated team member'],
+  [/^DELETE \/team\/[^/]+$/,                    'Removed team member'],
+  [/^POST \/settings$/,                         'Changed site settings'],
+  [/^(POST|DELETE) \/logo\/(dark|light)$/,      'Changed logo'],
+  [/^POST \/upload-(image|video|favicon)$/,     'Uploaded a file'],
+  [/^PUT \/home-content$/,                      'Updated home page'],
+  [/^PUT \/seo\/.+$/,                           'Updated SEO'],
+  [/^PUT \/translations\/.+$/,                  'Updated translations'],
+  [/^PUT \/availability-calendar$/,             'Updated availability calendar'],
+  [/^POST \/admin\/licenses\/create$/,          'Created license'],
+  [/^POST \/admin\/licenses\/revoke$/,          'Revoked license'],
+  [/^POST \/admin\/licenses\/unrevoke$/,        'Restored license'],
+  [/^POST \/admin\/licenses\/reissue$/,         'Resent license email'],
+  [/^POST \/admin\/licenses\/update$/,          'Changed license machine limit'],
+  [/^PUT \/admin\/reviews\/reply$/,             'Replied to review'],
+  [/^DELETE \/admin\/reviews$/,                 'Deleted review'],
+  [/^POST \/admin\/reviews\/request$/,          'Sent review requests'],
+  [/^PUT \/admin\/tools\/[^/]+\/testimonials$/, 'Updated testimonials'],
+  [/^POST \/admin\/broadcast$/,                 'Sent broadcast email'],
+  [/^POST \/admin\/reset$/,                     'Reset data'],
+  [/^DELETE \/admin\/video-stats$/,             'Reset video stats'],
+  [/^(PUT|DELETE) \/admin\/(messages|tool-requests)\/.+$/, 'Updated messages'],
+  [/^DELETE \/admin\/tool-requests\/.+$/,       'Deleted tool request'],
+  [/^(POST|PATCH|DELETE) \/utm-saved.*$/,       'Changed UTM links'],
+  [/^POST \/admin\/bunny\/.+$/,                 'Bunny video action'],
+  [/^POST \/signup$/,                           'Created admin account'],
+  [/^POST \/init$/,                             'Seeded sample data'],
+  [/^POST \/setup\/brand$/,                     'Saved brand settings'],
+];
+
+app.use('/make-server-e07959ec/*', async (c, next) => {
+  const method = c.req.method;
+  if (method === 'GET' || method === 'OPTIONS' || method === 'HEAD') return next();
+
+  const path = c.req.path.replace(/^\/make-server-e07959ec/, '');
+  if (AUDIT_SKIP.some(r => r.test(path))) return next();
+
+  // Peek at a short label from JSON bodies before the handler reads them.
+  let subject = '';
+  let changedKeys: string[] | undefined;
+  const ct = c.req.header('content-type') || '';
+  if (ct.includes('application/json')) {
+    try {
+      const b = await c.req.raw.clone().json();
+      if (b && typeof b === 'object') {
+        subject = String(b.title || b.name || b.label || b.subject || b.email || b.license_key || b.version || '').slice(0, 140);
+        if (path === '/settings') changedKeys = Object.keys(b).filter(k => !/key|secret|token|password/i.test(k)).slice(0, 20);
+      }
+    } catch { /* not JSON — fine */ }
+  }
+
+  await next();
+
+  if (!c.get('isAdmin')) return; // only log authenticated admin actions
+  try {
+    const user = c.get('user') || {};
+    const key = `${method} ${path}`;
+    const label = AUDIT_LABELS.find(([r]) => r.test(key))?.[1] ?? `${method} ${path}`;
+    const entity = path.split('/').filter(Boolean)[0] === 'admin'
+      ? path.split('/').filter(Boolean)[1] ?? 'admin'
+      : path.split('/').filter(Boolean)[0] ?? '';
+    const at = new Date().toISOString();
+    await kv.set(`audit:${at}:${crypto.randomUUID().slice(0, 8)}`, {
+      at,
+      email:  user.email || '',
+      action: label,
+      entity,
+      subject,
+      changedKeys,
+      method,
+      path,
+      status: c.res.status,
+      ok:     c.res.status < 400,
+    });
+  } catch (err) {
+    console.log('[audit] could not record activity:', err);
+  }
+});
+
 // Health check endpoint
 app.get("/make-server-e07959ec/health", (c) => {
   return c.json({ status: "ok" });
@@ -599,6 +706,7 @@ const requireAuth = async (c: any, next: any) => {
 
     console.log('✅ Admin auth OK:', session.email);
     c.set('user', { id: session.userId, email: session.email });
+    c.set('isAdmin', true);
     await next();
   } catch (error) {
     console.log('❌ Error in admin auth middleware:', error);
@@ -9481,6 +9589,94 @@ app.get("/make-server-e07959ec/admin/proxy-image", requireAuth, async (c) => {
       status: 500,
       headers: { "Access-Control-Allow-Origin": "*" },
     });
+  }
+});
+
+
+// GET /admin/activity?limit=100&before=<ISO>&q=<text> — newest first
+app.get('/make-server-e07959ec/admin/activity', requireAuth, async (c) => {
+  try {
+    const limit  = Math.min(500, Math.max(1, Number(c.req.query('limit')) || 100));
+    const before = c.req.query('before');
+    const q      = (c.req.query('q') || '').toLowerCase().trim();
+    let query = supabase.from(KV_TABLE).select('key, value').like('key', 'audit:%').order('key', { ascending: false });
+    if (before) query = query.lt('key', `audit:${before}`);
+    // Fetch a bit more than asked when filtering by text, then trim.
+    const { data, error } = await query.limit(q ? Math.min(2000, limit * 10) : limit);
+    if (error) return c.json({ success: false, error: error.message }, 500);
+    let items = (data ?? []).map((r: any) => r.value);
+    if (q) {
+      items = items.filter((e: any) =>
+        [e.action, e.subject, e.email, e.path, e.entity].some((v: any) => String(v || '').toLowerCase().includes(q)),
+      ).slice(0, limit);
+    }
+    const nextBefore = items.length === limit ? items[items.length - 1]?.at : null;
+    return c.json({ success: true, data: items, nextBefore });
+  } catch (err) {
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// ========== GALLERY VIDEO STATS ==========
+// Plays of videos inside a project's media gallery (not the main video).
+// KV gallery_video_stats:{projectId} = { [videoUrl]: { plays, lastPlayed } }
+
+// POST /projects/:id/gallery-play { url } — public, called when a visitor
+// starts a gallery video on the project page.
+app.post('/make-server-e07959ec/projects/:id/gallery-play', async (c) => {
+  try {
+    const projectIdParam = c.req.param('id');
+    const { url } = await c.req.json().catch(() => ({}));
+    if (!url || typeof url !== 'string' || url.length > 600) {
+      return c.json({ success: false, error: 'url is required' }, 400);
+    }
+    // Resolve slug → id, and only count URLs that really are in the gallery.
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const col = UUID_RE.test(projectIdParam) ? 'id' : 'slug';
+    const { data: project } = await supabase.from('projects').select('id, screenshots').eq(col, projectIdParam).maybeSingle();
+    if (!project) return c.json({ success: false, error: 'Project not found' }, 404);
+    if (!(project.screenshots || []).includes(url)) return c.json({ success: false, error: 'Not a gallery item' }, 400);
+
+    const key = `gallery_video_stats:${project.id}`;
+    const stats = (await kv.get(key)) ?? {};
+    const prev = stats[url] ?? { plays: 0, lastPlayed: null };
+    stats[url] = { plays: (prev.plays || 0) + 1, lastPlayed: new Date().toISOString() };
+    await kv.set(key, stats);
+    return c.json({ success: true });
+  } catch (err) {
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// GET /admin/gallery-stats — per project: each gallery video and its plays
+app.get('/make-server-e07959ec/admin/gallery-stats', requireAuth, async (c) => {
+  try {
+    const { data: projects, error } = await supabase
+      .from('projects').select('id, title, slug, image_url, screenshots').order('order_index', { ascending: true });
+    if (error) return c.json({ success: false, error: error.message }, 500);
+    const isVideo = (u: string) =>
+      /mediadelivery\.net|b-cdn\.net|vimeo\.com|youtube\.com|youtu\.be/i.test(u) || /\.(mp4|webm|mov|avi|m3u8)(\?|$)/i.test(u);
+    const withVideos = (projects ?? []).filter((p: any) => (p.screenshots || []).some(isVideo));
+    const statsArr = withVideos.length
+      ? await Promise.all(withVideos.map((p: any) => kv.get(`gallery_video_stats:${p.id}`)))
+      : [];
+    const result = withVideos.map((p: any, i: number) => {
+      const stats = statsArr[i] ?? {};
+      const videos = (p.screenshots || []).filter(isVideo).map((url: string, idx: number) => ({
+        url,
+        position: (p.screenshots || []).indexOf(url) + 1,
+        plays: stats[url]?.plays ?? 0,
+        lastPlayed: stats[url]?.lastPlayed ?? null,
+      }));
+      return {
+        projectId: p.id, title: p.title, slug: p.slug, imageUrl: p.image_url,
+        totalPlays: videos.reduce((s: number, v: any) => s + v.plays, 0),
+        videos,
+      };
+    }).sort((a: any, b: any) => b.totalPlays - a.totalPlays);
+    return c.json({ success: true, data: result });
+  } catch (err) {
+    return c.json({ success: false, error: String(err) }, 500);
   }
 });
 

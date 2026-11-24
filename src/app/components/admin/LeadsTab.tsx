@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useSearchParams } from 'react-router';
 import { GlassCard } from '../shared/GlassCard';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -376,6 +377,12 @@ export function LeadsTab() {
 
   // Filters
   const [search,         setSearch]         = useState('');
+  // Pre-fill from the admin search (?q=...) and follow later searches.
+  const [searchParams] = useSearchParams();
+  useEffect(() => {
+    const q = searchParams.get('q');
+    if (q !== null) setSearch(q);
+  }, [searchParams]);
   const [sourceFilter,   setSourceFilter]   = useState<string>('');
   const [tierFilter,     setTierFilter]     = useState<string>('');
   const [toolFilter,     setToolFilter]     = useState('');

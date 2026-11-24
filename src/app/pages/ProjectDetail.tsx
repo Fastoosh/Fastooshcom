@@ -18,7 +18,7 @@ import { detectVideoProvider, getBunnyEmbedUrl, getBunnyAutoThumbnailUrl } from 
 // Aspect ratio: Bunny renders the thumbnail at the video's own dimensions, so
 // the image's natural size gives the real ratio (vertical, square, etc.).
 // Falls back to 16:9 until it loads or if it fails.
-function BunnyGalleryItem({ url, title }: { url: string; title: string }) {
+function BunnyGalleryItem({ url, title, onPlay }: { url: string; title: string; onPlay?: () => void }) {
   const [playing, setPlaying] = useState(false);
   const [ratio, setRatio] = useState<number>(16 / 9);
   const thumb = getBunnyAutoThumbnailUrl(url);
@@ -40,7 +40,7 @@ function BunnyGalleryItem({ url, title }: { url: string; title: string }) {
   return (
     <button
       type="button"
-      onClick={() => setPlaying(true)}
+      onClick={() => { setPlaying(true); onPlay?.(); }}
       className="group relative block w-full bg-black/40 cursor-pointer"
       style={{ aspectRatio: ratio }}
       aria-label={`Play ${title}`}
@@ -70,8 +70,23 @@ function BunnyGalleryItem({ url, title }: { url: string; title: string }) {
 const API_BASE = `https://${supabaseProjectId}.supabase.co/functions/v1/make-server-e07959ec`;
 
 // ── Smart Vimeo embed: detects real aspect ratio via oEmbed ───────────────────
-function SmartVimeoEmbed({ embedSrc, title }: { embedSrc: string; title: string }) {
+function SmartVimeoEmbed({ embedSrc, title, onPlay }: { embedSrc: string; title: string; onPlay?: () => void }) {
   const [ratio, setRatio] = useState<number | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const onPlayRef = useRef(onPlay);
+  onPlayRef.current = onPlay;
+
+  // Report the first play (used for gallery video stats).
+  useEffect(() => {
+    if (!onPlay || !iframeRef.current) return;
+    let player: Player | null = null;
+    try {
+      player = new Player(iframeRef.current);
+      player.on('play', () => onPlayRef.current?.());
+    } catch { /* player API unavailable — skip tracking */ }
+    return () => { try { player?.off('play'); } catch { /* ignore */ } };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [embedSrc]);
 
   // Extract numeric video ID from a player.vimeo.com/video/NNNN URL
   const videoId = embedSrc.match(/\/video\/(\d+)/)?.[1];
@@ -96,6 +111,7 @@ function SmartVimeoEmbed({ embedSrc, title }: { embedSrc: string; title: string 
   return (
     <div style={{ aspectRatio: String(aspectRatio) }} className="w-full">
       <iframe
+        ref={iframeRef}
         src={embedSrc}
         className="w-full h-full"
         allow="autoplay; fullscreen; picture-in-picture; clipboard-write; encrypted-media"
@@ -158,6 +174,20 @@ export function ProjectDetail() {
   const iframeRef       = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => { idRef.current = slug; }, [slug]);
+
+  // Gallery video plays — counted once per video per page view.
+  const galleryPlayed = useRef<Set<string>>(new Set());
+  const trackGalleryPlay = useCallback((url: string) => {
+    const pid = idRef.current;
+    if (!pid || galleryPlayed.current.has(url)) return;
+    galleryPlayed.current.add(url);
+    fetch(`${API_BASE}/projects/${pid}/gallery-play`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${publicAnonKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+      keepalive: true,
+    }).catch(() => { /* stats are best-effort */ });
+  }, []);
 
   // View is recorded on first play event, not on page load
 
@@ -662,12 +692,14 @@ export function ProjectDetail() {
                         <SmartVimeoEmbed
                           embedSrc={`https://player.vimeo.com/video/${getVimeoEmbedId(url)}?badge=0&autopause=0&player_id=0&app_id=58479&title=0&byline=0&portrait=0`}
                           title={`${t('projects.detail.stills')} ${index + 1}`}
+                          onPlay={() => trackGalleryPlay(url)}
                         />
                       ) : detectVideoProvider(url) === 'bunny' ? (
                         /* ── Bunny Stream video ── */
                         <BunnyGalleryItem
                           url={url}
                           title={`${t('projects.detail.stills')} ${index + 1}`}
+                          onPlay={() => trackGalleryPlay(url)}
                         />
                       ) : isDirectVid(url) ? (
                         /* ── Direct video file ── */
@@ -676,6 +708,7 @@ export function ProjectDetail() {
                           controls
                           className="w-full"
                           preload="metadata"
+                          onPlay={() => trackGalleryPlay(url)}
                         />
                       ) : (
                         /* ── Static image ── */

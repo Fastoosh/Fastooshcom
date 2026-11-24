@@ -10,7 +10,9 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Textarea } from '../components/ui/textarea';
 import { AdminSelect } from '../components/admin/AdminSelect';
-import { Plus, Pencil, Trash2, Save, X, LogOut, Upload, Sparkles, Menu } from 'lucide-react';
+import { Plus, Pencil, Trash2, Save, X, LogOut, Upload, Sparkles, Menu, Search } from 'lucide-react';
+import { ActivityTab } from '../components/admin/ActivityTab';
+import { AdminSearch, type AdminSearchResult } from '../components/admin/AdminSearch';
 import { AIImproveModal, type AIImproveContext } from '../components/admin/AIImproveModal';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import { ToolFormNew } from '../components/admin/ToolFormNew';
@@ -176,6 +178,7 @@ const ADMIN_NAV: { label: string; items: { value: string; label: string; danger?
     { value: 'guide',        label: '📖 Guide' },
     { value: 'settings',     label: 'Settings' },
     { value: 'legal',        label: '⚖️ Legal' },
+    { value: 'activity',     label: '🕘 Activity' },
   ]},
   { label: 'Danger', items: [
     { value: 'reset', label: '⚠️ Reset', danger: true },
@@ -232,6 +235,32 @@ export function Admin() {
     setFormDirty(false);
     action();
   }, []);
+  // What a search result opens.
+  const handleSearchPick = (r: AdminSearchResult) => {
+    setNavOpen(false);
+    window.scrollTo({ top: 0 });
+    switch (r.kind) {
+      case 'page':
+        setActiveTab(r.value);
+        break;
+      case 'project':
+        leaveForm(() => { setSearchParams({ tab: 'projects' }); setEditingProject(r.item); });
+        break;
+      case 'tool':
+        leaveForm(() => { setSearchParams({ tab: 'tools' }); setEditingTool(r.item); });
+        break;
+      case 'team':
+        leaveForm(() => { setSearchParams({ tab: 'team' }); setEditingTeamMember(r.item); });
+        break;
+      case 'lead':
+        setSearchParams({ tab: 'leads', q: r.email });
+        break;
+      case 'license':
+        setSearchParams({ tab: 'licenses', q: r.email || r.key });
+        break;
+    }
+  };
+
   // For navigation (sidebar tab switch, browser back/forward, leaving /admin).
   const blocker = useBlocker(({ currentLocation, nextLocation }) =>
     formDirtyRef.current &&
@@ -251,6 +280,18 @@ export function Admin() {
   }, [formDirty]);
   // Phone/tablet: the sidebar becomes a slide-in drawer opened from a top bar.
   const [navOpen, setNavOpen] = useState(false);
+  // Admin-wide search (Ctrl/Cmd+K)
+  const [searchOpen, setSearchOpen] = useState(false);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setSearchOpen(o => !o);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   // Close the drawer on Escape and lock page scroll while it is open.
   useEffect(() => {
     if (!navOpen) return;
@@ -930,6 +971,15 @@ export function Admin() {
   return (
     <>
       <ScrollingGradientBackground />
+      <AdminSearch
+        open={searchOpen}
+        onClose={() => setSearchOpen(false)}
+        onPick={handleSearchPick}
+        pages={ADMIN_NAV.flatMap(g => g.items).map(i => ({ value: i.value, label: i.label }))}
+        projects={projects}
+        tools={tools}
+        team={team}
+      />
       <div className="flex min-h-screen"
         style={{ '--fastoosh-card-bg': 'rgba(255,255,255,0.03)', '--fastoosh-card-dark': 'rgba(0,0,0,0.95)' } as React.CSSProperties}>
 
@@ -944,10 +994,18 @@ export function Admin() {
           >
             <Menu className="w-5 h-5" />
           </button>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <p className="text-[10px] uppercase tracking-wider text-white/35 leading-none">Admin</p>
             <p className="text-sm font-semibold text-white truncate">{ADMIN_NAV.flatMap(g => g.items).find(i => i.value === activeTab)?.label ?? 'Admin'}</p>
           </div>
+          <button
+            type="button"
+            onClick={() => setSearchOpen(true)}
+            className="w-10 h-10 -mr-1 flex items-center justify-center rounded-lg text-white/80 hover:bg-white/10 active:bg-white/15"
+            aria-label="Search the admin"
+          >
+            <Search className="w-5 h-5" />
+          </button>
         </div>
 
         {/* Drawer backdrop (mobile only) */}
@@ -974,6 +1032,16 @@ export function Admin() {
                 <X className="w-5 h-5" />
               </button>
             </div>
+
+            <button
+              type="button"
+              onClick={() => { setNavOpen(false); setSearchOpen(true); }}
+              className="hidden lg:flex w-full items-center gap-2 px-3 py-2 mb-2 rounded-lg bg-white/5 border border-white/10 text-white/40 hover:text-white/70 hover:bg-white/8 text-sm"
+            >
+              <Search className="w-3.5 h-3.5" />
+              <span className="flex-1 text-left">Search</span>
+              <kbd className="text-[10px] text-white/30 font-sans">Ctrl K</kbd>
+            </button>
 
             {ADMIN_NAV.map((group: any) => (
               <div key={group.label} className="pb-2">
@@ -1038,6 +1106,10 @@ export function Admin() {
           </TabsContent>
 
           {/* GUIDE TAB */}
+          <TabsContent value="activity">
+            <ActivityTab />
+          </TabsContent>
+
           <TabsContent value="guide">
             <GuideTab />
           </TabsContent>

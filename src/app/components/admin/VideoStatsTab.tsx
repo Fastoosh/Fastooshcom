@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { GalleryStatsPanel } from './GalleryStatsPanel';
 import { GlassCard } from '../shared/GlassCard';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -474,6 +475,9 @@ export function VideoStatsTab() {
           </div>
         )}
       </GlassCard>
+
+      {/* ── Gallery video plays ── */}
+      <GalleryStatsPanel />
 
       {/* ── Legend note ──────────────────────────────────────────────────────── */}
       <p className="text-white/20 text-xs text-center">
