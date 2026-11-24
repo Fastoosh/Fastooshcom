@@ -842,7 +842,7 @@ export function Admin() {
                 { value: 'reviews',   label: 'Reviews' },
               ]},
               { label: 'Audience', items: [
-                { value: 'leads',     label: 'Leads' },
+                { value: 'leads',     label: '🎯 Leads' },
                 { value: 'licenses',  label: '🔑 Licenses' },
                 { value: 'broadcast', label: '📣 Broadcast' },
                 { value: 'messages',  label: '🔧 Tool Requests' },
