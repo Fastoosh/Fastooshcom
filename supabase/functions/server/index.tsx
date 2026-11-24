@@ -68,6 +68,72 @@ const supabase = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
 );
 
+// ========== SCALE HELPERS (no 1,000-row truncation) ==========
+// Supabase/PostgREST returns at most 1,000 rows per request, and kv.getByPrefix
+// makes a single request — anything past 1,000 rows was silently dropped
+// (sessions, leads, reviews, messages…). These helpers page through every row,
+// fetching the pages in parallel.
+
+const KV_TABLE = 'kv_store_e07959ec';
+const KV_PAGE = 1000;
+
+type KvQueryShaper = (q: any) => any;
+
+async function kvFetchAll(prefix: string, shape?: KvQueryShaper): Promise<any[]> {
+  const base = () => {
+    let q = supabase.from(KV_TABLE).select('key, value', { count: 'exact' }).like('key', prefix + '%');
+    if (shape) q = shape(q);
+    return q.order('key', { ascending: true });
+  };
+  const first = await base().range(0, KV_PAGE - 1);
+  if (first.error) throw new Error(first.error.message);
+  const rows: any[] = [...(first.data ?? [])];
+  const total = first.count ?? rows.length;
+  if (total > KV_PAGE) {
+    const ranges: Array<[number, number]> = [];
+    for (let from = KV_PAGE; from < total; from += KV_PAGE) ranges.push([from, from + KV_PAGE - 1]);
+    // Bounded parallelism so a huge table doesn't open hundreds of requests.
+    for (let i = 0; i < ranges.length; i += 6) {
+      const batch = await Promise.all(ranges.slice(i, i + 6).map(([a, b]) => base().range(a, b)));
+      for (const r of batch) {
+        if (r.error) throw new Error(r.error.message);
+        rows.push(...(r.data ?? []));
+      }
+    }
+  }
+  return rows.map(r => r.value);
+}
+
+/** Drop-in replacement for kv.getByPrefix without the 1,000-row cap. */
+const kvGetAllByPrefix = (prefix: string) => kvFetchAll(prefix);
+
+/** Analytics sessions, optionally limited to a date range — the filter runs
+ *  inside Postgres, so only sessions in range are transferred. */
+function loadSessions(range: { from?: string; to?: string } = {}): Promise<any[]> {
+  const fromIso = range.from ? new Date(range.from).toISOString() : null;
+  let toIso: string | null = null;
+  if (range.to) { const d = new Date(range.to); d.setHours(23, 59, 59, 999); toIso = d.toISOString(); }
+  if (!fromIso && !toIso) return kvFetchAll('session:');
+  return kvFetchAll('session:', q => {
+    if (fromIso) q = q.gte('value->>startedAt', fromIso);
+    if (toIso)   q = q.lte('value->>startedAt', toIso);
+    return q;
+  });
+}
+
+/** Every Supabase Auth user (listUsers is paginated; perPage max is 1000). */
+async function listAllAuthUsers(): Promise<any[]> {
+  const all: any[] = [];
+  for (let page = 1; page <= 100; page++) {
+    const { data, error } = await supabase.auth.admin.listUsers({ page, perPage: 1000 });
+    if (error) throw new Error(error.message);
+    const users = data?.users ?? [];
+    all.push(...users);
+    if (users.length < 1000) break;
+  }
+  return all;
+}
+
 
 
 // Initialize storage buckets on startup
@@ -4493,7 +4559,7 @@ app.post("/make-server-e07959ec/custom-tool-request", async (c) => {
 // ─── Admin: list all custom tool requests ────────────────────────────────────
 app.get("/make-server-e07959ec/admin/tool-requests", requireAuth, async (c) => {
   try {
-    const records = await kv.getByPrefix("custom_tool_request:");
+    const records = await kvGetAllByPrefix("custom_tool_request:");
     const requests = records
       .map((r: any) => {
         try { 
@@ -4534,7 +4600,7 @@ app.put("/make-server-e07959ec/admin/tool-requests/mark-read", requireAuth, asyn
   try {
     const { kvKey, markAll } = await c.req.json();
     if (markAll) {
-      const all: any[] = await kv.getByPrefix("custom_tool_request:");
+      const all: any[] = await kvGetAllByPrefix("custom_tool_request:");
       const unread = all.filter((r: any) => {
         const rec = typeof r === "string" ? JSON.parse(r) : r;
         // Treat missing read field as unread (for old records)
@@ -4938,7 +5004,7 @@ app.get('/make-server-e07959ec/free-download/leads', requireAuth, async (c) => {
       ? `lead:free:${toolVersionId}:`
       : 'lead:free:log:';
 
-    const leads = await kv.getByPrefix(prefix);
+    const leads = await kvGetAllByPrefix(prefix);
     return c.json({ success: true, data: leads, count: leads.length });
   } catch (error) {
     console.log(`[free-download/leads] Error: ${error}`);
@@ -4950,7 +5016,7 @@ app.get('/make-server-e07959ec/free-download/leads', requireAuth, async (c) => {
 app.get('/make-server-e07959ec/user/downloads', requireUserAuth, async (c) => {
   try {
     const user = c.get('user') as { id: string; email: string };
-    const entries: any[] = await kv.getByPrefix(`user:dl:${user.id}:`);
+    const entries: any[] = await kvGetAllByPrefix(`user:dl:${user.id}:`);
     // Sort newest first
     entries.sort((a, b) => new Date(b.downloadedAt || 0).getTime() - new Date(a.downloadedAt || 0).getTime());
     console.log(`[user/downloads] ${user.email} → ${entries.length} download(s)`);
@@ -4967,7 +5033,7 @@ app.get('/make-server-e07959ec/user/downloads', requireUserAuth, async (c) => {
 app.get('/make-server-e07959ec/leads', requireAuth, async (c) => {
   try {
     // ── 1. Free-download KV leads ───────────────────────────────────────────
-    const kvLeads: any[] = await kv.getByPrefix('lead:free:log:');
+    const kvLeads: any[] = await kvGetAllByPrefix('lead:free:log:');
 
     // Batch-enrich with tool category by joining tool_versions → tools
     const uniqueVersionIds = [...new Set(kvLeads.map((l: any) => l.toolVersionId).filter(Boolean))];
@@ -5003,12 +5069,12 @@ app.get('/make-server-e07959ec/leads', requireAuth, async (c) => {
 
     // ── 2. Supabase Auth registered users ───────────────────────────────────
     let signupLeads: any[] = [];
-    const { data: usersData, error: usersErr } = await supabase.auth.admin.listUsers({ perPage: 1000 });
+    let allUsers: any[] | null = null;
+    try { allUsers = await listAllAuthUsers(); }
+    catch (usersErr) { console.log('[leads] Warning: could not fetch auth users:', String(usersErr)); }
 
-    if (usersErr) {
-      console.log('[leads] Warning: could not fetch auth users:', usersErr.message);
-    } else {
-      signupLeads = (usersData?.users || []).map((u: any) => ({
+    if (allUsers) {
+      signupLeads = allUsers.map((u: any) => ({
         email:         u.email || '',
         source:        'signup',
         tier:          'Registered',
@@ -5039,7 +5105,7 @@ app.get('/make-server-e07959ec/admin/leads/behavior', requireAuth, async (c) => 
     const email = (c.req.query('email') || '').toLowerCase().trim();
     if (!email) return c.json({ success: false, error: 'email param required' }, 400);
 
-    const allSessions: any[] = await kv.getByPrefix('session:');
+    const allSessions: any[] = await kvGetAllByPrefix('session:');
     const matched = allSessions.filter((s: any) =>
       (s.userEmail || '').toLowerCase() === email
     );
@@ -5475,11 +5541,8 @@ app.get('/make-server-e07959ec/admin/behavior', requireAuth, async (c) => {
   try {
     const { from, to, device, stage, converted, tool, page = '1', limit = '25' } = c.req.query();
 
-    const allSessions: any[] = await kv.getByPrefix('session:');
-    let sessions = [...allSessions];
-
-    if (from) { const d = new Date(from); sessions = sessions.filter((s: any) => new Date(s.startedAt) >= d); }
-    if (to)   { const d = new Date(to); d.setHours(23,59,59,999); sessions = sessions.filter((s: any) => new Date(s.startedAt) <= d); }
+    // Date range is applied inside the database (only matching sessions are loaded).
+    let sessions: any[] = await loadSessions({ from, to });
     if (device && device !== 'all')    sessions = sessions.filter((s: any) => (s.device || 'desktop') === device);
     if (stage  && stage  !== 'all')    sessions = sessions.filter((s: any) => s.funnelStage === stage);
     if (converted === 'true')          sessions = sessions.filter((s: any) => s.converted);
@@ -5641,9 +5704,8 @@ function classifySource(referrer: string, utmSource?: string | null, utmMedium?:
 app.get('/make-server-e07959ec/admin/referrers', requireAuth, async (c) => {
   try {
     const { from, to } = c.req.query();
-    let allSessions: any[] = await kv.getByPrefix('session:');
-    if (from) { const d = new Date(from); allSessions = allSessions.filter((s: any) => new Date(s.startedAt) >= d); }
-    if (to)   { const d = new Date(to); d.setHours(23, 59, 59, 999); allSessions = allSessions.filter((s: any) => new Date(s.startedAt) <= d); }
+    // Date range is applied inside the database (only matching sessions are loaded).
+    const allSessions: any[] = await loadSessions({ from, to });
 
     type SD = { sessions: number; converted: number; buyClicks: number; bounces: number; totalDuration: number; pageVisits: Record<string, number> };
     const sourceMap: Record<string, SD> = {};
@@ -5742,7 +5804,7 @@ app.get('/make-server-e07959ec/admin/behavior/session/:sid', requireAuth, async 
 app.get('/make-server-e07959ec/admin/behavior/heatmap', requireAuth, async (c) => {
   try {
     const { path: pagePath } = c.req.query();
-    const allSessions: any[] = await kv.getByPrefix('session:');
+    const allSessions: any[] = await kvGetAllByPrefix('session:');
 
     const clicks: Array<{ x: number; y: number }> = [];
     const pathSet = new Set<string>();
@@ -5809,7 +5871,7 @@ app.get('/make-server-e07959ec/admin/behavior/heatmap', requireAuth, async (c) =
 // GET /admin/messages — all stored contact + support messages
 app.get('/make-server-e07959ec/admin/messages', requireAuth, async (c) => {
   try {
-    const all: any[] = await kv.getByPrefix('msg:');
+    const all: any[] = await kvGetAllByPrefix('msg:');
     console.log(`[admin/messages] getByPrefix('msg:') returned ${all.length} record(s)`);
     // Normalize read field for old messages that might not have it
     const normalized = all.map((m: any) => ({ ...m, read: m.read ?? false }));
@@ -5830,7 +5892,7 @@ app.put('/make-server-e07959ec/admin/messages/mark-read', requireAuth, async (c)
   try {
     const { kvKey, markAll } = await c.req.json();
     if (markAll) {
-      const all: any[] = await kv.getByPrefix('msg:');
+      const all: any[] = await kvGetAllByPrefix('msg:');
       // Treat missing read field as unread (for old records)
       await Promise.all(
         all.filter((m: any) => (m.read ?? false) === false && m.kvKey)
@@ -5886,9 +5948,9 @@ app.get('/make-server-e07959ec/admin/dashboard', requireAuth, async (c) => {
       supabase.from('tools').select('id, name, category, slug'),
       supabase.from('projects').select('id, title, category, created_at'),
       gumroadToken ? gumroadFetchAllSales(gumroadToken).catch(() => [] as any[]) : Promise.resolve([] as any[]),
-      kv.getByPrefix('lead:free:log:'),
-      kv.getByPrefix('msg:'),
-      kv.getByPrefix('custom_tool_request:'),
+      kvGetAllByPrefix('lead:free:log:'),
+      kvGetAllByPrefix('msg:'),
+      kvGetAllByPrefix('custom_tool_request:'),
     ]);
 
     const tools     = toolsRes.data     || [];
@@ -5939,8 +6001,7 @@ app.get('/make-server-e07959ec/admin/dashboard', requireAuth, async (c) => {
 
     // Fetch registered users
     let signupUsers: any[] = [];
-    const { data: usersData } = await supabase.auth.admin.listUsers({ perPage: 1000 });
-    signupUsers = usersData?.users || [];
+    try { signupUsers = await listAllAuthUsers(); } catch (e) { console.log('[admin/dashboard] users:', String(e)); }
 
     // ── Revenue calculations ──────────────────────────────────────────────────
     const now = new Date();
@@ -6905,7 +6966,7 @@ app.get('/make-server-e07959ec/reviews', async (c) => {
   const toolId = c.req.query('toolId');
   if (!toolId) return c.json({ success: false, error: 'toolId query param required' }, 400);
   try {
-    const reviews: any[] = await kv.getByPrefix(`review:${toolId}:`);
+    const reviews: any[] = await kvGetAllByPrefix(`review:${toolId}:`);
     // Admin-written (isFake) reviews are never shown publicly.
     const cleaned = reviews
       .filter((r: any) => r && !r.isFake)
@@ -6920,7 +6981,7 @@ app.get('/make-server-e07959ec/reviews', async (c) => {
 // GET /tools-ratings — public: aggregate avg rating + count per toolId
 app.get('/make-server-e07959ec/tools-ratings', async (c) => {
   try {
-    const allReviews: any[] = await kv.getByPrefix('review:');
+    const allReviews: any[] = await kvGetAllByPrefix('review:');
     const ratings: Record<string, { avg: number; count: number }> = {};
     for (const review of allReviews.filter(Boolean)) {
       if (!review?.toolId || !review?.rating) continue;
@@ -7059,7 +7120,7 @@ app.post('/make-server-e07959ec/reviews', requireUserAuth, async (c) => {
 // GET /admin/reviews — list every review stored in KV (real + fake)
 app.get('/make-server-e07959ec/admin/reviews', requireAuth, async (c) => {
   try {
-    const all = await kv.getByPrefix('review:');
+    const all = await kvGetAllByPrefix('review:');
     const reviews = (all || []).filter(Boolean);
     console.log(`[admin/reviews GET] returning ${reviews.length} reviews`);
     return c.json({ success: true, data: reviews });
@@ -7187,7 +7248,7 @@ app.get('/make-server-e07959ec/tools/:id/social-proof', async (c) => {
     const minimum = Number(minRow?.value) > 0 ? Number(minRow?.value) : 25;
 
     const [leads, licRes] = await Promise.all([
-      kv.getByPrefix('lead:free:log:'),
+      kvGetAllByPrefix('lead:free:log:'),
       supabase.from('licenses').select('license_key', { count: 'exact', head: true })
         .in('product_id', productIdCandidates(tool)).eq('status', 'active'),
     ]);
@@ -7218,7 +7279,7 @@ app.get('/make-server-e07959ec/admin/tools/:id/social-proof', requireAuth, async
     const { data: minRow } = await supabase.from('site_settings').select('value').eq('key', 'socialProofMinimum').maybeSingle();
     const minimum = Number(minRow?.value) > 0 ? Number(minRow?.value) : 25;
     const [leads, licRes] = await Promise.all([
-      kv.getByPrefix('lead:free:log:'),
+      kvGetAllByPrefix('lead:free:log:'),
       supabase.from('licenses').select('license_key', { count: 'exact', head: true })
         .in('product_id', productIdCandidates(tool)).eq('status', 'active'),
     ]);
@@ -7253,12 +7314,11 @@ async function reviewRequestAudience(toolId: string) {
   }
 
   // Who already reviewed (reviews store userId → map to email via auth users).
-  const reviews: any[] = await kv.getByPrefix(`review:${toolId}:`);
+  const reviews: any[] = await kvGetAllByPrefix(`review:${toolId}:`);
   const reviewerIds = new Set(reviews.filter(r => r && !r.isFake).map(r => r.userId));
   const reviewed = new Set<string>();
   if (reviewerIds.size) {
-    const { data: usersData } = await supabase.auth.admin.listUsers({ perPage: 1000 });
-    for (const u of usersData?.users ?? []) {
+    for (const u of await listAllAuthUsers()) {
       if (reviewerIds.has(u.id) && u.email) reviewed.add(u.email.toLowerCase());
     }
   }
@@ -7882,7 +7942,7 @@ app.post('/make-server-e07959ec/auth/forgot-password', async (c) => {
 // GET /utm-saved — list all saved UTM links, newest first (admin only)
 app.get('/make-server-e07959ec/utm-saved', requireAuth, async (c) => {
   try {
-    const items = await kv.getByPrefix('utm:saved:');
+    const items = await kvGetAllByPrefix('utm:saved:');
     const links = items
       .filter((v: any) => v && v.id)
       .sort((a: any, b: any) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime());
@@ -7927,7 +7987,7 @@ app.post('/make-server-e07959ec/utm-saved', requireAuth, async (c) => {
 // NOTE: registered BEFORE the PATCH/DELETE /:id routes to avoid path collision
 app.get('/make-server-e07959ec/utm-saved/stats', requireAuth, async (c) => {
   try {
-    const allSessions: any[] = await kv.getByPrefix('session:');
+    const allSessions: any[] = await kvGetAllByPrefix('session:');
     const exact:          Record<string, { sessions: number; converted: number }> = {};
     const bySourceMedium: Record<string, { sessions: number; converted: number }> = {};
     const bySource:       Record<string, { sessions: number; converted: number }> = {};
@@ -8011,7 +8071,7 @@ app.delete('/make-server-e07959ec/utm-saved/:id', requireAuth, async (c) => {
 // Lets admins verify that page-view tracking is actually writing data to KV.
 app.get('/make-server-e07959ec/admin/debug/sessions', requireAuth, async (c) => {
   try {
-    const all: any[] = await kv.getByPrefix('session:');
+    const all: any[] = await kvGetAllByPrefix('session:');
     const recent = all
       .filter((s: any) => s && s.startedAt)
       .sort((a: any, b: any) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())
@@ -8436,7 +8496,7 @@ app.get('/make-server-e07959ec/admin/reset/stats', requireAuth, async (c) => {
       supabase.from('kv_store_e07959ec').select('key', { count: 'exact', head: true }).like('key', 'msg:%'),
       supabase.from('kv_store_e07959ec').select('key', { count: 'exact', head: true }).like('key', 'review:%'),
       supabase.from('kv_store_e07959ec').select('key', { count: 'exact', head: true }).like('key', 'lead:%'),
-      supabase.auth.admin.listUsers({ perPage: 1000 }),
+      listAllAuthUsers().then(users => ({ data: { users } })).catch(() => ({ data: { users: [] as any[] } })),
       supabase.from('kv_store_e07959ec').select('key', { count: 'exact', head: true }).like('key', 'project_video_stats:%'),
       supabase.from('kv_store_e07959ec').select('key', { count: 'exact', head: true }).eq('key', 'showreel_video_stats'),
     ]);
@@ -8555,10 +8615,7 @@ app.post('/make-server-e07959ec/admin/reset', requireAuth, async (c) => {
     // ── User Accounts ─────────────────────────────────────────────────────────
     if (categories?.users) {
       try {
-        const { data: usersData, error: listErr } = await supabase.auth.admin.listUsers({ perPage: 1000 });
-        if (listErr) throw new Error(`Failed to list users: ${listErr.message}`);
-
-        const allUsers    = usersData?.users ?? [];
+        const allUsers    = await listAllAuthUsers();
         const nonAdmins   = allUsers.filter(u => u.id !== adminUserId);
         const nonAdminIds = nonAdmins.map(u => u.id);
 

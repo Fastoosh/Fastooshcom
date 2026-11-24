@@ -540,10 +540,22 @@ export function Admin() {
     });
   }, []);
 
-  const reorderProjects = async () => {
+  // Saves the current order. Pass an explicit id list when the order was just
+  // changed in the same tick (state may not have updated yet).
+  const stepProject = (index: number, dir: -1 | 1) => {
+    const to = index + dir;
+    if (to < 0 || to >= projects.length) return;
+    const next = [...projects];
+    const [item] = next.splice(index, 1);
+    next.splice(to, 0, item);
+    setProjects(next);
+    reorderProjects(next.map(p => p.id));
+  };
+
+  const reorderProjects = async (idsOverride?: string[]) => {
     try {
       const token = localStorage.getItem('admin_token');
-      const projectIds = projects.map(p => p.id);
+      const projectIds = idsOverride ?? projects.map(p => p.id);
       
       
       const response = await fetch(`${API_BASE}/projects/reorder`, {
@@ -656,10 +668,20 @@ export function Admin() {
     });
   }, []);
 
-  const reorderTools = async () => {
+  const stepTool = (index: number, dir: -1 | 1) => {
+    const to = index + dir;
+    if (to < 0 || to >= tools.length) return;
+    const next = [...tools];
+    const [item] = next.splice(index, 1);
+    next.splice(to, 0, item);
+    setTools(next);
+    reorderTools(next.map(t => t.id));
+  };
+
+  const reorderTools = async (idsOverride?: string[]) => {
     try {
       const token = localStorage.getItem('admin_token');
-      const toolIds = tools.map(t => t.id);
+      const toolIds = idsOverride ?? tools.map(t => t.id);
       
       
       const response = await fetch(`${API_BASE}/tools/reorder`, {
@@ -1057,7 +1079,7 @@ export function Admin() {
                 {/* Project list */}
                 <div className="flex-1 p-3 space-y-1">
                   {projects.length > 0 && (
-                    <p className="text-xs text-white/30 px-2 pb-2">Drag to reorder</p>
+                    <p className="text-xs text-white/30 px-2 pb-2"><span className="hidden lg:inline">Drag or use ▲▼ to reorder</span><span className="lg:hidden">Use ▲▼ to reorder</span></p>
                   )}
                   <DndProvider backend={HTML5Backend}>
                     <div className="space-y-1">
@@ -1069,7 +1091,9 @@ export function Admin() {
                           moveProject={moveProject}
                           onEdit={() => leaveForm(() => { setEditingProject(project); window.scrollTo({ top: 0 }); })}
                           onDelete={() => deleteProject(project.id)}
-                          onDragEnd={reorderProjects}
+                          onDragEnd={() => reorderProjects()}
+                          onMoveUp={index > 0 ? () => stepProject(index, -1) : undefined}
+                          onMoveDown={index < projects.length - 1 ? () => stepProject(index, 1) : undefined}
                           isExpanded={editingProject?.id === project.id}
                           expandedContent={null}
                           compact
@@ -1180,7 +1204,9 @@ export function Admin() {
                           moveTool={moveTool}
                           onEdit={() => leaveForm(() => { setEditingTool(tool); window.scrollTo({ top: 0 }); })}
                           onDelete={() => deleteTool(tool.id)}
-                          onDragEnd={reorderTools}
+                          onDragEnd={() => reorderTools()}
+                          onMoveUp={index > 0 ? () => stepTool(index, -1) : undefined}
+                          onMoveDown={index < tools.length - 1 ? () => stepTool(index, 1) : undefined}
                           isExpanded={editingTool?.id === tool.id}
                           expandedContent={null}
                           compact

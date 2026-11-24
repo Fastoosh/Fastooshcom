@@ -17,6 +17,9 @@ interface DraggableToolCardProps {
   onEdit: () => void;
   onDelete: () => void;
   onDragEnd?: () => void;
+  // Touch-friendly reordering (drag needs a mouse). Undefined = at the edge.
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
   isExpanded?: boolean;
   expandedContent?: React.ReactNode;
   compact?: boolean;
@@ -35,6 +38,8 @@ export function DraggableToolCard({
   onEdit,
   onDelete,
   onDragEnd,
+  onMoveUp,
+  onMoveDown,
   isExpanded = false,
   expandedContent,
   compact = false,
@@ -122,7 +127,7 @@ export function DraggableToolCard({
         ref={ref}
         data-handler-id={handlerId}
         onClick={onEdit}
-        className={`flex items-center gap-2 px-2 py-2 rounded-lg border transition-all cursor-pointer ${
+        className={`group flex items-center gap-2 px-2 py-2 rounded-lg border transition-all cursor-pointer ${
           isExpanded
             ? 'bg-purple-900/30 border-purple-500/50'
             : 'bg-white/3 border-white/8 hover:bg-white/6 hover:border-white/15'
@@ -132,7 +137,7 @@ export function DraggableToolCard({
         <div
           ref={drag}
           onClick={(e) => e.stopPropagation()}
-          className="cursor-grab active:cursor-grabbing text-white/20 hover:text-white/50 transition-colors flex-shrink-0"
+          className="hidden lg:block cursor-grab active:cursor-grabbing text-white/20 hover:text-white/50 transition-colors flex-shrink-0"
         >
           <GripVertical className="w-3.5 h-3.5" />
         </div>
@@ -148,6 +153,28 @@ export function DraggableToolCard({
         <div className="flex-1 min-w-0">
           <p className={`text-xs font-medium truncate ${isExpanded ? 'text-purple-300' : 'text-white/80'}`}>{tool.name}</p>
           <p className="text-white/30 text-[10px] truncate">{tool.category}</p>
+        </div>
+
+        {/* Move up / down — always visible on touch screens, on hover with a mouse */}
+        <div className="flex flex-col flex-shrink-0 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onMoveUp?.(); }}
+            disabled={!onMoveUp}
+            aria-label="Move up"
+            className="w-7 h-5 lg:w-5 lg:h-4 flex items-center justify-center rounded text-white/40 hover:text-white hover:bg-white/10 disabled:opacity-20 text-[10px]"
+          >
+            ▲
+          </button>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onMoveDown?.(); }}
+            disabled={!onMoveDown}
+            aria-label="Move down"
+            className="w-7 h-5 lg:w-5 lg:h-4 flex items-center justify-center rounded text-white/40 hover:text-white hover:bg-white/10 disabled:opacity-20 text-[10px]"
+          >
+            ▼
+          </button>
         </div>
 
         <button
