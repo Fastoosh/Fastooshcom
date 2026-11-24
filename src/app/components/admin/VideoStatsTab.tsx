@@ -375,12 +375,12 @@ export function VideoStatsTab() {
           <p className="text-white/30 text-sm text-center py-8">No projects found</p>
         ) : (
           <div className="space-y-2">
-            <div className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-4 px-3 py-2 text-[10px] font-bold text-white/25 uppercase tracking-wider border-b border-white/5">
+            <div className="grid grid-cols-[1fr_auto] md:grid-cols-[1fr_auto_auto_auto_auto] gap-3 md:gap-4 px-3 py-2 text-[10px] font-bold text-white/25 uppercase tracking-wider border-b border-white/5">
               <span>Project</span>
               <span className="text-right w-16">Views</span>
-              <span className="text-right w-24">Total Watch</span>
-              <span className="text-right w-24">Avg / View</span>
-              <span className="text-right w-20">Last Seen</span>
+              <span className="hidden md:block text-right w-24">Total Watch</span>
+              <span className="hidden md:block text-right w-24">Avg / View</span>
+              <span className="hidden md:block text-right w-20">Last Seen</span>
             </div>
 
             <AnimatePresence initial={false}>
@@ -396,7 +396,7 @@ export function VideoStatsTab() {
                     initial={{ opacity: 0, x: -8 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: i * 0.03 }}
-                    className="group grid grid-cols-[1fr_auto_auto_auto_auto] gap-4 items-center px-3 py-3 rounded-xl hover:bg-white/4 transition-colors"
+                    className="group grid grid-cols-[1fr_auto] md:grid-cols-[1fr_auto_auto_auto_auto] gap-3 md:gap-4 items-center px-3 py-3 rounded-xl hover:bg-white/4 transition-colors"
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <span className="text-white/20 text-xs font-mono w-5 flex-shrink-0">#{i + 1}</span>
@@ -445,15 +445,15 @@ export function VideoStatsTab() {
                       <span className="text-white font-semibold tabular-nums text-sm">{stat.views.toLocaleString()}</span>
                     </div>
 
-                    <div className="w-24 text-right">
+                    <div className="hidden md:block w-24 text-right">
                       <span className="text-white/70 tabular-nums text-sm">{fmtDuration(stat.totalWatchSeconds)}</span>
                     </div>
 
-                    <div className="w-24 text-right">
+                    <div className="hidden md:block w-24 text-right">
                       <span className="text-white/70 tabular-nums text-sm">{fmtDuration(stat.avgWatchSeconds)}</span>
                     </div>
 
-                    <div className="w-20 text-right flex items-center justify-end gap-1.5">
+                    <div className="hidden md:flex w-20 text-right items-center justify-end gap-1.5">
                       <p className="text-white/40 text-xs">{relativeTime(stat.lastViewed)}</p>
                       {stat.slug && (
                         <a

@@ -136,7 +136,7 @@ export function LicensesTab() {
 
       {/* Header + stats */}
       <GlassCard className="p-6">
-        <div className="flex items-center justify-between mb-5">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
           <div>
             <h2 className="text-2xl font-bold text-white">Licenses</h2>
             <p className="text-white/40 text-sm mt-0.5">Manage FSTH licenses across all products</p>

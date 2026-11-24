@@ -1104,7 +1104,7 @@ export function ToolFormNew({
           )}
         </div>
 
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">
               Status
@@ -1149,7 +1149,7 @@ export function ToolFormNew({
           <label className="block text-sm font-medium text-gray-300 mb-2">
             Tool Image *
           </label>
-          <div className="flex gap-2 mb-2">
+          <div className="flex flex-wrap gap-2 mb-2">
             <button
               type="button"
               onClick={() => setImageInputMode('url')}

@@ -352,10 +352,10 @@ export function SeoTab() {
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
-    <div className="flex gap-6 min-h-0">
+    <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 min-h-0">
 
-      {/* ── Left: Page list ──────────────────────────────────────────────── */}
-      <div className="w-72 flex-shrink-0 space-y-3">
+      {/* ── Left: Page list (mobile: shown until a page is picked) ──────── */}
+      <div className={`${selectedKey ? 'hidden lg:block' : 'block'} w-full lg:w-72 flex-shrink-0 space-y-3`}>
         {/* Site globals panel */}
         <div className="p-3 rounded-xl bg-purple-500/8 border border-purple-500/20 space-y-3">
           <p className="text-[11px] text-purple-400 font-semibold uppercase tracking-wider">Global Settings</p>
@@ -495,8 +495,17 @@ export function SeoTab() {
         )}
       </div>
 
-      {/* ── Right: SEO Form ─────────────────────────────────────────────── */}
-      <div className="flex-1 min-w-0">
+      {/* ── Right: SEO Form (mobile: full width with a back button) ─────── */}
+      <div className={`${selectedKey ? 'block' : 'hidden lg:block'} flex-1 min-w-0`}>
+        {selectedKey && (
+          <button
+            type="button"
+            onClick={() => { setSelectedKey(null); window.scrollTo({ top: 0 }); }}
+            className="lg:hidden mb-3 -ml-1 flex items-center gap-1.5 px-2 py-2 rounded-lg text-sm text-white/70 hover:text-white hover:bg-white/8"
+          >
+            <span aria-hidden="true">←</span> All pages
+          </button>
+        )}
         {!selectedKey ? (
           <GlassCard className="p-10 flex flex-col items-center justify-center text-center h-64">
             <Search className="w-10 h-10 text-white/15 mb-4" />
@@ -509,9 +518,9 @@ export function SeoTab() {
             <p className="text-white/40 text-sm">Loading SEO data…</p>
           </GlassCard>
         ) : (
-          <GlassCard className="p-6 space-y-4">
+          <GlassCard className="p-4 sm:p-6 space-y-4">
             {/* Header */}
-            <div className="flex items-center justify-between pb-2 border-b border-white/10">
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-white/10">
               <div>
                 <h3 className="text-white font-bold text-lg">{selectedPage?.label}</h3>
                 <p className="text-white/35 text-xs mt-0.5">{selectedPage?.path}</p>

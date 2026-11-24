@@ -74,3 +74,58 @@ textarea:focus {
   position: relative;
   z-index: 10;
 }
+/* ── Admin panel: small-screen safety net ──────────────────────────────────
+   Scoped to .admin-shell (the admin content wrapper) below 1024px, so the
+   public site and the desktop admin are untouched. Catches the layout
+   problems shared by every admin tab without editing each one. */
+@media (max-width: 1023px) {
+  /* Wide data tables scroll sideways inside their card instead of
+     stretching the page. */
+  .admin-shell table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .admin-shell th,
+  .admin-shell td {
+    white-space: nowrap;
+  }
+
+  /* Long emails / URLs / keys wrap instead of overflowing. */
+  .admin-shell p,
+  .admin-shell span,
+  .admin-shell a,
+  .admin-shell code {
+    overflow-wrap: anywhere;
+  }
+
+  /* Media never wider than its container. */
+  .admin-shell img,
+  .admin-shell video,
+  .admin-shell iframe,
+  .admin-shell canvas,
+  .admin-shell svg.recharts-surface {
+    max-width: 100%;
+  }
+
+  /* The Radix tab list (when a tab uses one) scrolls instead of squashing. */
+  .admin-shell [role="tablist"] {
+    max-width: 100%;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    scrollbar-width: none;
+  }
+  .admin-shell [role="tablist"]::-webkit-scrollbar { display: none; }
+  .admin-shell [role="tablist"] > * { flex-shrink: 0; }
+}
+
+/* iOS Safari zooms the page when focusing a field with font-size < 16px. */
+@media (max-width: 767px) {
+  .admin-shell input,
+  .admin-shell select,
+  .admin-shell textarea {
+    font-size: 16px;
+  }
+}

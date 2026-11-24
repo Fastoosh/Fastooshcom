@@ -1117,7 +1117,7 @@ export function TranslationTab() {
       ) : (
         <div className="space-y-3">
           {/* Column headers */}
-          <div className="grid grid-cols-[1fr_1fr_1fr] gap-3 px-4 text-xs text-gray-500 font-medium uppercase tracking-wider">
+          <div className="hidden md:grid grid-cols-[1fr_1fr_1fr] gap-3 px-4 text-xs text-gray-500 font-medium uppercase tracking-wider">
             <span>Field</span>
             <span>🇬🇧 English (source)</span>
             <span>{LANG_CONFIG[lang].flag} {LANG_CONFIG[lang].name}</span>
@@ -1155,23 +1155,23 @@ export function TranslationTab() {
                   return (
                     <div
                       key={field.key}
-                      className={`grid grid-cols-[1fr_1fr_1fr] gap-0 ${idx < sectionFields.length - 1 ? 'border-b border-white/5' : ''}`}
+                      className={`grid grid-cols-1 md:grid-cols-[1fr_1fr_1fr] gap-0 ${idx < sectionFields.length - 1 ? 'border-b border-white/5' : ''}`}
                     >
                       {/* Field label */}
-                      <div className="px-5 py-3 flex items-start gap-2">
+                      <div className="px-4 md:px-5 pt-3 pb-1 md:pb-3 flex items-start gap-2">
                         <div className={`w-1.5 h-1.5 rounded-full mt-2 flex-shrink-0 ${hasTranslation ? 'bg-green-400' : 'bg-white/15'}`} />
                         <span className="text-white/70 text-sm">{field.label}</span>
                       </div>
 
                       {/* English source */}
-                      <div className="px-4 py-3 border-l border-white/5">
+                      <div className="px-4 py-1 md:py-3 md:border-l border-white/5">
                         <p className="text-white/40 text-sm leading-relaxed line-clamp-3">
                           {field.enValue || <span className="italic text-white/20">empty</span>}
                         </p>
                       </div>
 
                       {/* Translation input */}
-                      <div className="px-4 py-2 border-l border-white/5">
+                      <div className="px-4 pt-1 pb-3 md:py-2 md:border-l border-white/5">
                         {field.multiline ? (
                           <textarea
                             value={flatTrans[field.key] ?? ''}

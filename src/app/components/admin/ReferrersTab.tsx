@@ -493,7 +493,7 @@ function UTMBuilder() {
             <p className="text-white/40 text-xs font-semibold uppercase tracking-widest mb-3">
               1 — Pick a platform (or fill manually below)
             </p>
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {UTM_PLATFORMS.map(plat => {
                 const active = activePlat === plat.name;
                 return (

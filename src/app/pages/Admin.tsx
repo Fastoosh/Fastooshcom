@@ -9,7 +9,7 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Textarea } from '../components/ui/textarea';
 import { AdminSelect } from '../components/admin/AdminSelect';
-import { Plus, Pencil, Trash2, Save, X, LogOut, Upload, Sparkles } from 'lucide-react';
+import { Plus, Pencil, Trash2, Save, X, LogOut, Upload, Sparkles, Menu } from 'lucide-react';
 import { AIImproveModal, type AIImproveContext } from '../components/admin/AIImproveModal';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import { ToolFormNew } from '../components/admin/ToolFormNew';
@@ -149,6 +149,38 @@ interface Settings {
   geminiModel?: string;
 }
 
+
+// Admin sidebar navigation (shared by the desktop sidebar, the mobile drawer
+// and the mobile top bar's current-section title).
+const ADMIN_NAV: { label: string; items: { value: string; label: string; danger?: boolean }[] }[] = [
+  { label: 'Content', items: [
+    { value: 'dashboard', label: 'Dashboard' },
+    { value: 'projects',  label: 'Projects' },
+    { value: 'tools',     label: 'Tools' },
+    { value: 'team',      label: 'Team' },
+    { value: 'home',      label: 'Home' },
+    { value: 'reviews',   label: 'Reviews' },
+  ]},
+  { label: 'Audience', items: [
+    { value: 'leads',     label: '🎯 Leads' },
+    { value: 'licenses',  label: '🔑 Licenses' },
+    { value: 'broadcast', label: '📣 Broadcast' },
+    { value: 'messages',  label: '🔧 Tool Requests' },
+    { value: 'traffic',   label: '🌐 Traffic' },
+  ]},
+  { label: 'Site', items: [
+    { value: 'seo',          label: 'SEO' },
+    { value: 'style',        label: 'Style' },
+    { value: 'translations', label: '🌍 Translations' },
+    { value: 'guide',        label: '📖 Guide' },
+    { value: 'settings',     label: 'Settings' },
+    { value: 'legal',        label: '⚖️ Legal' },
+  ]},
+  { label: 'Danger', items: [
+    { value: 'reset', label: '⚠️ Reset', danger: true },
+  ]},
+];
+
 export function Admin() {
   const navigate = useNavigate();
   const [projects, setProjects] = useState<Project[]>([]);
@@ -177,6 +209,20 @@ export function Admin() {
   const [authChecking, setAuthChecking] = useState(true);
   const [networkError, setNetworkError] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
+  // Phone/tablet: the sidebar becomes a slide-in drawer opened from a top bar.
+  const [navOpen, setNavOpen] = useState(false);
+  // Close the drawer on Escape and lock page scroll while it is open.
+  useEffect(() => {
+    if (!navOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setNavOpen(false); };
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [navOpen]);
 
   // Inline category / status management (Projects & Tools tabs)
   const [newProjectCat, setNewProjectCat] = useState('');
@@ -824,49 +870,56 @@ export function Admin() {
       <div className="flex min-h-screen"
         style={{ '--fastoosh-card-bg': 'rgba(255,255,255,0.03)', '--fastoosh-card-dark': 'rgba(0,0,0,0.95)' } as React.CSSProperties}>
 
-        {/* ── Fixed left sidebar ── */}
-        <div className="w-52 flex-shrink-0 bg-black/60 border-r border-white/8 flex flex-col fixed top-0 left-0 h-screen overflow-y-auto z-10">
+        {/* ── Mobile top bar (below lg) — shows current section + menu button ── */}
+        <div className="lg:hidden fixed top-0 inset-x-0 z-30 h-14 flex items-center gap-3 px-3 bg-black/85 backdrop-blur-md border-b border-white/10">
+          <button
+            type="button"
+            onClick={() => setNavOpen(true)}
+            className="w-10 h-10 -ml-1 flex items-center justify-center rounded-lg text-white/80 hover:bg-white/10 active:bg-white/15"
+            aria-label="Open admin menu"
+            aria-expanded={navOpen}
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+          <div className="min-w-0">
+            <p className="text-[10px] uppercase tracking-wider text-white/35 leading-none">Admin</p>
+            <p className="text-sm font-semibold text-white truncate">{ADMIN_NAV.flatMap(g => g.items).find(i => i.value === activeTab)?.label ?? 'Admin'}</p>
+          </div>
+        </div>
+
+        {/* Drawer backdrop (mobile only) */}
+        <div
+          className={`lg:hidden fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity duration-200 ${navOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+          onClick={() => setNavOpen(false)}
+          aria-hidden="true"
+        />
+
+        {/* ── Sidebar: fixed column on desktop, slide-in drawer below lg ── */}
+        <div className={`w-64 lg:w-52 flex-shrink-0 bg-[#0a0a0f] lg:bg-black/60 border-r border-white/8 flex flex-col fixed top-0 left-0 h-[100dvh] overflow-y-auto z-50 lg:z-10 transition-transform duration-200 ease-out ${navOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}>
           <div className="p-4 space-y-1 flex-1">
-            <div className="px-2 pb-4 mb-2 border-b border-white/10">
-              <h1 className="text-base font-bold text-white">Admin Panel</h1>
-              <p className="text-white/35 text-xs mt-0.5">Fastoosh</p>
+            <div className="px-2 pb-4 mb-2 border-b border-white/10 flex items-start justify-between">
+              <div>
+                <h1 className="text-base font-bold text-white">Admin Panel</h1>
+                <p className="text-white/35 text-xs mt-0.5">Fastoosh</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setNavOpen(false)}
+                className="lg:hidden w-9 h-9 -mr-2 -mt-1 flex items-center justify-center rounded-lg text-white/60 hover:bg-white/10"
+                aria-label="Close admin menu"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
 
-            {[
-              { label: 'Content', items: [
-                { value: 'dashboard', label: 'Dashboard' },
-                { value: 'projects',  label: 'Projects' },
-                { value: 'tools',     label: 'Tools' },
-                { value: 'team',      label: 'Team' },
-                { value: 'home',      label: 'Home' },
-                { value: 'reviews',   label: 'Reviews' },
-              ]},
-              { label: 'Audience', items: [
-                { value: 'leads',     label: '🎯 Leads' },
-                { value: 'licenses',  label: '🔑 Licenses' },
-                { value: 'broadcast', label: '📣 Broadcast' },
-                { value: 'messages',  label: '🔧 Tool Requests' },
-                { value: 'traffic',   label: '🌐 Traffic' },
-              ]},
-              { label: 'Site', items: [
-                { value: 'seo',          label: 'SEO' },
-                { value: 'style',        label: 'Style' },
-                { value: 'translations', label: '🌍 Translations' },
-                { value: 'guide',        label: '📖 Guide' },
-                { value: 'settings',     label: 'Settings' },
-                { value: 'legal',        label: '⚖️ Legal' },
-              ]},
-              { label: 'Danger', items: [
-                { value: 'reset', label: '⚠️ Reset', danger: true },
-              ]},
-            ].map((group: any) => (
+            {ADMIN_NAV.map((group: any) => (
               <div key={group.label} className="pb-2">
                 <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-white/25">{group.label}</p>
                 {group.items.map((item: any) => (
                   <button
                     key={item.value}
-                    onClick={() => setActiveTab(item.value)}
-                    className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all ${
+                    onClick={() => { setActiveTab(item.value); setNavOpen(false); window.scrollTo({ top: 0 }); }}
+                    className={`w-full text-left px-3 py-2.5 lg:py-2 rounded-lg text-sm transition-all ${
                       activeTab === item.value
                         ? item.danger
                           ? 'bg-red-500/15 text-red-300 font-semibold'
@@ -895,9 +948,9 @@ export function Admin() {
           </div>
         </div>
 
-        {/* ── Main content area (offset by sidebar width) ── */}
-        <div className="ml-52 flex-1 min-w-0 bg-black/80 min-h-screen">
-          <div className="p-8">
+        {/* ── Main content area (offset by sidebar on desktop, by top bar on mobile) ── */}
+        <div className="lg:ml-52 flex-1 min-w-0 bg-black/80 min-h-screen pt-14 lg:pt-0 overflow-x-hidden">
+          <div className="admin-shell p-3 sm:p-5 lg:p-8">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
 
 
@@ -928,12 +981,12 @@ export function Admin() {
 
           {/* PROJECTS TAB — split pane */}
           <TabsContent value="projects">
-            <div className="flex gap-0 h-[calc(100vh-4rem)] -m-8">
+            <div className="flex flex-col lg:flex-row gap-0 lg:h-[calc(100vh-4rem)] -m-3 sm:-m-5 lg:-m-8">
 
               {/* ── Left: list ── */}
-              <div className="w-80 flex-shrink-0 flex flex-col border-r border-white/8 overflow-y-auto">
+              <div className={`${editingProject ? 'hidden lg:flex' : 'flex'} w-full lg:w-80 flex-shrink-0 flex-col lg:border-r border-white/8 lg:overflow-y-auto`}>
                 {/* Header */}
-                <div className="flex items-center justify-between px-5 py-4 border-b border-white/8 sticky top-0 bg-black/80 z-10">
+                <div className="flex items-center justify-between px-4 lg:px-5 py-3 lg:py-4 border-b border-white/8 sticky top-14 lg:top-0 bg-black/90 backdrop-blur-md z-10">
                   <h2 className="text-base font-bold text-white">Projects</h2>
                   <Button
                     onClick={() => setEditingProject({
@@ -973,7 +1026,7 @@ export function Admin() {
                           project={project}
                           index={index}
                           moveProject={moveProject}
-                          onEdit={() => setEditingProject(project)}
+                          onEdit={() => { setEditingProject(project); window.scrollTo({ top: 0 }); }}
                           onDelete={() => deleteProject(project.id)}
                           onDragEnd={reorderProjects}
                           isExpanded={editingProject?.id === project.id}
@@ -1010,10 +1063,17 @@ export function Admin() {
                 </div>
               </div>
 
-              {/* ── Right: form ── */}
-              <div className="flex-1 overflow-y-auto">
+              {/* ── Right: form (full screen on mobile, with a back bar) ── */}
+              <div className={`${editingProject ? 'block' : 'hidden lg:block'} flex-1 min-w-0 lg:overflow-y-auto`}>
                 {editingProject ? (
-                  <div className="p-6">
+                  <div className="p-3 sm:p-5 lg:p-6">
+                    <button
+                      type="button"
+                      onClick={() => { setEditingProject(null); window.scrollTo({ top: 0 }); }}
+                      className="lg:hidden mb-3 -ml-1 flex items-center gap-1.5 px-2 py-2 rounded-lg text-sm text-white/70 hover:text-white hover:bg-white/8"
+                    >
+                      <span aria-hidden="true">←</span> All projects
+                    </button>
                     <ProjectForm
                       key={editingProject.id}
                       project={editingProject}
@@ -1037,12 +1097,12 @@ export function Admin() {
 
           {/* TOOLS TAB — split pane */}
           <TabsContent value="tools">
-            <div className="flex gap-0 h-[calc(100vh-4rem)] -m-8">
+            <div className="flex flex-col lg:flex-row gap-0 lg:h-[calc(100vh-4rem)] -m-3 sm:-m-5 lg:-m-8">
 
               {/* ── Left: list ── */}
-              <div className="w-80 flex-shrink-0 flex flex-col border-r border-white/8 overflow-y-auto">
+              <div className={`${editingTool ? 'hidden lg:flex' : 'flex'} w-full lg:w-80 flex-shrink-0 flex-col lg:border-r border-white/8 lg:overflow-y-auto`}>
                 {/* Header */}
-                <div className="flex items-center justify-between px-5 py-4 border-b border-white/8 sticky top-0 bg-black/80 z-10">
+                <div className="flex items-center justify-between px-4 lg:px-5 py-3 lg:py-4 border-b border-white/8 sticky top-14 lg:top-0 bg-black/90 backdrop-blur-md z-10">
                   <h2 className="text-base font-bold text-white">Tools</h2>
                   <Button
                     onClick={() => setEditingTool({
@@ -1076,7 +1136,7 @@ export function Admin() {
                           tool={tool}
                           index={index}
                           moveTool={moveTool}
-                          onEdit={() => setEditingTool(tool)}
+                          onEdit={() => { setEditingTool(tool); window.scrollTo({ top: 0 }); }}
                           onDelete={() => deleteTool(tool.id)}
                           onDragEnd={reorderTools}
                           isExpanded={editingTool?.id === tool.id}
@@ -1145,10 +1205,17 @@ export function Admin() {
                 </div>
               </div>
 
-              {/* ── Right: form ── */}
-              <div className="flex-1 overflow-y-auto">
+              {/* ── Right: form (full screen on mobile, with a back bar) ── */}
+              <div className={`${editingTool ? 'block' : 'hidden lg:block'} flex-1 min-w-0 lg:overflow-y-auto`}>
                 {editingTool ? (
-                  <div className="p-6">
+                  <div className="p-3 sm:p-5 lg:p-6">
+                    <button
+                      type="button"
+                      onClick={() => { setEditingTool(null); window.scrollTo({ top: 0 }); }}
+                      className="lg:hidden mb-3 -ml-1 flex items-center gap-1.5 px-2 py-2 rounded-lg text-sm text-white/70 hover:text-white hover:bg-white/8"
+                    >
+                      <span aria-hidden="true">←</span> All tools
+                    </button>
                     <ToolFormNew
                       key={editingTool.id}
                       tool={editingTool}
@@ -2134,7 +2201,7 @@ function ProjectForm({
           <label className="block text-sm font-medium text-gray-300 mb-2">
             Project Image *
           </label>
-          <div className="flex gap-2 mb-2">
+          <div className="flex flex-wrap gap-2 mb-2">
             <button
               type="button"
               onClick={() => setImageInputMode('url')}
@@ -2504,7 +2571,7 @@ function ProjectForm({
               </label>
 
               {/* Tab bar */}
-              <div className="flex gap-2 mb-3">
+              <div className="flex flex-wrap gap-2 mb-3">
                 {(['url', 'upload', 'bunny', 'bunny-lib', 'vimeo'] as const).map((mode) => (
                   <button
                     key={mode}
@@ -2594,7 +2661,7 @@ function ProjectForm({
 
               {/* Bunny uploader panel */}
               {screenshotsInputMode === 'bunny' && (
-                <div className="flex items-center gap-3 py-2">
+                <div className="flex flex-wrap items-center gap-3 py-2">
                   <Button
                     type="button"
                     onClick={() => setShowScreenshotsBunnyUploader(true)}
@@ -2613,7 +2680,7 @@ function ProjectForm({
 
               {/* Bunny picker panel (browse existing library) */}
               {screenshotsInputMode === 'bunny-lib' && (
-                <div className="flex items-center gap-3 py-2">
+                <div className="flex flex-wrap items-center gap-3 py-2">
                   <Button
                     type="button"
                     onClick={() => setShowScreenshotsBunnyPicker(true)}
@@ -2632,7 +2699,7 @@ function ProjectForm({
 
               {/* Vimeo picker panel */}
               {screenshotsInputMode === 'vimeo' && (
-                <div className="flex items-center gap-3 py-2">
+                <div className="flex flex-wrap items-center gap-3 py-2">
                   <Button
                     type="button"
                     onClick={() => setShowScreenshotsVimeoPicker(true)}
@@ -3060,7 +3127,7 @@ function TeamMemberForm({
           <label className="block text-sm font-medium text-gray-300 mb-2">
             Team Member Photo *
           </label>
-          <div className="flex gap-2 mb-2">
+          <div className="flex flex-wrap gap-2 mb-2">
             <button
               type="button"
               onClick={() => setImageInputMode('url')}
