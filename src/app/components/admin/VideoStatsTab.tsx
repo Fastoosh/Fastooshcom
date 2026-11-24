@@ -30,6 +30,7 @@ interface VideoStat {
   videoUrl?:         string | null;
   isShowreel?:       boolean;
   views:             number;
+  engagedViews?:     number;  // watched ≥5s with the video on screen
   totalWatchSeconds: number;
   avgWatchSeconds:   number;
   lastViewed:        string | null;
@@ -378,7 +379,7 @@ export function VideoStatsTab() {
           <div className="space-y-2">
             <div className="grid grid-cols-[1fr_auto] md:grid-cols-[1fr_auto_auto_auto_auto] gap-3 md:gap-4 px-3 py-2 text-[10px] font-bold text-white/25 uppercase tracking-wider border-b border-white/5">
               <span>Project</span>
-              <span className="text-right w-16">Views</span>
+              <span className="text-right w-20" title="Views · how many stayed ≥5s with the video on screen">Views</span>
               <span className="hidden md:block text-right w-24">Total Watch</span>
               <span className="hidden md:block text-right w-24">Avg / View</span>
               <span className="hidden md:block text-right w-20">Last Seen</span>
@@ -442,8 +443,13 @@ export function VideoStatsTab() {
                       </div>
                     </div>
 
-                    <div className="w-16 text-right">
+                    <div className="w-20 text-right">
                       <span className="text-white font-semibold tabular-nums text-sm">{stat.views.toLocaleString()}</span>
+                      {!stat.isShowreel && stat.views > 0 && (
+                        <p className="text-[10px] text-emerald-300/70 tabular-nums leading-tight" title="Visitors who watched at least 5 seconds with the video on screen">
+                          {(stat.engagedViews ?? 0).toLocaleString()} stayed · {Math.round(((stat.engagedViews ?? 0) / stat.views) * 100)}%
+                        </p>
+                      )}
                     </div>
 
                     <div className="hidden md:block w-24 text-right">

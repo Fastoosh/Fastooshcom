@@ -3198,6 +3198,7 @@ app.post("/make-server-e07959ec/projects/:id/video-view", async (c) => {
     const projectId = c.req.param("id");
     const body = await c.req.json().catch(() => ({}));
     const addView      = body.addView === true;
+    const engaged      = body.engaged === true; // watched ≥5s with the video on screen
     const watchSeconds = typeof body.watchSeconds === 'number' ? Math.max(0, Math.round(body.watchSeconds)) : 0;
 
     // Resolve real UUID if a slug was passed
@@ -3213,6 +3214,7 @@ app.post("/make-server-e07959ec/projects/:id/video-view", async (c) => {
 
     const updated = {
       views:             (existing.views || 0) + (addView ? 1 : 0),
+      engagedViews:      (existing.engagedViews || 0) + (engaged ? 1 : 0),
       totalWatchSeconds: (existing.totalWatchSeconds || 0) + watchSeconds,
       lastViewed:        addView ? new Date().toISOString() : (existing.lastViewed ?? null),
     };
@@ -3280,6 +3282,7 @@ app.get("/make-server-e07959ec/admin/video-stats", requireAuth, async (c) => {
         videoUrl:        project.video_url ?? null,
         isShowreel:      false,
         views,
+        engagedViews:    stats.engagedViews || 0,
         totalWatchSeconds,
         avgWatchSeconds: views > 0 ? Math.round(totalWatchSeconds / views) : 0,
         lastViewed:      stats.lastViewed ?? null,

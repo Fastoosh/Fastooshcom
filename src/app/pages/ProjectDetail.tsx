@@ -172,6 +172,12 @@ export function ProjectDetail() {
   const isPlayingRef    = useRef(false);                 // mirrors real player play/pause state
   const viewRecordedRef = useRef(false);
   const iframeRef       = useRef<HTMLIFrameElement>(null);
+  // Is the main video at least half on screen? Watch time only counts then.
+  const videoVisibleRef = useRef(true);
+  // On-screen seconds watched this page view; ≥ ENGAGED_SECONDS = "stayed"
+  const onScreenSecondsRef = useRef(0);
+  const engagedSentRef     = useRef(false);
+  const ENGAGED_SECONDS    = 5;
 
   useEffect(() => { idRef.current = slug; }, [slug]);
 
@@ -195,10 +201,14 @@ export function ProjectDetail() {
   const postWatchSeconds = useCallback((secs: number) => {
     const pid = idRef.current;
     if (secs <= 0 || !pid) return;
+    onScreenSecondsRef.current += secs;
+    // First time this visit passes the threshold → count one engaged view.
+    const engaged = !engagedSentRef.current && onScreenSecondsRef.current >= ENGAGED_SECONDS;
+    if (engaged) engagedSentRef.current = true;
     fetch(`${API_BASE}/projects/${pid}/video-view`, {
       method:    'POST',
       headers:   { 'Authorization': `Bearer ${publicAnonKey}`, 'Content-Type': 'application/json' },
-      body:      JSON.stringify({ addView: false, watchSeconds: secs }),
+      body:      JSON.stringify({ addView: false, watchSeconds: secs, engaged }),
       keepalive: true,
     }).catch(err => console.warn('[VideoTrack] watch-time send failed:', err));
   }, []);
@@ -236,7 +246,7 @@ export function ProjectDetail() {
 
       const onPlay  = () => {
         isPlayingRef.current = true;
-        playStartRef.current = Date.now();
+        if (videoVisibleRef.current && !document.hidden) playStartRef.current = Date.now();
         if (!viewRecordedRef.current && idRef.current) {
           viewRecordedRef.current = true;
           fetch(`${API_BASE}/projects/${idRef.current}/video-view`, {
@@ -272,7 +282,7 @@ export function ProjectDetail() {
           const evt  = data?.event ?? data?.type;
           if (evt === 'playing' || evt === 'play') {
             isPlayingRef.current = true;
-            playStartRef.current = Date.now();
+            if (videoVisibleRef.current && !document.hidden) playStartRef.current = Date.now();
             // Bunny video started (muted). Surface the unmute prompt unless
             // the user has already unmuted this session.
             if (!audioUnmuted) setUnmutePromptVisible(true);
@@ -306,7 +316,7 @@ export function ProjectDetail() {
           const state = data?.info?.playerState;
           if (state === 1) {
             isPlayingRef.current = true;
-            playStartRef.current = Date.now();
+            if (videoVisibleRef.current && !document.hidden) playStartRef.current = Date.now();
             if (!viewRecordedRef.current && idRef.current) {
               viewRecordedRef.current = true;
               fetch(`${API_BASE}/projects/${idRef.current}/video-view`, {
@@ -360,6 +370,23 @@ export function ProjectDetail() {
     setUnmutePromptVisible(false);
   }, []);
 
+  // ── On-screen detection: pause the watch clock when the visitor scrolls
+  //    the video out of view, resume when it comes back ────────────────────
+  useEffect(() => {
+    if (!showVideo || !iframeRef.current || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver(([entry]) => {
+      const visible = entry.intersectionRatio >= 0.5;
+      videoVisibleRef.current = visible;
+      if (!visible) {
+        drainTimer(false); // scrolled away: stop counting
+      } else if (isPlayingRef.current && !document.hidden && playStartRef.current === null) {
+        playStartRef.current = Date.now(); // back on screen while playing
+      }
+    }, { threshold: [0, 0.5, 1] });
+    io.observe(iframeRef.current);
+    return () => io.disconnect();
+  }, [showVideo, drainTimer]);
+
   // ── 10-second heartbeat: flush chunks while video is actually playing ───────
   useEffect(() => {
     if (!showVideo) return;
@@ -374,6 +401,8 @@ export function ProjectDetail() {
         drainTimer(false);
         // Note: browser usually auto-pauses the iframe too; player will fire
         // a pause/play event when it actually changes state.
+      } else if (!document.hidden && isPlayingRef.current && videoVisibleRef.current && playStartRef.current === null) {
+        playStartRef.current = Date.now();
       }
     };
     document.addEventListener('visibilitychange', onVis);
