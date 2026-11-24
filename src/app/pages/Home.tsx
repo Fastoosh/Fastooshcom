@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { subscribeBunnyPlayerEvents } from '../utils/videoProvider';
 import { NeonButton } from "../components/shared/NeonButton";
 import { GlassCard } from "../components/shared/GlassCard";
 import { AvailabilityBadge } from "../components/shared/AvailabilityBadge";
@@ -250,7 +251,9 @@ export function Home() {
         } catch { /* ignore */ }
       };
       window.addEventListener('message', onMsg);
-      return () => window.removeEventListener('message', onMsg);
+      // Bunny only sends play/pause events after we subscribe (player.js).
+      const unsubscribe = subscribeBunnyPlayerEvents(showreelIframeRef.current);
+      return () => { window.removeEventListener('message', onMsg); unsubscribe(); };
     }
 
     // YouTube

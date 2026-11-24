@@ -76,3 +76,37 @@ export function getYouTubeId(url: string | null | undefined): string | null {
   if (url.includes('youtu.be/')) return url.split('youtu.be/')[1]?.split('?')[0] ?? null;
   return url.split('v=')[1]?.split('&')[0] ?? null;
 }
+
+// Bunny's iframe player speaks the player.js protocol: it only reports
+// play / pause / ended to the parent page AFTER the page subscribes with an
+// `addEventListener` message. Without this, no events ever arrive and views
+// are never recorded. Subscribes on the player's `ready` event and also with
+// a few delayed retries (in case `ready` fired before our listener existed).
+// Returns a cleanup function.
+export function subscribeBunnyPlayerEvents(iframe: HTMLIFrameElement | null): () => void {
+  if (!iframe) return () => {};
+  const EVENTS = ['play', 'pause', 'ended'];
+  const subscribe = () => {
+    const win = iframe.contentWindow;
+    if (!win) return;
+    for (const value of EVENTS) {
+      win.postMessage(
+        JSON.stringify({ context: 'player.js', version: '0.0.11', method: 'addEventListener', value, listener: value }),
+        '*',
+      );
+    }
+  };
+  const onReady = (e: MessageEvent) => {
+    if (e.source !== iframe.contentWindow) return;
+    try {
+      const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+      if (data?.event === 'ready') subscribe();
+    } catch { /* not a player.js message */ }
+  };
+  window.addEventListener('message', onReady);
+  const timers = [400, 1500, 3500].map(ms => window.setTimeout(subscribe, ms));
+  return () => {
+    window.removeEventListener('message', onReady);
+    timers.forEach(t => window.clearTimeout(t));
+  };
+}

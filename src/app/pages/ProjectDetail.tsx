@@ -10,7 +10,7 @@ import { api } from "../utils/api";
 import { projectId as supabaseProjectId, publicAnonKey } from '/utils/supabase/info';
 import { useTranslation } from 'react-i18next';
 import { fetchTranslations, deepMergeTranslations } from '../utils/translations';
-import { detectVideoProvider, getBunnyEmbedUrl, getBunnyAutoThumbnailUrl } from '../utils/videoProvider';
+import { detectVideoProvider, getBunnyEmbedUrl, getBunnyAutoThumbnailUrl, subscribeBunnyPlayerEvents } from '../utils/videoProvider';
 
 // Gallery tile for a Bunny video: shows the CDN thumbnail with a play button
 // and only mounts the iframe player on click, so a gallery of many videos
@@ -291,7 +291,9 @@ export function ProjectDetail() {
         } catch { /* ignore malformed messages */ }
       };
       window.addEventListener('message', onMessage);
-      return () => window.removeEventListener('message', onMessage);
+      // Bunny only sends play/pause events after we subscribe (player.js).
+      const unsubscribe = subscribeBunnyPlayerEvents(iframeRef.current);
+      return () => { window.removeEventListener('message', onMessage); unsubscribe(); };
     }
 
     // ── YouTube ──────────────────────────────────────────────────────────────
