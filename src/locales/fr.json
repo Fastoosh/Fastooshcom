@@ -219,6 +219,16 @@
       "signInToReview": "pour laisser votre propre avis après l'achat.",
       "chooseYourVersion": "Choisissez votre version",
       "userReviews": "Avis des utilisateurs",
+      "proofDownloads": "téléchargements",
+      "proofLicenses": "licences actives",
+      "testimonials": "Ce qu’ils en disent",
+      "testimonialsNote": "Partagés avec autorisation. Les témoignages ne sont pas inclus dans la note des avis.",
+      "signInToWriteReview": "Connectez-vous pour laisser un avis",
+      "writeReview": "Laisser un avis",
+      "editReview": "Modifier votre avis",
+      "reviewsForOwners": "Les avis sont réservés aux détenteurs d’une licence.",
+      "noReviewsYet": "Pas encore d’avis",
+      "beFirstReview": "Vous utilisez cet outil ? Soyez le premier à partager votre expérience.",
       "allTools": "Tous les outils"
     },
     "statuses": {

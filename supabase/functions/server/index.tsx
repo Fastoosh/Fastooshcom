@@ -3715,7 +3715,21 @@ app.get("/make-server-e07959ec/settings", async (c) => {
       acc[item.key] = item.value;
       return acc;
     }, {});
-    
+
+    // Secret values (API keys) are only returned to a signed-in admin.
+    // This endpoint is public and loaded by every page, so without this the
+    // keys were readable by any visitor.
+    const SECRET_SETTING_KEYS = ['geminiApiKey'];
+    let isAdmin = false;
+    const adminToken = c.req.header('X-Admin-Token')?.trim();
+    if (adminToken) {
+      const session = await kv.get(`admin_session:${adminToken}`);
+      isAdmin = !!session && new Date(session.expiresAt) > new Date();
+    }
+    if (!isAdmin) {
+      for (const k of SECRET_SETTING_KEYS) delete settings[k];
+    }
+
     return c.json({ success: true, data: settings });
   } catch (error) {
     console.log(`Error fetching settings: ${error}`);
@@ -7099,6 +7113,228 @@ app.delete('/make-server-e07959ec/admin/reviews', requireAuth, async (c) => {
   } catch (error) {
     console.log('[admin/reviews DELETE] error:', error);
     return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
+// ========== TESTIMONIALS, SOCIAL PROOF, REVIEW REQUESTS ==========
+
+// Shared: the product_id values a license for this tool may carry (slug or
+// normalized name — Gumroad-created licenses use e.g. 'fastoosh_data_automator').
+const normProductId = (x: string) => (x || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+function productIdCandidates(tool: { name?: string; slug?: string }): string[] {
+  return Array.from(new Set([tool.slug, normProductId(tool.name || ''), normProductId(tool.slug || '')].filter(Boolean) as string[]));
+}
+
+// ── Testimonials ─────────────────────────────────────────────────────────────
+// Real quotes from clients / beta testers, shared with their permission.
+// Shown in their own section on the tool page — never mixed into reviews or
+// the star rating. Stored as an array at KV testimonials:{toolId}.
+
+// GET /tools/:id/testimonials — public
+app.get('/make-server-e07959ec/tools/:id/testimonials', async (c) => {
+  try {
+    const list = (await kv.get(`testimonials:${c.req.param('id')}`)) ?? [];
+    return c.json({ success: true, data: Array.isArray(list) ? list : [] });
+  } catch (err) {
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// PUT /admin/tools/:id/testimonials — admin, replaces the tool's list.
+// Body: { testimonials: [{ id?, name, role?, quote, source?, permission }] }
+app.put('/make-server-e07959ec/admin/tools/:id/testimonials', requireAuth, async (c) => {
+  try {
+    const toolId = c.req.param('id');
+    const { testimonials } = await c.req.json();
+    if (!Array.isArray(testimonials)) return c.json({ success: false, error: 'testimonials must be an array' }, 400);
+    const now = new Date().toISOString();
+    const clean: any[] = [];
+    for (const t of testimonials) {
+      const name  = String(t?.name ?? '').trim().slice(0, 120);
+      const quote = String(t?.quote ?? '').trim().slice(0, 1200);
+      if (!name || !quote) return c.json({ success: false, error: 'Each testimonial needs a name and a quote.' }, 400);
+      if (t?.permission !== true) {
+        return c.json({ success: false, error: `Confirm you have permission to publish ${name}'s words.` }, 400);
+      }
+      clean.push({
+        id:         String(t.id || crypto.randomUUID()),
+        name,
+        role:       String(t?.role ?? '').trim().slice(0, 160),
+        quote,
+        source:     String(t?.source ?? '').trim().slice(0, 120),
+        permission: true,
+        createdAt:  t.createdAt || now,
+        updatedAt:  now,
+      });
+    }
+    await kv.set(`testimonials:${toolId}`, clean);
+    return c.json({ success: true, data: clean });
+  } catch (err) {
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// ── Social proof ─────────────────────────────────────────────────────────────
+// GET /tools/:id/social-proof — public. Real download + active-license counts,
+// each returned ONLY when it reaches the admin's minimum (site setting
+// socialProofMinimum, default 25), so small numbers are never exposed.
+app.get('/make-server-e07959ec/tools/:id/social-proof', async (c) => {
+  try {
+    const { data: tool } = await supabase.from('tools').select('id, name, slug').eq('id', c.req.param('id')).maybeSingle();
+    if (!tool) return c.json({ success: true, data: { downloads: null, activeLicenses: null } });
+
+    const { data: minRow } = await supabase.from('site_settings').select('value').eq('key', 'socialProofMinimum').maybeSingle();
+    const minimum = Number(minRow?.value) > 0 ? Number(minRow?.value) : 25;
+
+    const [leads, licRes] = await Promise.all([
+      kv.getByPrefix('lead:free:log:'),
+      supabase.from('licenses').select('license_key', { count: 'exact', head: true })
+        .in('product_id', productIdCandidates(tool)).eq('status', 'active'),
+    ]);
+    const downloaders = new Set(
+      (leads as any[]).filter(l => l?.toolSlug === tool.slug && l?.email).map(l => String(l.email).toLowerCase()),
+    );
+    const downloads      = downloaders.size;
+    const activeLicenses = licRes.count ?? 0;
+
+    return c.json({
+      success: true,
+      data: {
+        downloads:      downloads      >= minimum ? downloads      : null,
+        activeLicenses: activeLicenses >= minimum ? activeLicenses : null,
+      },
+    });
+  } catch (err) {
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// GET /admin/tools/:id/social-proof — admin: the raw counts + current minimum,
+// so the admin can see how close each number is to being shown.
+app.get('/make-server-e07959ec/admin/tools/:id/social-proof', requireAuth, async (c) => {
+  try {
+    const { data: tool } = await supabase.from('tools').select('id, name, slug').eq('id', c.req.param('id')).maybeSingle();
+    if (!tool) return c.json({ success: false, error: 'Tool not found' }, 404);
+    const { data: minRow } = await supabase.from('site_settings').select('value').eq('key', 'socialProofMinimum').maybeSingle();
+    const minimum = Number(minRow?.value) > 0 ? Number(minRow?.value) : 25;
+    const [leads, licRes] = await Promise.all([
+      kv.getByPrefix('lead:free:log:'),
+      supabase.from('licenses').select('license_key', { count: 'exact', head: true })
+        .in('product_id', productIdCandidates(tool)).eq('status', 'active'),
+    ]);
+    const downloads = new Set(
+      (leads as any[]).filter(l => l?.toolSlug === tool.slug && l?.email).map(l => String(l.email).toLowerCase()),
+    ).size;
+    return c.json({ success: true, data: { downloads, activeLicenses: licRes.count ?? 0, minimum } });
+  } catch (err) {
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// ── Review requests ──────────────────────────────────────────────────────────
+// Email active license holders of a tool asking for an honest review. Skips
+// people who already reviewed it and anyone asked in the last 60 days
+// (KV review_request:{toolId}:{email} = ISO date of the last ask).
+const REVIEW_REQUEST_COOLDOWN_MS = 60 * 24 * 60 * 60 * 1000;
+
+async function reviewRequestAudience(toolId: string) {
+  const { data: tool } = await supabase.from('tools').select('id, name, slug').eq('id', toolId).maybeSingle();
+  if (!tool) return null;
+
+  const { data: lic } = await supabase
+    .from('licenses')
+    .select('product_id, status, license_customers!inner(email, name)')
+    .in('product_id', productIdCandidates(tool))
+    .eq('status', 'active');
+  const holders = new Map<string, string>(); // email -> name
+  for (const l of (lic ?? []) as any[]) {
+    const email = String(l.license_customers?.email || '').toLowerCase().trim();
+    if (email) holders.set(email, l.license_customers?.name || '');
+  }
+
+  // Who already reviewed (reviews store userId → map to email via auth users).
+  const reviews: any[] = await kv.getByPrefix(`review:${toolId}:`);
+  const reviewerIds = new Set(reviews.filter(r => r && !r.isFake).map(r => r.userId));
+  const reviewed = new Set<string>();
+  if (reviewerIds.size) {
+    const { data: usersData } = await supabase.auth.admin.listUsers({ perPage: 1000 });
+    for (const u of usersData?.users ?? []) {
+      if (reviewerIds.has(u.id) && u.email) reviewed.add(u.email.toLowerCase());
+    }
+  }
+
+  const now = Date.now();
+  const eligible: { email: string; name: string }[] = [];
+  let alreadyReviewed = 0, recentlyAsked = 0;
+  for (const [email, name] of holders) {
+    if (reviewed.has(email)) { alreadyReviewed++; continue; }
+    const last = await kv.get(`review_request:${toolId}:${email}`);
+    if (last && now - new Date(last).getTime() < REVIEW_REQUEST_COOLDOWN_MS) { recentlyAsked++; continue; }
+    eligible.push({ email, name });
+  }
+  return { tool, holders: holders.size, alreadyReviewed, recentlyAsked, eligible };
+}
+
+// GET /admin/reviews/request-preview?toolId= — who would receive the email
+app.get('/make-server-e07959ec/admin/reviews/request-preview', requireAuth, async (c) => {
+  try {
+    const toolId = c.req.query('toolId');
+    if (!toolId) return c.json({ success: false, error: 'toolId is required' }, 400);
+    const a = await reviewRequestAudience(toolId);
+    if (!a) return c.json({ success: false, error: 'Tool not found' }, 404);
+    return c.json({ success: true, data: {
+      licenseHolders: a.holders, alreadyReviewed: a.alreadyReviewed,
+      recentlyAsked: a.recentlyAsked, eligible: a.eligible.length,
+    } });
+  } catch (err) {
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// POST /admin/reviews/request { toolId } — send the emails
+app.post('/make-server-e07959ec/admin/reviews/request', requireAuth, async (c) => {
+  try {
+    const { toolId } = await c.req.json();
+    if (!toolId) return c.json({ success: false, error: 'toolId is required' }, 400);
+    const resendKey = Deno.env.get('RESEND_API_KEY');
+    if (!resendKey) return c.json({ success: false, error: 'RESEND_API_KEY not configured' }, 500);
+
+    const a = await reviewRequestAudience(toolId);
+    if (!a) return c.json({ success: false, error: 'Tool not found' }, 404);
+    if (!a.eligible.length) return c.json({ success: true, data: { sent: 0, failed: 0 } });
+
+    const { data: siteRow } = await supabase.from('site_settings').select('value').eq('key', 'siteUrl').maybeSingle();
+    const siteUrl  = String(siteRow?.value || 'https://www.fastoosh.com').replace(/\/$/, '');
+    const link     = `${siteUrl}/tools/${a.tool.slug}?review=1#reviews`;
+    const toolName = a.tool.name;
+    const year     = new Date().getFullYear();
+    const resend   = new Resend(resendKey);
+
+    let sent = 0, failed = 0;
+    for (const r of a.eligible) {
+      const first = (r.name || '').split(' ')[0] || 'there';
+      const html = `<div style="background:#0a0a0a;padding:32px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;"><div style="max-width:520px;margin:0 auto;background:#141416;border:1px solid #262629;border-radius:16px;overflow:hidden;"><div style="padding:28px 32px 8px;"><span style="font-size:18px;font-weight:800;color:#fff;">Fastoosh</span></div><div style="padding:8px 32px 32px;color:#d4d4d8;font-size:14px;line-height:1.6;"><h1 style="margin:0 0 16px;font-size:20px;color:#fff;font-weight:700;">How's ${toolName} working for you?</h1><p style="margin:0 0 16px;">Hi ${first},</p><p style="margin:0 0 16px;">Would you share an honest review of ${toolName}? Good or bad, it helps other motion designers decide, and it tells us what to improve next.</p><p style="margin:0 0 24px;">It takes about a minute.</p><a href="${link}" style="display:inline-block;padding:12px 24px;background:linear-gradient(135deg,#a855f7,#6366f1);color:#fff;text-decoration:none;border-radius:10px;font-weight:700;">Write a review</a><p style="margin:24px 0 0;font-size:12px;color:#71717a;">You're receiving this because you own a ${toolName} license. We'll ask at most once every two months.</p></div><div style="padding:18px 32px;border-top:1px solid #262629;"><p style="margin:0;font-size:11px;color:#71717a;">© ${year} Fastoosh · fastoosh.com</p></div></div></div>`;
+      const text = `Hi ${first},\n\nWould you share an honest review of ${toolName}? Good or bad, it helps other motion designers decide, and it tells us what to improve next.\n\nWrite a review: ${link}\n\n— Fastoosh`;
+      try {
+        const { error } = await resend.emails.send({
+          from: 'Fastoosh <noreply@contact.fastoosh.com>',
+          to: r.email,
+          subject: `How's ${toolName} working for you?`,
+          html,
+          text,
+        });
+        if (error) throw error;
+        await kv.set(`review_request:${toolId}:${r.email}`, new Date().toISOString());
+        sent++;
+      } catch (e) {
+        console.log('[reviews/request] send failed for', r.email, e);
+        failed++;
+      }
+    }
+    console.log(`[reviews/request] tool=${toolName} sent=${sent} failed=${failed}`);
+    return c.json({ success: true, data: { sent, failed } });
+  } catch (err) {
+    return c.json({ success: false, error: String(err) }, 500);
   }
 });
 

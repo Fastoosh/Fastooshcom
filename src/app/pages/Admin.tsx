@@ -353,7 +353,8 @@ export function Admin() {
         fetchWithRetry(`${API_BASE}/projects`, { headers }, 2),
         fetchWithRetry(`${API_BASE}/tools`,    { headers }, 2),
         fetchWithRetry(`${API_BASE}/team`,     { headers }, 2),
-        fetchWithRetry(`${API_BASE}/settings`, { headers }, 2),
+        // Admin token lets the server include secret settings (e.g. Gemini key)
+        fetchWithRetry(`${API_BASE}/settings`, { headers: { ...headers, 'X-Admin-Token': localStorage.getItem('admin_token') ?? '' } }, 2),
       ]);
 
       const safeJson = async (r: PromiseSettledResult<Response>) => {

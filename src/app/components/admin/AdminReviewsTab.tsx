@@ -11,6 +11,7 @@ import { useState, useEffect } from 'react';
 import { GlassCard } from '../shared/GlassCard';
 import { Button } from '../ui/button';
 import { AdminSelect } from './AdminSelect';
+import { GrowReviewsPanel } from './GrowReviewsPanel';
 import { Trash2, Star, MessageSquare, ShieldCheck, EyeOff, Loader2, Reply } from 'lucide-react';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 
@@ -254,6 +255,15 @@ export function AdminReviewsTab() {
           <ShieldCheck className="w-4 h-4 text-emerald-400 flex-shrink-0" />
           Reviews can only be left by customers who own a license for the tool. You can remove spam or abusive reviews here.
         </p>
+
+        {/* Per-tool tools to grow real reviews (needs a tool picked) */}
+        {filterToolId ? (
+          <GrowReviewsPanel toolId={filterToolId} toolName={toolName(filterToolId) || 'this tool'} />
+        ) : (
+          <p className="text-white/40 text-xs mb-5">
+            Pick a tool in the filter above to ask its license holders for reviews, add testimonials and see its usage numbers.
+          </p>
+        )}
 
         {/* Legacy admin-written reviews — hidden from the site, offer cleanup */}
         {adminWritten.length > 0 && (

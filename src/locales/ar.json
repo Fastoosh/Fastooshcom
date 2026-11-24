@@ -219,6 +219,16 @@
       "signInToReview": "لترك تقييمك بعد الشراء.",
       "chooseYourVersion": "اختر نسختك",
       "userReviews": "تقييمات المستخدمين",
+      "proofDownloads": "تنزيل",
+      "proofLicenses": "ترخيص نشط",
+      "testimonials": "ماذا يقولون",
+      "testimonialsNote": "تمت مشاركتها بإذن أصحابها. الشهادات غير محتسبة في تقييم المراجعات.",
+      "signInToWriteReview": "سجّل الدخول لكتابة مراجعة",
+      "writeReview": "اكتب مراجعة",
+      "editReview": "عدّل مراجعتك",
+      "reviewsForOwners": "المراجعات متاحة لحاملي الترخيص فقط.",
+      "noReviewsYet": "لا توجد مراجعات بعد",
+      "beFirstReview": "تستخدم هذه الأداة؟ كن أول من يشارك تجربته.",
       "allTools": "جميع الأدوات"
     },
     "statuses": {

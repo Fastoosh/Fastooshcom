@@ -5,6 +5,7 @@ import { GlassCard } from '../components/shared/GlassCard';
 import { NeonButton } from '../components/shared/NeonButton';
 import { ToolSupportModal } from '../components/shared/ToolSupportModal';
 import { UserAuthModal } from '../components/shared/UserAuthModal';
+import { ReviewModal } from '../components/shared/ReviewModal';
 import { SeoHead } from '../components/shared/SeoHead';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import { buildGumroadCheckoutUrl, openGumroadCheckout } from '../utils/gumroad';
@@ -1626,6 +1627,13 @@ export function ToolDetail() {
   const [freeDownloadVersion, setFreeDownloadVersion] = useState<ToolVersion | null>(null);
   const [userPurchasedProductNames, setUserPurchasedProductNames] = useState<string[]>([]);
   const [reviews, setReviews] = useState<any[]>([]);
+  // Testimonials (real quotes shared with permission — separate from reviews)
+  const [testimonials, setTestimonials] = useState<any[]>([]);
+  // Real usage numbers; the server returns null for any below the admin's minimum
+  const [socialProof, setSocialProof] = useState<{ downloads: number | null; activeLicenses: number | null }>({ downloads: null, activeLicenses: null });
+  // Signed-in visitor's review eligibility: null = unknown / not signed in
+  const [myReview, setMyReview] = useState<{ licensed: boolean; review: any | null } | null>(null);
+  const [reviewModalOpen, setReviewModalOpen] = useState(false);
   // Billing cycle is no longer a page-level concept — each pricing card fixes
   // its own cycle from the version's data. The ComparisonModal manages its
   // own toggle state internally, isolated from the cards.
@@ -1750,6 +1758,8 @@ export function ToolDetail() {
             lastTrackedSlug.current = found.slug ?? slug ?? null;
             track('tool_view', { toolId: found.id, toolName: found.name, toolSlug: found.slug ?? slug });
             fetchReviews(found.id);
+            fetchTestimonials(found.id);
+            fetchSocialProof(found.id);
           }
 
           // Check if this tool has an uploaded user guide (fire-and-forget, non-blocking)
@@ -1814,6 +1824,53 @@ export function ToolDetail() {
       console.warn('[ToolDetail] Could not load reviews:', err);
     }
   };
+
+  const fetchTestimonials = async (toolId: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/tools/${encodeURIComponent(toolId)}/testimonials`, { headers: { Authorization: `Bearer ${publicAnonKey}` } });
+      const data = await res.json();
+      if (data.success) setTestimonials(data.data || []);
+    } catch { /* optional section */ }
+  };
+
+  const fetchSocialProof = async (toolId: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/tools/${encodeURIComponent(toolId)}/social-proof`, { headers: { Authorization: `Bearer ${publicAnonKey}` } });
+      const data = await res.json();
+      if (data.success && data.data) setSocialProof(data.data);
+    } catch { /* optional */ }
+  };
+
+  // Does the signed-in visitor own this tool (can review) + their existing review
+  useEffect(() => {
+    if (!tool?.id || !session?.access_token) { setMyReview(null); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/user/reviews`, {
+          headers: { Authorization: `Bearer ${publicAnonKey}`, 'X-User-Token': session.access_token },
+        });
+        const data = await res.json();
+        if (cancelled || !data.success) return;
+        const entry = (data.data || []).find((e: any) => e.toolId === tool.id);
+        setMyReview({ licensed: !!entry, review: entry?.review ?? null });
+      } catch { if (!cancelled) setMyReview(null); }
+    })();
+    return () => { cancelled = true; };
+  }, [tool?.id, session?.access_token]);
+
+  // ?review=1 (from the review-request email): sign in if needed, then open the form
+  const reviewParamHandled = useRef(false);
+  useEffect(() => {
+    if (reviewParamHandled.current || !tool) return;
+    if (new URLSearchParams(window.location.search).get('review') !== '1') return;
+    if (!user) { openAuthModal('Sign in to write your review'); return; }
+    if (myReview === null) return; // still checking eligibility
+    reviewParamHandled.current = true;
+    if (myReview.licensed) setReviewModalOpen(true);
+    document.getElementById('reviews')?.scrollIntoView({ behavior: 'smooth' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tool, user, myReview]);
 
   // Handle free download — auto-download if signed in, show modal if guest
   const handleFreeDownload = async (version: ToolVersion) => {
@@ -1957,6 +2014,27 @@ export function ToolDetail() {
               <p className="text-purple-300/80 font-semibold text-base mb-3 leading-snug">
                 {tool.tagline}
               </p>
+            )}
+            {(socialProof.downloads != null || socialProof.activeLicenses != null || reviews.length > 0) && (
+              <div className="flex flex-wrap gap-2 mb-4 rtl:flex-row-reverse">
+                {reviews.length > 0 && (
+                  <a href="#reviews" className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-500/10 border border-yellow-500/20 text-yellow-300 hover:bg-yellow-500/15">
+                    <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
+                    {(Math.round((reviews.reduce((sum: number, r: any) => sum + r.rating, 0) / reviews.length) * 10) / 10).toFixed(1)}
+                    <span className="text-yellow-300/60">({reviews.length})</span>
+                  </a>
+                )}
+                {socialProof.downloads != null && (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 border border-emerald-500/20 text-emerald-300">
+                    {socialProof.downloads.toLocaleString()} {t('tools.detail.proofDownloads', 'downloads')}
+                  </span>
+                )}
+                {socialProof.activeLicenses != null && (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-purple-500/10 border border-purple-500/20 text-purple-300">
+                    {socialProof.activeLicenses.toLocaleString()} {t('tools.detail.proofLicenses', 'active licenses')}
+                  </span>
+                )}
+              </div>
             )}
             <p className="text-white/55 text-base leading-relaxed mb-8">
               {tool.description}
@@ -2228,8 +2306,81 @@ export function ToolDetail() {
           </motion.section>
         )}
 
+        {/* ── Testimonials (shared with permission; not part of the rating) ── */}
+        {testimonials.length > 0 && (
+          <motion.section
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="mb-20"
+          >
+            <SectionLabel>{t('tools.detail.testimonials', 'What people say')}</SectionLabel>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {testimonials.map((tm: any) => (
+                <GlassCard key={tm.id} className="p-5 h-full flex flex-col">
+                  <Quote className="w-5 h-5 text-purple-400/40 mb-3 -scale-x-100" />
+                  <p className="text-white/65 text-sm leading-relaxed flex-1 whitespace-pre-line">"{tm.quote}"</p>
+                  <div className="mt-4 pt-3 border-t border-white/6">
+                    <p className="text-white/70 text-xs font-semibold">{tm.name}</p>
+                    {tm.role && <p className="text-white/35 text-[11px]">{tm.role}</p>}
+                  </div>
+                </GlassCard>
+              ))}
+            </div>
+            <p className="text-white/25 text-[11px] mt-3 text-center">
+              {t('tools.detail.testimonialsNote', 'Shared with permission. Testimonials are not included in the review rating.')}
+            </p>
+          </motion.section>
+        )}
+
         {/* ── Reviews ───────────────────────────────────────────────────────── */}
-        {reviews.length > 0 && (() => {
+        {(() => {
+          // Review CTA: owners write/edit, guests sign in, signed-in non-owners see a note
+          const reviewCta = !user ? (
+            <button
+              type="button"
+              onClick={() => openAuthModal()}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-purple-600 hover:bg-purple-500 text-white transition-colors"
+            >
+              {t('tools.detail.signInToWriteReview', 'Sign in to write a review')}
+            </button>
+          ) : myReview?.licensed ? (
+            <button
+              type="button"
+              onClick={() => setReviewModalOpen(true)}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-purple-600 hover:bg-purple-500 text-white transition-colors"
+            >
+              <Star className="w-4 h-4" />
+              {myReview.review ? t('tools.detail.editReview', 'Edit your review') : t('tools.detail.writeReview', 'Write a review')}
+            </button>
+          ) : myReview ? (
+            <p className="text-white/35 text-sm">{t('tools.detail.reviewsForOwners', 'Reviews are open to license holders.')}</p>
+          ) : null;
+
+          if (reviews.length === 0) {
+            return (
+              <motion.section
+                id="reviews"
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                className="mb-20 scroll-mt-24"
+              >
+                <SectionLabel>{t('tools.detail.userReviews')}</SectionLabel>
+                <GlassCard className="p-8 text-center max-w-xl mx-auto">
+                  <div className="flex justify-center gap-1 mb-3">
+                    {[1, 2, 3, 4, 5].map(n => <Star key={n} className="w-5 h-5 text-white/15" />)}
+                  </div>
+                  <p className="text-white font-semibold">{t('tools.detail.noReviewsYet', 'No reviews yet')}</p>
+                  <p className="text-white/45 text-sm mt-1 mb-5">
+                    {t('tools.detail.beFirstReview', 'Using this tool? Be the first to share how it works for you.')}
+                  </p>
+                  {reviewCta}
+                </GlassCard>
+              </motion.section>
+            );
+          }
+
           const avg = Math.round((reviews.reduce((s, r) => s + r.rating, 0) / reviews.length) * 10) / 10;
           const dist = [5, 4, 3, 2, 1].map(n => ({
             n,
@@ -2237,10 +2388,11 @@ export function ToolDetail() {
           }));
           return (
             <motion.section
+              id="reviews"
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
-              className="mb-20"
+              className="mb-20 scroll-mt-24"
             >
               <SectionLabel>{t('tools.detail.userReviews')}</SectionLabel>
 
@@ -2341,18 +2493,31 @@ export function ToolDetail() {
                 ))}
               </div>
 
-              {/* CTA for non-buyers */}
-              {!user && (
-                <p className="text-center text-white/30 text-sm mt-6">
-                  <button onClick={() => openAuthModal()} className="text-purple-400 hover:text-purple-300 underline">
-                    {t('tools.detail.signIn')}
-                  </button>{' '}
-                  {t('tools.detail.signInToReview')}
-                </p>
-              )}
+              {/* Write / edit / sign-in CTA */}
+              {reviewCta && <div className="flex justify-center mt-6">{reviewCta}</div>}
             </motion.section>
           );
         })()}
+
+        {reviewModalOpen && tool && session?.access_token && (
+          <ReviewModal
+            toolId={tool.id}
+            toolName={tool.name}
+            toolImageUrl={(tool as any).imageUrl}
+            accessToken={session.access_token}
+            existingReview={myReview?.review ?? null}
+            onClose={() => setReviewModalOpen(false)}
+            onSaved={(review) => {
+              setMyReview({ licensed: true, review });
+              fetchReviews(tool.id);
+            }}
+            onDeleted={() => {
+              setMyReview({ licensed: true, review: null });
+              setReviewModalOpen(false);
+              fetchReviews(tool.id);
+            }}
+          />
+        )}
 
         {/* ── Version History ───────────────────────────────────────────────── */}
         {changelog.length > 0 && (

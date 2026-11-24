@@ -219,6 +219,16 @@
       "signInToReview": "to leave your own review after purchasing.",
       "chooseYourVersion": "Choose your version",
       "userReviews": "User reviews",
+      "proofDownloads": "downloads",
+      "proofLicenses": "active licenses",
+      "testimonials": "What people say",
+      "testimonialsNote": "Shared with permission. Testimonials are not included in the review rating.",
+      "signInToWriteReview": "Sign in to write a review",
+      "writeReview": "Write a review",
+      "editReview": "Edit your review",
+      "reviewsForOwners": "Reviews are open to license holders.",
+      "noReviewsYet": "No reviews yet",
+      "beFirstReview": "Using this tool? Be the first to share how it works for you.",
       "allTools": "All tools"
     },
     "statuses": {
