@@ -624,10 +624,13 @@ export function ProjectDetail() {
             const isDirectVid = (url: string) => /\.(mp4|webm|mov|avi)(\?|$)/i.test(url);
 
             return (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+              /* Masonry: CSS columns stack tiles of different heights (vertical
+                 / square / wide videos) without leaving gaps between them. */
+              <div className="columns-1 md:columns-2 gap-6">
                 {project.images.filter((u: string) => u?.trim()).map((url: string, index: number) => (
                   <motion.div
                     key={index}
+                    className="break-inside-avoid mb-6"
                     initial={{ opacity: 0, y: 20 }}
                     whileInView={{ opacity: 1, y: 0 }}
                     viewport={{ once: true }}
