@@ -9673,6 +9673,65 @@ app.post('/make-server-e07959ec/projects/:id/gallery-play', async (c) => {
   }
 });
 
+// ── Gallery video names ──────────────────────────────────────────────────────
+// Gallery items are stored as bare URLs, so the stats panel had no name to
+// show. Resolve a readable title + short ID per URL:
+//   Bunny   → title from the library listing (one paged call, cached 10 min)
+//   Vimeo   → oEmbed title          YouTube → oEmbed title
+//   Direct  → file name
+type VideoLabel = { title: string | null; videoId: string | null; provider: string };
+let bunnyTitleCache: { at: number; map: Record<string, string> } | null = null;
+const oembedTitleCache = new Map<string, string | null>();
+
+async function bunnyTitleMap(): Promise<Record<string, string>> {
+  if (bunnyTitleCache && Date.now() - bunnyTitleCache.at < 10 * 60 * 1000) return bunnyTitleCache.map;
+  const { apiKey, libraryId } = bunnyConfig();
+  const map: Record<string, string> = {};
+  if (!apiKey) return map;
+  for (let page = 1; page <= 20; page++) {
+    const res = await fetch(`https://video.bunnycdn.com/library/${libraryId}/videos?page=${page}&itemsPerPage=1000&orderBy=date`, {
+      headers: { AccessKey: apiKey, Accept: 'application/json' },
+    }).catch(() => null);
+    if (!res || !res.ok) break;
+    const data = await res.json().catch(() => ({}));
+    const items: any[] = data.items || [];
+    for (const v of items) if (v?.guid) map[String(v.guid).toLowerCase()] = v.title || '';
+    if (items.length < 1000) break;
+  }
+  bunnyTitleCache = { at: Date.now(), map };
+  return map;
+}
+
+async function oembedTitle(endpoint: string): Promise<string | null> {
+  if (oembedTitleCache.has(endpoint)) return oembedTitleCache.get(endpoint)!;
+  let title: string | null = null;
+  try {
+    const r = await fetch(endpoint, { signal: AbortSignal.timeout(4000) });
+    if (r.ok) title = (await r.json())?.title || null;
+  } catch { /* leave null */ }
+  oembedTitleCache.set(endpoint, title);
+  return title;
+}
+
+async function labelGalleryVideo(url: string, bunnyTitles: Record<string, string>): Promise<VideoLabel> {
+  const bunnyGuid = url.match(/mediadelivery\.net\/(?:embed|play)\/\d+\/([0-9a-f-]+)/i)?.[1]
+    ?? url.match(/b-cdn\.net\/([0-9a-f-]{20,})/i)?.[1];
+  if (bunnyGuid) {
+    return { provider: 'bunny', videoId: bunnyGuid, title: bunnyTitles[bunnyGuid.toLowerCase()] || null };
+  }
+  const vimeoId = url.match(/vimeo\.com\/(?:video\/)?(\d+)/i)?.[1];
+  if (vimeoId) {
+    return { provider: 'vimeo', videoId: vimeoId, title: await oembedTitle(`https://vimeo.com/api/oembed.json?url=https://vimeo.com/${vimeoId}`) };
+  }
+  const ytId = url.match(/(?:youtu\.be\/|[?&]v=|\/embed\/)([\w-]{6,})/i)?.[1];
+  if (ytId) {
+    return { provider: 'youtube', videoId: ytId, title: await oembedTitle(`https://www.youtube.com/oembed?format=json&url=https://www.youtube.com/watch?v=${ytId}`) };
+  }
+  let file: string | null = null;
+  try { file = decodeURIComponent(new URL(url).pathname.split('/').pop() || '') || null; } catch { /* keep null */ }
+  return { provider: 'direct', videoId: null, title: file };
+}
+
 // GET /admin/gallery-stats — per project: each gallery video and its plays
 app.get('/make-server-e07959ec/admin/gallery-stats', requireAuth, async (c) => {
   try {
@@ -9685,10 +9744,22 @@ app.get('/make-server-e07959ec/admin/gallery-stats', requireAuth, async (c) => {
     const statsArr = withVideos.length
       ? await Promise.all(withVideos.map((p: any) => kv.get(`gallery_video_stats:${p.id}`)))
       : [];
+    // Names for every gallery video (best-effort; never fails the request).
+    const allUrls = Array.from(new Set(withVideos.flatMap((p: any) => (p.screenshots || []).filter(isVideo))));
+    const bunnyTitles = allUrls.some((u: string) => /mediadelivery\.net|b-cdn\.net/i.test(u))
+      ? await bunnyTitleMap().catch(() => ({} as Record<string, string>))
+      : {};
+    const labels: Record<string, VideoLabel> = {};
+    await Promise.all(allUrls.map(async (u: string) => {
+      labels[u] = await labelGalleryVideo(u, bunnyTitles).catch(() => ({ title: null, videoId: null, provider: 'unknown' }));
+    }));
     const result = withVideos.map((p: any, i: number) => {
       const stats = statsArr[i] ?? {};
       const videos = (p.screenshots || []).filter(isVideo).map((url: string, idx: number) => ({
         url,
+        title: labels[url]?.title ?? null,
+        videoId: labels[url]?.videoId ?? null,
+        provider: labels[url]?.provider ?? 'unknown',
         position: (p.screenshots || []).indexOf(url) + 1,
         plays: stats[url]?.plays ?? 0,
         engagedPlays: stats[url]?.engagedPlays ?? 0,

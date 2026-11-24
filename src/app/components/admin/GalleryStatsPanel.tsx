@@ -10,6 +10,7 @@ const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-e079
 
 interface GalleryVideo {
   url: string; position: number; plays: number; lastPlayed: string | null;
+  title?: string | null; videoId?: string | null; provider?: string;
   engagedPlays?: number; totalWatchSeconds?: number; avgWatchSeconds?: number;
 }
 interface ProjectGallery {
@@ -141,6 +142,19 @@ export function GalleryStatsPanel() {
                         <span className="text-white/25 text-[11px] font-mono w-6 text-right flex-shrink-0">#{v.position}</span>
                         <Thumb url={v.url} />
                         <div className="flex-1 min-w-[120px]">
+                          <p className="text-white/85 text-sm truncate" title={v.title || undefined}>
+                            {v.title || `Gallery video #${v.position}`}
+                          </p>
+                          {v.videoId && (
+                            <button
+                              type="button"
+                              onClick={() => navigator.clipboard?.writeText(v.videoId!)}
+                              className="text-white/30 hover:text-white/60 text-[10px] font-mono truncate max-w-full block mb-1"
+                              title={`${v.provider === 'bunny' ? 'Bunny' : v.provider === 'vimeo' ? 'Vimeo' : v.provider === 'youtube' ? 'YouTube' : 'Video'} ID: ${v.videoId} (click to copy)`}
+                            >
+                              ID {v.videoId.length > 13 ? `${v.videoId.slice(0, 8)}…${v.videoId.slice(-4)}` : v.videoId}
+                            </button>
+                          )}
                           <div className="h-1.5 rounded-full bg-white/8 overflow-hidden">
                             <div className="h-full rounded-full bg-purple-500/70" style={{ width: `${Math.round((v.plays / top) * 100)}%` }} />
                           </div>
