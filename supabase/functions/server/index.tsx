@@ -3346,14 +3346,16 @@ app.delete('/make-server-e07959ec/admin/video-stats', requireAuth, async (c) => 
     }
 
     // Delete all project video stats + showreel stat
-    const [projectRes, showreelRes] = await Promise.all([
+    const [projectRes, showreelRes, galleryRes] = await Promise.all([
       supabase.from('kv_store_e07959ec').delete().like('key', 'project_video_stats:%').select('key'),
       supabase.from('kv_store_e07959ec').delete().eq('key', 'showreel_video_stats').select('key'),
+      supabase.from('kv_store_e07959ec').delete().like('key', 'gallery_video_stats:%').select('key'),
     ]);
     if (projectRes.error)  throw projectRes.error;
     if (showreelRes.error) throw showreelRes.error;
+    if (galleryRes.error)  throw galleryRes.error;
 
-    const deleted = (projectRes.data?.length ?? 0) + (showreelRes.data?.length ?? 0);
+    const deleted = (projectRes.data?.length ?? 0) + (showreelRes.data?.length ?? 0) + (galleryRes.data?.length ?? 0);
     console.log(`[video-stats reset] ✅ Deleted ${deleted} video analytics entries`);
     return c.json({ success: true, deleted });
   } catch (err) {
@@ -8599,6 +8601,7 @@ app.get('/make-server-e07959ec/admin/reset/stats', requireAuth, async (c) => {
       usersData,
       videoProjectRes,
       videoShowreelRes,
+      videoGalleryRes,
     ] = await Promise.all([
       supabase.from('kv_store_e07959ec').select('key', { count: 'exact', head: true }).like('key', 'session:%'),
       supabase.from('kv_store_e07959ec').select('key', { count: 'exact', head: true }).like('key', 'msg:%'),
@@ -8607,9 +8610,10 @@ app.get('/make-server-e07959ec/admin/reset/stats', requireAuth, async (c) => {
       listAllAuthUsers().then(users => ({ data: { users } })).catch(() => ({ data: { users: [] as any[] } })),
       supabase.from('kv_store_e07959ec').select('key', { count: 'exact', head: true }).like('key', 'project_video_stats:%'),
       supabase.from('kv_store_e07959ec').select('key', { count: 'exact', head: true }).eq('key', 'showreel_video_stats'),
+      supabase.from('kv_store_e07959ec').select('key', { count: 'exact', head: true }).like('key', 'gallery_video_stats:%'),
     ]);
     const userCount  = Math.max(0, (usersData.data?.users?.length ?? 1) - 1);
-    const videoCount = (videoProjectRes.count ?? 0) + (videoShowreelRes.count ?? 0);
+    const videoCount = (videoProjectRes.count ?? 0) + (videoShowreelRes.count ?? 0) + (videoGalleryRes.count ?? 0);
     return c.json({
       success: true,
       data: {
@@ -8766,13 +8770,15 @@ app.post('/make-server-e07959ec/admin/reset', requireAuth, async (c) => {
     // ── Video Analytics ───────────────────────────────────────────────────────
     if (categories?.videos) {
       try {
-        const [projectVidsRes, showreelRes] = await Promise.all([
+        const [projectVidsRes, showreelRes, galleryRes] = await Promise.all([
           supabase.from('kv_store_e07959ec').delete().like('key', 'project_video_stats:%').select('key'),
           supabase.from('kv_store_e07959ec').delete().eq('key', 'showreel_video_stats').select('key'),
+          supabase.from('kv_store_e07959ec').delete().like('key', 'gallery_video_stats:%').select('key'),
         ]);
         if (projectVidsRes.error) throw projectVidsRes.error;
         if (showreelRes.error)    throw showreelRes.error;
-        const total = (projectVidsRes.data?.length ?? 0) + (showreelRes.data?.length ?? 0);
+        if (galleryRes.error)     throw galleryRes.error;
+        const total = (projectVidsRes.data?.length ?? 0) + (showreelRes.data?.length ?? 0) + (galleryRes.data?.length ?? 0);
         report.videos = { deleted: total };
         console.log(`[admin/reset] ✅ Videos: deleted ${total} analytics entries`);
       } catch (err) {
