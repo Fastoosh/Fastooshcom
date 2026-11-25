@@ -162,6 +162,19 @@ const SITE_PAGES = [
 
 const BASE_URL = 'https://fastoosh.com';
 
+// A destination outside the site (Gumroad, YouTube…) is stored as a full URL in `page`.
+const isAbsoluteUrl = (p: string) => /^https?:\/\//i.test(p);
+function parseCustomUrl(raw: string): URL | null {
+  const s = raw.trim();
+  if (!s) return null;
+  try {
+    const u = new URL(/^https?:\/\//i.test(s) ? s : `https://${s}`);
+    return u.hostname.includes('.') ? u : null;
+  } catch { return null; }
+}
+const hostOf = (u: string) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } };
+const isOffSite = (p: string) => isAbsoluteUrl(p) && !/(^|\.)fastoosh\.com$/i.test(hostOf(p));
+
 // ── Clipboard helper (fallback for sandboxed iframes) ──────────────────────────
 function copyToClipboard(text: string) {
   try {
@@ -225,7 +238,9 @@ function normUtm(s: string) { return s.trim().toLowerCase().replace(/\s+/g, '_')
 
 function UTMBuilder() {
   const [page,          setPage]          = useState('/');
-  const [source,        setSource]        = useState('');
+  const [customMode,    setCustomMode]    = useState(false);
+  const [customUrl,     setCustomUrl]     = useState('');
+  const [source,       setSource]        = useState('');
   const [medium,        setMedium]        = useState('');
   const [campaign,      setCampaign]      = useState('');
   const [content,       setContent]       = useState('');
@@ -334,7 +349,8 @@ function UTMBuilder() {
 
   // Auto-generate label from current form state
   function autoLabel() {
-    const pageName = page === '/' ? 'Home'
+    const pageName = customMode ? hostOf(destPage)
+      : page === '/' ? 'Home'
       : SITE_PAGES.find(p => p.path === page)?.label
       ?? page.replace(/^\/tools\//, '').replace(/-/g, ' ');
     const parts = [activePlat ?? source, '→', pageName];
@@ -364,7 +380,7 @@ function UTMBuilder() {
       const res = await fetch(`${API_BASE}/utm-saved`, {
         method: 'POST',
         headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ label: saveLabel || autoLabel(), platform: activePlat, page, source, medium, campaign, content, url: finalUrl, tags: finalTags }),
+        body: JSON.stringify({ label: saveLabel || autoLabel(), platform: activePlat, page: destPage, source, medium, campaign, content, url: finalUrl, tags: finalTags }),
       });
       const j = await res.json();
       if (j.success) {
@@ -398,8 +414,14 @@ function UTMBuilder() {
     }
   }
 
+  // Put a saved link's destination back into the picker (site page or custom URL).
+  function loadDestination(p: string) {
+    if (isAbsoluteUrl(p)) { setCustomMode(true); setCustomUrl(p); }
+    else { setCustomMode(false); setPage(p); }
+  }
+
   function handleLoad(link: SavedUTM) {
-    setPage(link.page);
+    loadDestination(link.page);
     setSource(link.source);
     setMedium(link.medium);
     setCampaign(link.campaign);
@@ -424,7 +446,8 @@ function UTMBuilder() {
 
   // Lookup stats for a saved link (exact → source+medium → source)
   function getStats(link: SavedUTM) {
-    if (!utmStats) return null;
+    // Site visit stats don't apply to links that land on another site.
+    if (!utmStats || isOffSite(link.page || '')) return null;
     const src = normUtm(link.source);
     const med = normUtm(link.medium);
     const cmp = normUtm(link.campaign);
@@ -436,7 +459,7 @@ function UTMBuilder() {
 
   // Clone: load into form + open save input with "Copy of" label
   function handleClone(link: SavedUTM) {
-    setPage(link.page);
+    loadDestination(link.page);
     setSource(link.source);
     setMedium(link.medium);
     setCampaign(link.campaign);
@@ -512,8 +535,20 @@ function UTMBuilder() {
   if (campaign.trim()) params.set('utm_campaign', campaign.trim().toLowerCase().replace(/\s+/g, '_'));
   if (content.trim())  params.set('utm_content',  content.trim().toLowerCase().replace(/\s+/g, '_'));
   const query     = params.toString();
-  const finalUrl  = `${BASE_URL}${page}${query ? '?' + query : ''}`;
-  const isValid   = source.trim().length > 0;
+  // Custom destination: keep its own path/query/#hash, replace any utm_* already on it.
+  const customParsed = customMode ? parseCustomUrl(customUrl) : null;
+  if (customParsed) [...customParsed.searchParams.keys()].filter(k => /^utm_/i.test(k)).forEach(k => customParsed.searchParams.delete(k));
+  const destPage  = customMode ? (customParsed ? customParsed.toString() : '') : page;
+  let finalUrl    = `${BASE_URL}${page}${query ? '?' + query : ''}`;
+  if (customParsed) {
+    const u = new URL(customParsed.toString());
+    params.forEach((v, k) => u.searchParams.set(k, v));
+    finalUrl = u.toString();
+  }
+  const urlHead   = finalUrl.split(/[?#]/)[0];
+  const urlQuery  = (finalUrl.split('#')[0].split('?')[1]) || '';
+  const urlHash   = finalUrl.includes('#') ? finalUrl.slice(finalUrl.indexOf('#')) : '';
+  const isValid   = source.trim().length > 0 && (!customMode || !!customParsed);
 
   function selectPlatform(plat: typeof UTM_PLATFORMS[number]) {
     setActivePlat(plat.name);
@@ -599,9 +634,9 @@ function UTMBuilder() {
                 {SITE_PAGES.map(p => (
                   <button
                     key={p.path}
-                    onClick={() => { setPage(p.path); setShowTools(false); if (p.path !== '/tools') setToolSearch(''); }}
+                    onClick={() => { setCustomMode(false); setPage(p.path); setShowTools(false); if (p.path !== '/tools') setToolSearch(''); }}
                     className={`px-2 py-1.5 rounded-lg text-xs font-medium border transition-all ${
-                      page === p.path
+                      !customMode && page === p.path
                         ? 'bg-purple-600 border-purple-500 text-white'
                         : 'bg-white/4 border-white/10 text-white/50 hover:text-white/80 hover:bg-white/8'
                     }`}
@@ -609,10 +644,38 @@ function UTMBuilder() {
                     {p.label}
                   </button>
                 ))}
+                <button
+                  onClick={() => { setCustomMode(true); setShowTools(false); }}
+                  className={`px-2 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                    customMode
+                      ? 'bg-purple-600 border-purple-500 text-white'
+                      : 'bg-white/4 border-white/10 text-white/50 hover:text-white/80 hover:bg-white/8'
+                  }`}
+                >
+                  Other URL
+                </button>
               </div>
 
+              {/* Custom destination (Gumroad, YouTube, another site…) */}
+              {customMode && (
+                <div className="space-y-1">
+                  <input
+                    type="text"
+                    autoFocus
+                    value={customUrl}
+                    onChange={e => setCustomUrl(e.target.value)}
+                    placeholder="https://fastoosh.gumroad.com/l/your-product"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white font-mono
+                      placeholder:text-white/25 focus:outline-none focus:border-purple-500/50 focus:bg-purple-500/5 transition-all"
+                  />
+                  {customUrl.trim() && !customParsed
+                    ? <p className="text-red-300 text-[11px]">That doesn't look like a web address.</p>
+                    : <p className="text-white/30 text-[11px]">Any page on any site. Visits there won't show in your site stats — the short link's click count will.</p>}
+                </div>
+              )}
+
               {/* Tool detail page picker — only when Tools page is selected */}
-              {page === '/tools' && <div className="rounded-xl border border-white/10 overflow-hidden">
+              {!customMode && page === '/tools' && <div className="rounded-xl border border-white/10 overflow-hidden">
                 <button
                   onClick={() => setShowTools(v => !v)}
                   className={`w-full flex items-center justify-between px-3 py-2.5 text-xs transition-all ${
@@ -768,24 +831,27 @@ function UTMBuilder() {
             }`}>
               <p className="text-white/30 text-[10px] uppercase tracking-widest mb-2 font-semibold">Generated URL</p>
               <p className="text-sm font-mono break-all leading-relaxed">
-                <span className="text-white/40">{BASE_URL}</span>
-                <span className="text-white/70">{page}</span>
-                {query && (
+                <span className="text-white/70">{urlHead}</span>
+                {urlQuery && (
                   <>
                     <span className="text-white/30">?</span>
-                    {query.split('&').map((pair, i, arr) => {
-                      const [k, v] = pair.split('=');
+                    {urlQuery.split('&').map((pair, i, arr) => {
+                      const [k, v = ''] = pair.split('=');
+                      let shown = v;
+                      try { shown = decodeURIComponent(v.replace(/\+/g, ' ')); } catch { /* keep raw */ }
+                      const isUtm = /^utm_/.test(k);
                       return (
                         <span key={i}>
-                          <span className="text-purple-300">{k}</span>
+                          <span className={isUtm ? 'text-purple-300' : 'text-white/50'}>{k}</span>
                           <span className="text-white/30">=</span>
-                          <span className="text-emerald-300">{decodeURIComponent(v)}</span>
+                          <span className={isUtm ? 'text-emerald-300' : 'text-white/50'}>{shown}</span>
                           {i < arr.length - 1 && <span className="text-white/30">&</span>}
                         </span>
                       );
                     })}
                   </>
                 )}
+                {urlHash && <span className="text-white/40">{urlHash}</span>}
               </p>
             </div>
 
@@ -1357,6 +1423,7 @@ function getOverviewStats(link: SavedUTM, stats: UtmStats | null) {
 function pageLabel(path: string): string {
   const found = SITE_PAGES.find(p => p.path === path);
   if (found) return found.label;
+  if (isAbsoluteUrl(path)) return hostOf(path);
   if (path.startsWith('/tools/')) return path.replace('/tools/', '').replace(/-/g, ' ');
   return path;
 }
