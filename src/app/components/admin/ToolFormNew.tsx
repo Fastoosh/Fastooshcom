@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useDirtyTracking } from '../../hooks/useDirtyTracking';
+import { compressImage, formatBytes } from '../../utils/compressImage';
 import { createPortal } from 'react-dom';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -205,6 +206,7 @@ export function ToolFormNew({
   const [imageInputMode, setImageInputMode] = useState<'url' | 'upload'>('url');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [uploadSuccess, setUploadSuccess] = useState(false);
+  const [uploadSavings, setUploadSavings] = useState('');
   const [faqText, setFaqText] = useState('');
   const [howItWorksText, setHowItWorksText] = useState('');
   // FAQ / How-it-works text areas hold their own state, so track them too.
@@ -517,8 +519,10 @@ export function ToolFormNew({
     
     try {
       const token = localStorage.getItem('admin_token');
+      const packed = await compressImage(file);
+      setUploadSavings(packed.compressed ? `${formatBytes(packed.before)} → ${formatBytes(packed.after)}` : '');
       const uploadFormData = new FormData();
-      uploadFormData.append('file', file);
+      uploadFormData.append('file', packed.file);
 
       const response = await fetch(`${API_BASE}/upload-image`, {
         method: 'POST',
@@ -1220,7 +1224,7 @@ export function ToolFormNew({
                 className="hidden"
               />
               {uploadSuccess && !errors.imageUpload && (
-                <p className="text-xs text-green-400 mt-2">✓ Image uploaded successfully</p>
+                <p className="text-xs text-green-400 mt-2">✓ Image uploaded{uploadSavings ? ` — compressed ${uploadSavings}` : ''}</p>
               )}
               {errors.imageUpload && (
                 <p className="text-red-400 text-sm mt-1">{errors.imageUpload}</p>
@@ -2754,7 +2758,7 @@ function FeaturesEditor({
     try {
       const token = localStorage.getItem('admin_token');
       const fd = new FormData();
-      fd.append('file', file);
+      fd.append('file', (await compressImage(file)).file);
       const res = await fetch(`${API_BASE}/upload-image`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${publicAnonKey}`, 'X-Admin-Token': token || '' },

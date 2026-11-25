@@ -2277,7 +2277,7 @@ app.post('/make-server-e07959ec/upload-image', requireAuth, async (c) => {
       .from(BUCKET_NAME)
       .upload(fileName, uint8Array, {
         contentType: file.type,
-        cacheControl: '3600',
+        cacheControl: '31536000', // unique file names, never overwritten: cache for a year
         upsert: false,
       });
     
