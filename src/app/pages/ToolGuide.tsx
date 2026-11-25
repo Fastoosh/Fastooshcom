@@ -791,6 +791,24 @@ export function ToolGuide() {
                 </motion.div>
 
               </div>
+
+              {/* Closing call to action — for readers who finished the guide */}
+              <div className="mt-10 rounded-2xl border border-purple-500/20 bg-black/40 backdrop-blur-xl p-6 sm:p-8 text-center">
+                <h2 className="text-2xl text-white mb-2">Need it to fit your exact workflow?</h2>
+                <p className="text-white/55 mb-6 max-w-xl mx-auto">
+                  We adapt {tool?.name ?? 'our tools'} and build custom scripts for studios and teams. Tell us what you need.
+                </p>
+                <div className="flex flex-wrap justify-center gap-3">
+                  <Link to="/work-with-us" className="inline-flex items-center px-6 py-3 rounded-full bg-purple-600 hover:bg-purple-500 text-white font-medium">
+                    Work with us
+                  </Link>
+                  {tool?.slug && (
+                    <Link to={`/tools/${tool.slug}`} className="inline-flex items-center px-6 py-3 rounded-full border border-white/15 bg-white/5 text-white/85 hover:bg-white/10 hover:text-white">
+                      Back to {tool.name}
+                    </Link>
+                  )}
+                </div>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>

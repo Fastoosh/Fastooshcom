@@ -143,6 +143,22 @@ export function UseCase() {
             </div>
           </section>
         )}
+
+        {/* Closing call to action — for readers who finished the guide */}
+        <GlassCard className="p-6 sm:p-8 mt-10 text-center border-purple-500/20">
+          <h2 className="text-2xl text-white mb-2">Want this set up for your exact workflow?</h2>
+          <p className="text-white/55 mb-6 max-w-xl mx-auto">
+            {tool
+              ? `Start with ${tool.name}, or tell us about your pipeline and we'll build or adapt a tool for it.`
+              : "Tell us about your pipeline and we'll build or adapt a tool for it."}
+          </p>
+          <div className="flex flex-wrap justify-center gap-3">
+            {tool && <NeonButton href={`/tools/${tool.slug}`}>Get {tool.name}</NeonButton>}
+            <Link to="/work-with-us" className="inline-flex items-center gap-2 px-6 py-3 rounded-full border border-white/15 bg-white/5 text-white/85 hover:bg-white/10 hover:text-white">
+              Work with us <ArrowRight className="w-4 h-4 rtl:rotate-180" />
+            </Link>
+          </div>
+        </GlassCard>
       </article>
     </div>
   );

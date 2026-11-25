@@ -11,6 +11,7 @@ import {
   ChevronLeft, Loader2, Shield, Globe, Zap, MessageSquare,
 } from "lucide-react";
 import { projectId, publicAnonKey } from "/utils/supabase/info";
+import { getAttribution } from "../utils/attribution";
 import { baseLang, hasValue, readCachedOverrides, writeCachedOverrides, type WwuOverrides } from "../utils/workWithUsContent";
 
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-e07959ec`;
@@ -89,7 +90,7 @@ export function WorkWithUs() {
       const res    = await fetch(`${API_BASE}/contact`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${publicAnonKey}` },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({ ...formData, attribution: getAttribution() }),
       });
       const result = await res.json();
       if (result.success) {

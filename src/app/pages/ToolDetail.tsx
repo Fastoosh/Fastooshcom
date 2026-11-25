@@ -10,6 +10,7 @@ import { SeoHead } from '../components/shared/SeoHead';
 import { ToolAudience } from '../components/shared/ToolAudience';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import { buildGumroadCheckoutUrl, openGumroadCheckout } from '../utils/gumroad';
+import { getAttribution } from '../utils/attribution';
 import {
   ArrowLeft, Check, Download, Play, ChevronDown, ChevronUp,
   Monitor, Zap, Star, ExternalLink, Sparkles, ShoppingCart, Quote,
@@ -1893,6 +1894,7 @@ export function ToolDetail() {
             toolVersionId: version.id,
             toolName:      tool?.name ?? '',
             toolSlug:      tool?.slug ?? '',
+            attribution:   getAttribution(),
           }),
         });
       } catch (err) {

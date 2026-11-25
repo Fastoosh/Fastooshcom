@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { GlassCard } from './GlassCard';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
+import { getAttribution } from '../../utils/attribution';
 
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-e07959ec`;
 
@@ -87,7 +88,7 @@ export function FreeDownloadModal({
       const res  = await fetch(`${API_BASE}/free-download`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${publicAnonKey}` },
-        body:    JSON.stringify({ email: email.trim().toLowerCase(), toolVersionId, toolName, toolSlug }),
+        body:    JSON.stringify({ email: email.trim().toLowerCase(), toolVersionId, toolName, toolSlug, attribution: getAttribution() }),
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || 'Failed to send code');
@@ -109,7 +110,7 @@ export function FreeDownloadModal({
       const res  = await fetch(`${API_BASE}/free-download`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${publicAnonKey}` },
-        body:    JSON.stringify({ email: email.trim().toLowerCase(), toolVersionId, toolName, toolSlug }),
+        body:    JSON.stringify({ email: email.trim().toLowerCase(), toolVersionId, toolName, toolSlug, attribution: getAttribution() }),
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || 'Failed to resend code');

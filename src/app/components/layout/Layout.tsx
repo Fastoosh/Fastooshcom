@@ -9,6 +9,7 @@ import { ScrollRestoration } from "../shared/ScrollRestoration";
 import { ScrollingGradientBackground } from "../shared/ScrollingGradientBackground";
 import { projectId, publicAnonKey } from "/utils/supabase/info";
 import { useTracker } from "../../hooks/useTracker";
+import { recordVisit } from "../../utils/attribution";
 
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-e07959ec`;
 
@@ -159,6 +160,9 @@ function RouteTracker() {
 
 export function Layout() {
   useDynamicFavicon();
+  // Where the visitor came from + pages viewed, sent with lead forms.
+  const { pathname } = useLocation();
+  useEffect(() => { recordVisit(pathname); }, [pathname]);
   return (
     <>
       <ScrollingGradientBackground />

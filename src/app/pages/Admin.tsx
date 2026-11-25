@@ -157,6 +157,7 @@ interface Settings {
   geminiApiKey?: string;
   geminiModel?: string;
   geminiPaidTier?: boolean;
+  downloadFollowUpEmail?: boolean;
 }
 
 
@@ -3894,6 +3895,21 @@ function SettingsForm({
             onChange={(e) => setFormData({ ...formData, contactEmail: e.target.value })}
             className="bg-black/50 border-white/20 text-white"
           />
+        </div>
+
+        {/* Email after a free download */}
+        <div className="mt-6 pt-6 border-t border-white/10">
+          <h4 className="text-lg font-semibold text-white mb-1">Email after a free download</h4>
+          <p className="text-sm text-gray-400 mb-3">
+            Sends one short email right after someone downloads a free tool: the download link again, the tool page,
+            and a link to Work With Us. Replies go to your contact email. Sent once per person per tool.
+          </p>
+          <label className="inline-flex items-center gap-3 cursor-pointer">
+            <input type="checkbox" className="w-4 h-4 accent-purple-600"
+              checked={formData.downloadFollowUpEmail !== false}
+              onChange={(e) => setFormData({ ...formData, downloadFollowUpEmail: e.target.checked })} />
+            <span className="text-sm text-white/80">{formData.downloadFollowUpEmail !== false ? 'On' : 'Off'}</span>
+          </label>
         </div>
 
         {/* Password Reset Reply-To Section */}

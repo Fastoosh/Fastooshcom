@@ -4417,6 +4417,79 @@ app.post("/make-server-e07959ec/user/licenses/deactivate", requireUserAuth, asyn
 
 // Shared helper — fetches the admin notification email from site_settings.
 // Falls back to undefined if not configured; callers must handle that case.
+// ── Lead source (sent by the site's forms, see src/app/utils/attribution.ts) ──
+function cleanAttribution(a: any) {
+  if (!a || typeof a !== 'object') return null;
+  const str = (v: any, n = 300) => (typeof v === 'string' ? v.slice(0, n) : undefined);
+  const out: Record<string, any> = {
+    referrer: str(a.referrer), landingPage: str(a.landingPage, 200),
+    utmSource: str(a.utmSource, 100), utmMedium: str(a.utmMedium, 100), utmCampaign: str(a.utmCampaign, 100),
+    firstSeen: str(a.firstSeen, 40), submittedFrom: str(a.submittedFrom, 200),
+    pages: Array.isArray(a.pages) ? a.pages.filter((x: any) => typeof x === 'string').slice(-15).map((x: string) => x.slice(0, 200)) : undefined,
+  };
+  for (const k of Object.keys(out)) if (out[k] === undefined || out[k] === '') delete out[k];
+  return Object.keys(out).length ? out : null;
+}
+const escHtml = (v: any) => String(v ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' } as any)[ch]);
+function attributionLines(a: any): [string, string][] {
+  if (!a) return [];
+  const lines: [string, string][] = [];
+  if (a.utmSource) lines.push(['Campaign', [a.utmSource, a.utmCampaign, a.utmMedium].filter(Boolean).join(' · ')]);
+  lines.push(['Came from', a.referrer || 'Direct / unknown']);
+  if (a.landingPage) lines.push(['First page', a.landingPage]);
+  if (Array.isArray(a.pages) && a.pages.length) lines.push(['Pages this visit', a.pages.join(' → ')]);
+  return lines;
+}
+
+// One email right after a free download (Admin → Settings → "Email after a
+// free download"). Sent once per person per tool.
+async function sendDownloadFollowUp(email: string, toolName: string, toolSlug: string, downloadUrl: string) {
+  try {
+    const resendKey = Deno.env.get('RESEND_API_KEY');
+    if (!resendKey || !email) return;
+    const { data: rows } = await supabase.from('site_settings').select('key, value').in('key', ['downloadFollowUpEmail', 'siteUrl', 'contactEmail']);
+    const cfg: Record<string, any> = Object.fromEntries((rows || []).map((r: any) => [r.key, r.value]));
+    if (cfg.downloadFollowUpEmail === false) return;
+    const safeEmail = encodeURIComponent(email.toLowerCase().trim()).replace(/%/g, '_');
+    const sentKey = `followup:sent:${toolSlug || toolName}:${safeEmail}`;
+    if (await kv.get(sentKey)) return;
+    await kv.set(sentKey, { sentAt: new Date().toISOString() });
+
+    const site = String(cfg.siteUrl || 'https://www.fastoosh.com').replace(/\/$/, '');
+    const name = escHtml(toolName || 'your Fastoosh tool');
+    const toolUrl = toolSlug ? `${site}/tools/${encodeURIComponent(toolSlug)}` : `${site}/tools`;
+    const year = new Date().getFullYear();
+    const btn = (href: string, label: string, primary = false) =>
+      `<a href="${escHtml(href)}" style="display:inline-block;margin:0 8px 10px 0;padding:11px 20px;border-radius:8px;font-size:14px;font-weight:600;text-decoration:none;${primary ? 'background:#111;color:#fff;' : 'background:#f2f2f2;color:#111;'}">${label}</a>`;
+    const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${name}</title></head>
+<body style="margin:0;padding:0;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#111;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:40px 16px;">
+<table role="presentation" width="100%" style="max-width:520px;" cellpadding="0" cellspacing="0">
+<tr><td style="padding-bottom:28px;"><span style="font-size:20px;font-weight:800;letter-spacing:-0.5px;">Fastoosh</span></td></tr>
+<tr><td style="border-top:2px solid #111;padding-top:26px;font-size:15px;line-height:1.65;color:#333;">
+<h1 style="margin:0 0 14px;font-size:22px;color:#111;">Thanks for downloading ${name}</h1>
+<p style="margin:0 0 18px;">Here is your download again, in case you need it later, plus the tool page with the guide and what's in the paid versions.</p>
+<p style="margin:0 0 18px;">${downloadUrl ? btn(downloadUrl, 'Download again', true) : ''}${btn(toolUrl, 'Guide &amp; tool page')}</p>
+<p style="margin:0 0 10px;"><strong style="color:#111;">Stuck, or need it to fit your workflow?</strong> Just reply to this email. We also build custom After Effects tools and motion design for studios and brands.</p>
+<p style="margin:0 0 4px;"><a href="${site}/work-with-us" style="color:#6d28d9;text-decoration:none;font-weight:600;">Work with us →</a></p>
+</td></tr>
+<tr><td style="padding-top:30px;"><p style="margin:0;font-size:11px;color:#aaa;">You get this once because you downloaded ${name} on fastoosh.com. © ${year} Fastoosh</p></td></tr>
+</table></td></tr></table></body></html>`;
+    const text = `Thanks for downloading ${toolName || 'your Fastoosh tool'}.\n\n${downloadUrl ? `Download again: ${downloadUrl}\n` : ''}Guide & tool page: ${toolUrl}\n\nStuck, or need it to fit your workflow? Just reply to this email.\nWork with us: ${site}/work-with-us\n\n— Fastoosh`;
+    const resend = new Resend(resendKey);
+    await resend.emails.send({
+      from: 'Fastoosh <noreply@contact.fastoosh.com>',
+      to: email.toLowerCase().trim(),
+      subject: `${toolName || 'Your download'}: download link & getting started`,
+      html, text,
+      ...(cfg.contactEmail ? { replyTo: String(cfg.contactEmail).trim() } : {}),
+    });
+    console.log(`[followup] ✉️ Sent to ${email} for ${toolName}`);
+  } catch (err) {
+    console.warn('[followup] Could not send:', err);
+  }
+}
+
 async function getAdminEmail(): Promise<string | undefined> {
   const { data: row, error } = await supabase
     .from('site_settings')
@@ -4439,6 +4512,7 @@ app.post("/make-server-e07959ec/contact", async (c) => {
   try {
     const body = await c.req.json();
     const { name, email, projectType, timeline, budget, message } = body;
+    const attribution = cleanAttribution(body.attribution);
 
     if (!name || !email || !message) {
       return c.json({ 
@@ -4462,6 +4536,7 @@ app.post("/make-server-e07959ec/contact", async (c) => {
         timeline: timeline || '',
         budget: budget || '',
         message: message || '',
+        attribution,
         read: false,
         createdAt: new Date().toISOString(),
       };
@@ -4508,6 +4583,7 @@ app.post("/make-server-e07959ec/contact", async (c) => {
             ${projectType ? `<tr><td style="padding:10px 14px;background:#1a1a1a;color:#a3a3a3;font-size:13px;">Project Type</td><td style="padding:10px 14px;background:#1a1a1a;color:#fff;font-size:13px;">${projectType}</td></tr>` : ''}
             ${timeline ? `<tr><td style="padding:10px 14px;background:#141414;color:#a3a3a3;font-size:13px;">Timeline</td><td style="padding:10px 14px;background:#141414;color:#fff;font-size:13px;">${timeline}</td></tr>` : ''}
             ${budget ? `<tr><td style="padding:10px 14px;background:#1a1a1a;color:#a3a3a3;font-size:13px;">Budget</td><td style="padding:10px 14px;background:#1a1a1a;color:#fff;font-size:13px;">${budget}</td></tr>` : ''}
+            ${attributionLines(attribution).map(([k, v]) => `<tr><td style="padding:10px 14px;background:#141414;color:#a3a3a3;font-size:13px;">${escHtml(k)}</td><td style="padding:10px 14px;background:#141414;color:#fff;font-size:13px;">${escHtml(v)}</td></tr>`).join('')}
           </table>
           <p style="margin:0 0 8px;font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;">Message</p>
           <div style="background:#111;border-left:3px solid #7c3aed;padding:16px 20px;border-radius:0 6px 6px 0;">
@@ -4864,7 +4940,8 @@ app.post("/make-server-e07959ec/tool-support", async (c) => {
 // verified and returns { downloadUrl } so JS starts the download immediately.
 app.post('/make-server-e07959ec/free-download', async (c) => {
   try {
-    const { email, toolVersionId, toolName, toolSlug } = await c.req.json();
+    const { email, toolVersionId, toolName, toolSlug, attribution: rawAttribution } = await c.req.json();
+    const attribution = cleanAttribution(rawAttribution);
 
     if (!email || !toolVersionId) {
       return c.json({ success: false, error: 'email and toolVersionId are required' }, 400);
@@ -4921,6 +4998,7 @@ app.post('/make-server-e07959ec/free-download', async (c) => {
           emailVerified: true,
           verifiedAt:    now,
           userId,
+          attribution,
         };
 
         const kvKey  = `lead:free:${toolVersionId}:${safeEmail}`;
@@ -4942,6 +5020,7 @@ app.post('/make-server-e07959ec/free-download', async (c) => {
         });
 
         console.log(`[free-download] ✅ Signed-in fast path: ${email} → ${toolName}`);
+        await sendDownloadFollowUp(email, toolName || '', toolSlug || '', version.download_url);
         return c.json({ success: true, downloadUrl: version.download_url, skipOtp: true });
       }
     }
@@ -4960,6 +5039,7 @@ app.post('/make-server-e07959ec/free-download', async (c) => {
       requestedAt:   now,
       downloadedAt:  now,
       emailVerified: false,
+      attribution,
     };
 
     await kv.set(kvKey,  leadData);
@@ -5106,6 +5186,7 @@ app.post('/make-server-e07959ec/free-download/verify', async (c) => {
     await kv.del(otpKey);
 
     console.log(`[dl-verify] ✅ Verified: ${email} → ${entry.toolName}`);
+    await sendDownloadFollowUp(entry.email || email, entry.toolName || '', existing?.toolSlug || '', entry.downloadUrl || '');
     return c.json({ success: true, downloadUrl: entry.downloadUrl, toolName: entry.toolName || '' });
   } catch (err) {
     console.log('[dl-verify] Error:', err);
@@ -5182,6 +5263,7 @@ app.get('/make-server-e07959ec/leads', requireAuth, async (c) => {
       createdAt:     l.downloadedAt  || '',
       emailVerified: l.emailVerified === true,
       verifiedAt:    l.verifiedAt    || null,
+      attribution:   l.attribution   || null,
     }));
 
     // ── 2. Supabase Auth registered users ───────────────────────────────────

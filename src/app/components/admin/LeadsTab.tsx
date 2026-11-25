@@ -12,6 +12,8 @@ import {
   Chrome, Navigation, ShoppingCart, ShieldCheck, Hourglass,
 } from 'lucide-react';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
+import { LeadJourney, LeadSourceBadge } from './LeadJourney';
+import type { Attribution } from '../../utils/attribution';
 
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-e07959ec`;
 
@@ -29,6 +31,7 @@ interface Lead {
   displayName?:   string;
   emailVerified?: boolean;
   verifiedAt?:    string | null;
+  attribution?:   Attribution | null;
 }
 
 interface LeadBehavior {
@@ -716,6 +719,7 @@ export function LeadsTab() {
                     </button>
                   </th>
                 ))}
+                <th className="text-left px-4 py-3 text-white/50 font-semibold text-xs tracking-wide uppercase">Came from</th>
                 {/* expand column */}
                 <th className="w-10 px-3 py-3" />
               </tr>
@@ -807,6 +811,9 @@ export function LeadsTab() {
                       </div>
                     </td>
 
+                    {/* Came from */}
+                    <td className="px-4 py-3"><LeadSourceBadge a={lead.attribution} /></td>
+
                     {/* Expand toggle */}
                     <td className="px-3 py-3 w-10">
                       <button
@@ -825,7 +832,8 @@ export function LeadsTab() {
                   {/* ── Behavior detail row ── */}
                   {isExpanded && (
                     <tr className="bg-white/[0.015]">
-                      <td colSpan={7} className="px-6 pb-4 pt-0 border-t border-white/5">
+                      <td colSpan={8} className="px-6 pb-4 pt-3 border-t border-white/5">
+                        {lead.source === 'free_download' && <LeadJourney a={lead.attribution} />}
                         <LeadBehaviorPanel
                           email={lead.email}
                           cache={behaviorCacheRef.current}

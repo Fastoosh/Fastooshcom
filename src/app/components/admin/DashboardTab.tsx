@@ -16,6 +16,8 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import { BehaviorTab } from './BehaviorTab';
+import { LeadJourney, LeadSourceBadge } from './LeadJourney';
+import type { Attribution } from '../../utils/attribution';
 import { GumroadRevenuePanel } from './GumroadRevenuePanel';
 import { VideoStatsTab } from './VideoStatsTab';
 
@@ -101,6 +103,7 @@ interface Message {
   budget?: string;
   toolName?: string;
   inquiryType?: string;
+  attribution?: Attribution | null;
   read: boolean;
   createdAt: string;
 }
@@ -369,6 +372,7 @@ function MessageCard({ msg, expanded, onExpand, onMarkRead, onDelete, marking }:
             }`}>
               {isContact ? 'Contact' : 'Support'}
             </span>
+            {isContact && msg.attribution && <LeadSourceBadge a={msg.attribution} />}
             {isContact && msg.projectType && (
               <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-white/5 text-white/40">
                 {msg.projectType}
@@ -423,6 +427,12 @@ function MessageCard({ msg, expanded, onExpand, onMarkRead, onDelete, marking }:
                   <Calendar className="w-3 h-3 inline mr-1" />{shortDate(msg.createdAt)}
                 </span>
               </div>
+
+              {isContact && (
+                <div className="p-3 rounded-xl bg-white/[0.02] border border-white/8">
+                  <LeadJourney a={msg.attribution} />
+                </div>
+              )}
 
               {/* Full message */}
               <div className="p-3 rounded-xl bg-white/4 border border-white/8">
