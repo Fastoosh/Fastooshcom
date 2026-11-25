@@ -402,7 +402,12 @@ async function main() {
       crumbs([['Home', '/'], ['Projects', '/projects'], [p.title, `/projects/${p.slug}`]]),
     ];
     pages.push({ route: `/projects/${p.slug}`, key: `project--${p.slug}`, page: {
-      title: `${p.title}${p.client && !p.title.toLowerCase().includes(String(p.client).toLowerCase()) ? ` for ${p.client}` : ''} | Fastoosh`,
+      // Short titles (e.g. "Careem") get the client and/or category for context.
+      title: (() => {
+        const forClient = p.client && !p.title.toLowerCase().includes(String(p.client).toLowerCase()) ? ` for ${p.client}` : '';
+        const base = `${p.title}${forClient}`;
+        return base.length < 30 && p.category ? `${base} — ${p.category} | Fastoosh` : `${base} | Fastoosh`;
+      })(),
       description: desc, keywords: (p.tags || []).join(', '), ogType: v ? 'video.other' : 'article',
       image, canonical: url(`/projects/${p.slug}`), video: v?.embed, jsonLd: ld,
       body: `<p><a href="/projects" style="color:#a1a1aa">← All projects</a></p>

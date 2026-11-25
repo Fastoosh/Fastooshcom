@@ -305,6 +305,7 @@ const AUDIT_LABELS: Array<[RegExp, string, string?]> = [
   [/^POST \/signup$/,                           'Created admin account'],
   [/^POST \/init$/,                             'Seeded sample data'],
   [/^POST \/setup\/brand$/,                     'Saved brand settings'],
+  [/^POST \/admin\/republish$/,                 'Republished site'],
 ];
 
 app.use('/make-server-e07959ec/*', async (c, next) => {
@@ -3901,7 +3902,7 @@ app.get("/make-server-e07959ec/settings", async (c) => {
     // Secret values (API keys) are only returned to a signed-in admin.
     // This endpoint is public and loaded by every page, so without this the
     // keys were readable by any visitor.
-    const SECRET_SETTING_KEYS = ['geminiApiKey'];
+    const SECRET_SETTING_KEYS = ['geminiApiKey', 'deployHookUrl'];
     let isAdmin = false;
     const adminToken = c.req.header('X-Admin-Token')?.trim();
     if (adminToken) {
@@ -9604,6 +9605,78 @@ app.get("/make-server-e07959ec/admin/proxy-image", requireAuth, async (c) => {
   }
 });
 
+
+// ========== REPUBLISH (rebuild the site on Vercel) ==========
+// Project pages, tools, guides and studio facts are baked into the site's
+// HTML at build time (scripts/prerender.mjs) so crawlers and AI assistants
+// can read them. Content edited in the admin reaches them after a rebuild.
+// The admin's "Republish" button calls a Vercel Deploy Hook — its URL is a
+// secret (anyone with it can trigger builds), so it lives in site_settings
+// (hidden from the public /settings response) and is only called from here.
+
+const LAST_REPUBLISH_KEY = 'site_last_republish';
+
+async function lastContentChangeAt(): Promise<string | null> {
+  // Newest admin change that affects public content (activity log entries
+  // are keyed audit:{ISO}, newest last). Republishing itself doesn't count.
+  const { data } = await supabase.from(KV_TABLE).select('value').like('key', 'audit:%')
+    .order('key', { ascending: false }).limit(50);
+  for (const row of data ?? []) {
+    const e: any = row.value;
+    if (!e?.ok || e.action === 'Republished site') continue;
+    if (/^\/(admin\/(licenses|reviews|broadcast|reset|video-stats|messages|tool-requests)|utm-saved|logout)/.test(e.path || '')) continue;
+    return e.at || null;
+  }
+  return null;
+}
+
+// GET /admin/republish — is a hook configured, when was the last republish,
+// and has content changed since?
+app.get('/make-server-e07959ec/admin/republish', requireAuth, async (c) => {
+  try {
+    const { data: row } = await supabase.from('site_settings').select('value').eq('key', 'deployHookUrl').maybeSingle();
+    const [last, lastChangeAt] = await Promise.all([kv.get(LAST_REPUBLISH_KEY), lastContentChangeAt()]);
+    const lastRepublishAt = last?.at ?? null;
+    return c.json({
+      success: true,
+      data: {
+        configured: typeof row?.value === 'string' && row.value.startsWith('https://'),
+        lastRepublishAt,
+        lastRepublishBy: last?.email ?? null,
+        lastChangeAt,
+        pendingChanges: !!lastChangeAt && (!lastRepublishAt || lastChangeAt > lastRepublishAt),
+      },
+    });
+  } catch (err) {
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// POST /admin/republish — trigger the Vercel deploy hook.
+app.post('/make-server-e07959ec/admin/republish', requireAuth, async (c) => {
+  try {
+    const { data: row } = await supabase.from('site_settings').select('value').eq('key', 'deployHookUrl').maybeSingle();
+    const hook = typeof row?.value === 'string' ? row.value.trim() : '';
+    if (!hook) return c.json({ success: false, needsSetup: true, error: 'Add your Vercel deploy hook URL in Admin → Settings first.' }, 400);
+    let u: URL;
+    try { u = new URL(hook); } catch { return c.json({ success: false, error: 'The deploy hook URL is not a valid URL.' }, 400); }
+    // Only Vercel's deploy-hook endpoint — never an arbitrary URL.
+    if (u.protocol !== 'https:' || u.hostname !== 'api.vercel.com' || !u.pathname.startsWith('/v1/integrations/deploy/')) {
+      return c.json({ success: false, error: 'That is not a Vercel deploy hook URL (it should start with https://api.vercel.com/v1/integrations/deploy/).' }, 400);
+    }
+    const res = await fetch(u.toString(), { method: 'POST', signal: AbortSignal.timeout(15000) });
+    const text = await res.text();
+    if (!res.ok) return c.json({ success: false, error: `Vercel answered ${res.status}: ${text.slice(0, 200)}` }, 502);
+    const user = c.get('user') || {};
+    const at = new Date().toISOString();
+    await kv.set(LAST_REPUBLISH_KEY, { at, email: user.email || '' });
+    let job: any = null;
+    try { job = JSON.parse(text)?.job ?? null; } catch { /* not JSON */ }
+    return c.json({ success: true, data: { at, jobId: job?.id ?? null } });
+  } catch (err) {
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
 
 // GET /admin/activity?limit=100&before=<ISO>&q=<text> — newest first
 app.get('/make-server-e07959ec/admin/activity', requireAuth, async (c) => {

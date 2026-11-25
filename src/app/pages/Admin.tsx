@@ -13,6 +13,7 @@ import { AdminSelect } from '../components/admin/AdminSelect';
 import { Plus, Pencil, Trash2, Save, X, LogOut, Upload, Sparkles, Menu, Search } from 'lucide-react';
 import { ActivityTab } from '../components/admin/ActivityTab';
 import { UseCasesTab } from '../components/admin/UseCasesTab';
+import { RepublishButton } from '../components/admin/RepublishButton';
 import { StudioProfileEditor, type StudioProfile } from '../components/admin/StudioProfileEditor';
 import { AdminSearch, type AdminSearchResult } from '../components/admin/AdminSearch';
 import { AIImproveModal, type AIImproveContext } from '../components/admin/AIImproveModal';
@@ -135,6 +136,7 @@ interface Settings {
   siteUrl?: string;
   defaultOgImage?: string;
   studioProfile?: StudioProfile;
+  deployHookUrl?: string;
   calendlyUrl?: string;
   contactEmail?: string;
   emailReplyTo?: string;
@@ -1051,6 +1053,9 @@ export function Admin() {
               <span className="flex-1 text-left">Search</span>
               <kbd className="text-[10px] text-white/30 font-sans">Ctrl K</kbd>
             </button>
+
+            {/* Rebuild the public site so admin edits reach Google & AI */}
+            <RepublishButton onSetup={() => { setNavOpen(false); setActiveTab('settings'); }} />
 
             {ADMIN_NAV.map((group: any) => (
               <div key={group.label} className="pb-2">
@@ -3825,6 +3830,29 @@ function SettingsForm({
               )}
             </div>
           </div>
+        </div>
+
+        {/* Republish — Vercel deploy hook */}
+        <div className="mt-6 pt-6 border-t border-white/10">
+          <h4 className="text-lg font-semibold text-white mb-1">Republish (Vercel deploy hook)</h4>
+          <p className="text-sm text-gray-400 mb-3">
+            Lets the <strong className="text-white/80">Republish</strong> button in the sidebar rebuild the public site, so new projects,
+            tools, guides and SEO edits reach Google and AI assistants without a code change.
+          </p>
+          <ol className="text-xs text-gray-400 space-y-1 mb-3 list-decimal pl-4">
+            <li>Vercel → your project → <span className="text-gray-300">Settings → Git → Deploy Hooks</span>.</li>
+            <li>Name it <span className="text-gray-300">Admin republish</span>, branch <span className="text-gray-300">main</span>, click <span className="text-gray-300">Create Hook</span>.</li>
+            <li>Copy the URL and paste it here, then click Save.</li>
+          </ol>
+          <Input
+            type="password"
+            autoComplete="off"
+            placeholder="https://api.vercel.com/v1/integrations/deploy/…"
+            value={formData.deployHookUrl || ''}
+            onChange={(e) => setFormData({ ...formData, deployHookUrl: e.target.value.trim() })}
+            className="bg-black/50 border-white/20 text-white"
+          />
+          <p className="text-xs text-gray-500 mt-1">Kept private: never shown on the public site.</p>
         </div>
 
         {/* Studio facts — for Google and AI assistants */}

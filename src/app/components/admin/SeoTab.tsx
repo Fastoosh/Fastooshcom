@@ -11,6 +11,9 @@ import {
 } from 'lucide-react';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import { invalidateSeoCache, invalidateSiteSettingsCache } from '../shared/SeoHead';
+import { SeoHealthPanel } from './SeoHealthPanel';
+import { SeoPreviews } from './SeoPreviews';
+import { publishedUseCases } from '../../utils/useCases';
 
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-e07959ec`;
 
@@ -35,16 +38,21 @@ interface PageEntry {
   key: string;
   label: string;
   path: string;
-  type: 'static' | 'tool' | 'project';
+  type: 'static' | 'tool' | 'project' | 'usecase';
   context?: string;
 }
 
 const STATIC_PAGES: PageEntry[] = [
-  { key: 'home',         label: 'Home',         path: '/home',         type: 'static', context: 'Landing page showcasing Fastoosh premium motion design studio, services, and latest work.' },
+  { key: 'home',         label: 'Home',         path: '/',             type: 'static', context: 'Landing page showcasing Fastoosh premium motion design studio, services, and latest work.' },
   { key: 'projects',     label: 'Projects',     path: '/projects',     type: 'static', context: 'Portfolio page listing all motion design projects, films, branding, and VFX work.' },
   { key: 'tools',        label: 'Tools',        path: '/tools',        type: 'static', context: 'Marketplace listing all After Effects plugins, scripts, and automation tools.' },
   { key: 'about',        label: 'About',        path: '/about',        type: 'static', context: 'About page describing the Fastoosh team, story, values, and mission.' },
   { key: 'work-with-us', label: 'Work With Us', path: '/work-with-us', type: 'static', context: 'Contact/hire page for brands and studios looking to collaborate with Fastoosh.' },
+  { key: 'use-cases',    label: 'Automation guides', path: '/use-cases', type: 'static', context: 'Index of step-by-step guides for automating repetitive After Effects work with Fastoosh tools.' },
+  { key: 'terms',        label: 'Terms',        path: '/terms',        type: 'static', context: 'Terms of service.' },
+  { key: 'privacy',      label: 'Privacy',      path: '/privacy',      type: 'static', context: 'Privacy policy.' },
+  { key: 'refunds',      label: 'Refunds',      path: '/refunds',      type: 'static', context: 'Refund policy.' },
+  { key: 'disclaimer',   label: 'Disclaimer',   path: '/disclaimer',   type: 'static', context: 'Legal disclaimer.' },
 ];
 
 const EMPTY_SEO: SeoData = {
@@ -74,6 +82,7 @@ function isValidJson(str: string): boolean {
 export function SeoTab() {
   const [tools, setTools]       = useState<any[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
+  const [useCases, setUseCases] = useState<{ slug: string; title: string; summary: string }[]>([]);
   const [siteUrl, setSiteUrl]   = useState('');
   const [defaultOgImage, setDefaultOgImage] = useState('');
   const [selectedKey, setSelectedKey]       = useState<string | null>(null);
@@ -108,6 +117,7 @@ export function SeoTab() {
       const s = sd.data ?? sd ?? {};
       setSiteUrl(typeof s.siteUrl === 'string' ? s.siteUrl : '');
       setDefaultOgImage(typeof s.defaultOgImage === 'string' ? s.defaultOgImage : '');
+      setUseCases(publishedUseCases(s.useCases));
     }).catch(console.error);
   }, []);
 
@@ -144,6 +154,13 @@ export function SeoTab() {
       context: p.description
         ? `Motion design project: "${p.title}". Category: ${p.category}. ${p.description}`
         : `Motion design project: "${p.title}". Category: ${p.category}.`,
+    })),
+    ...useCases.map(u => ({
+      key: `use-case--${u.slug}`,
+      label: u.title,
+      path: `/use-cases/${u.slug}`,
+      type: 'usecase' as const,
+      context: `Step-by-step guide: "${u.title}". ${u.summary}`,
     })),
   ];
 
@@ -352,6 +369,11 @@ export function SeoTab() {
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
+    <div className="space-y-4">
+    <SeoHealthPanel
+      pages={allPages.map(p => ({ key: p.key, label: p.label, path: p.path }))}
+      onOpen={(key) => { setSelectedKey(key); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+    />
     <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 min-h-0">
 
       {/* ── Left: Page list (mobile: shown until a page is picked) ──────── */}
@@ -474,6 +496,26 @@ export function SeoTab() {
           </div>
         )}
 
+        {/* Use-case guide pages */}
+        {useCases.length > 0 && (
+          <div>
+            <p className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-2 px-1">Guide Pages</p>
+            <div className="space-y-1">
+              {useCases.map(u => {
+                const key = `use-case--${u.slug}`;
+                return (
+                  <PageListItem
+                    key={key}
+                    page={{ key, label: u.title, path: `/use-cases/${u.slug}`, type: 'usecase' }}
+                    selected={selectedKey === key}
+                    onClick={() => setSelectedKey(key)}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Project pages */}
         {projects.length > 0 && (
           <div>
@@ -543,6 +585,14 @@ export function SeoTab() {
                 </Button>
               </div>
             </div>
+
+            {/* Google / shared link / Pinterest previews */}
+            {selectedPage && (
+              <SeoPreviews
+                path={selectedPage.path}
+                draft={{ title: seo.title, description: seo.description, ogTitle: seo.ogTitle, ogDescription: seo.ogDescription, ogImage: seo.ogImage }}
+              />
+            )}
 
             {/* AI Panel */}
             <div className="rounded-xl border border-purple-500/20 bg-purple-500/5 p-4 space-y-3">
@@ -886,12 +936,13 @@ export function SeoTab() {
         )}
       </div>
     </div>
+    </div>
   );
 }
 
 // ─── Page list item ───────────────────────────────────────────────────────────
 function PageListItem({ page, selected, onClick }: { page: PageEntry; selected: boolean; onClick: () => void }) {
-  const typeIcon = page.type === 'tool' ? '🛠' : page.type === 'project' ? '🎬' : '📄';
+  const typeIcon = page.type === 'tool' ? '🛠' : page.type === 'project' ? '🎬' : page.type === 'usecase' ? '🧩' : '📄';
   return (
     <button
       onClick={onClick}
