@@ -1,5 +1,6 @@
 // Team member editor — split out of pages/Admin.tsx.
 import { useState } from 'react';
+import { compressImage } from '../../utils/compressImage';
 import React from 'react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -100,7 +101,7 @@ export function TeamMemberForm({
     try {
       const token = localStorage.getItem('admin_token');
       const uploadFormData = new FormData();
-      uploadFormData.append('file', file);
+      uploadFormData.append('file', (await compressImage(file, { maxSize: 800 })).file);
 
       const response = await fetch(`${API_BASE}/upload-image`, {
         method: 'POST',

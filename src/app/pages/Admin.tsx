@@ -6,6 +6,7 @@ import { GlassCard } from '../components/shared/GlassCard';
 import { Button } from '../components/ui/button';
 import { X, LogOut, Menu, Search } from 'lucide-react';
 import { ActivityTab } from '../components/admin/ActivityTab';
+import { MediaTab } from '../components/admin/MediaTab';
 import { UseCasesTab } from '../components/admin/UseCasesTab';
 import { PageTextTab } from '../components/admin/PageTextTab';
 import { RepublishButton } from '../components/admin/RepublishButton';
@@ -943,6 +944,10 @@ export function Admin() {
 
           <TabsContent value="usecases">
             <UseCasesTab />
+          </TabsContent>
+
+          <TabsContent value="media">
+            <MediaTab />
           </TabsContent>
 
           <TabsContent value="activity">

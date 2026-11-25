@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import React from 'react';
 import { useDirtyTracking } from '../../hooks/useDirtyTracking';
+import { compressImage } from '../../utils/compressImage';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
@@ -137,7 +138,7 @@ export function ProjectForm({
     try {
       const token = localStorage.getItem('admin_token');
       const uploadFormData = new FormData();
-      uploadFormData.append('file', file);
+      uploadFormData.append('file', (await compressImage(file)).file);
 
       const response = await fetch(`${API_BASE}/upload-image`, {
         method: 'POST',
@@ -181,7 +182,7 @@ export function ProjectForm({
         const isVideo = file.type.startsWith('video/');
         const endpoint = isVideo ? `${API_BASE}/upload-video` : `${API_BASE}/upload-image`;
         const uploadFormData = new FormData();
-        uploadFormData.append('file', file);
+        uploadFormData.append('file', isVideo ? file : (await compressImage(file)).file);
 
         const response = await fetch(endpoint, {
           method: 'POST',

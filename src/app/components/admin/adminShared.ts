@@ -140,6 +140,7 @@ export const ADMIN_NAV: { label: string; items: { value: string; label: string; 
     { value: 'traffic',   label: '🌐 Traffic & links' },
   ]},
   { label: 'Site', items: [
+    { value: 'media',        label: '🖼️ Media' },
     { value: 'seo',          label: 'SEO' },
     { value: 'style',        label: 'Style' },
     { value: 'translations', label: '🌍 Translations' },

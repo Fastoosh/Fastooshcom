@@ -13,8 +13,9 @@ export interface CompressResult {
 
 export async function compressImage(
   file: File,
-  { maxSize = 2400, quality = 0.85 }: { maxSize?: number; quality?: number } = {},
+  { maxSize = 2400, quality = 0.85, format = 'webp' }: { maxSize?: number; quality?: number; format?: 'webp' | 'jpeg' } = {},
 ): Promise<CompressResult> {
+  const mime = `image/${format}`;
   const keep = { file, before: file.size, after: file.size, compressed: false };
   // GIFs may be animated and SVGs are already tiny vectors — leave them alone.
   if (!/^image\/(png|jpe?g|webp|bmp)$/i.test(file.type)) return keep;
@@ -28,13 +29,15 @@ export async function compressImage(
     const ctx = canvas.getContext('2d');
     if (!ctx) return keep;
     ctx.imageSmoothingQuality = 'high';
+    // JPEG has no transparency: put see-through areas on white instead of black.
+    if (format === 'jpeg') { ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h); }
     ctx.drawImage(bitmap, 0, 0, w, h);
     bitmap.close?.();
-    const blob: Blob | null = await new Promise(res => canvas.toBlob(res, 'image/webp', quality));
+    const blob: Blob | null = await new Promise(res => canvas.toBlob(res, mime, quality));
     // Some browsers fall back to PNG when WebP encoding isn't supported.
-    if (!blob || blob.type !== 'image/webp' || blob.size >= file.size) return keep;
-    const name = file.name.replace(/\.[^.]+$/, '') + '.webp';
-    return { file: new File([blob], name, { type: 'image/webp' }), before: file.size, after: blob.size, compressed: true };
+    if (!blob || blob.type !== mime || blob.size >= file.size) return keep;
+    const name = file.name.replace(/\.[^.]+$/, '') + (format === 'jpeg' ? '.jpg' : '.webp');
+    return { file: new File([blob], name, { type: mime }), before: file.size, after: blob.size, compressed: true };
   } catch {
     return keep;
   }

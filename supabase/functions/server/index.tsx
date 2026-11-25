@@ -301,6 +301,8 @@ const AUDIT_LABELS: Array<[RegExp, string, string?]> = [
   [/^(PUT|DELETE) \/admin\/(messages|tool-requests)\/.+$/, 'Updated messages'],
   [/^DELETE \/admin\/tool-requests\/.+$/,       'Deleted tool request'],
   [/^(POST|PATCH|DELETE) \/utm-saved.*$/,       'Changed UTM links'],
+  [/^DELETE \/admin\/media$/,                   'Deleted an image'],
+  [/^POST \/admin\/media\/replace$/,            'Replaced an image'],
   [/^POST \/admin\/bunny\/.+$/,                 'Bunny video action'],
   [/^POST \/signup$/,                           'Created admin account'],
   [/^POST \/init$/,                             'Seeded sample data'],
@@ -2277,7 +2279,7 @@ app.post('/make-server-e07959ec/upload-image', requireAuth, async (c) => {
       .from(BUCKET_NAME)
       .upload(fileName, uint8Array, {
         contentType: file.type,
-        cacheControl: '31536000', // unique file names, never overwritten: cache for a year
+        cacheControl: '604800', // 7 days; the media gallery can replace a file in place
         upsert: false,
       });
     
@@ -2307,6 +2309,144 @@ app.post('/make-server-e07959ec/upload-image', requireAuth, async (c) => {
       success: false, 
       error: `Upload error: ${String(error)}` 
     }, 500);
+  }
+});
+
+
+// ── Media gallery (Admin → Media) ───────────────────────────────────────────
+// Lists the images bucket with sizes and where each file is used, so unused
+// files can be deleted and big ones replaced by a compressed copy.
+
+type StoredFile = { name: string; size: number; type: string; createdAt: string | null };
+
+/** Every file in a bucket (walks folders). */
+async function listBucketFiles(bucket: string, prefix = ''): Promise<StoredFile[]> {
+  const out: StoredFile[] = [];
+  for (let offset = 0; ; offset += 1000) {
+    const { data, error } = await supabase.storage.from(bucket).list(prefix, {
+      limit: 1000, offset, sortBy: { column: 'created_at', order: 'desc' },
+    });
+    if (error) throw error;
+    for (const it of data ?? []) {
+      const path = prefix ? `${prefix}/${it.name}` : it.name;
+      if (it.id === null) { out.push(...await listBucketFiles(bucket, path)); continue; }
+      if (it.name === '.emptyFolderPlaceholder') continue;
+      out.push({
+        name: path,
+        size: Number((it.metadata as any)?.size ?? 0),
+        type: String((it.metadata as any)?.mimetype ?? ''),
+        createdAt: it.created_at ?? null,
+      });
+    }
+    if ((data ?? []).length < 1000) break;
+  }
+  return out;
+}
+
+/** Every place content is stored, as searchable text with a readable label. */
+async function mediaUsageSources(): Promise<{ label: string; text: string }[]> {
+  const sources: { label: string; text: string }[] = [];
+  const add = (label: string, row: unknown) => sources.push({ label, text: JSON.stringify(row ?? '') });
+  const [projects, tools, versions, team, settings] = await Promise.all([
+    supabase.from('projects').select('*'),
+    supabase.from('tools').select('*'),
+    supabase.from('tool_versions').select('*'),
+    supabase.from('team_members').select('*'),
+    supabase.from('site_settings').select('key, value'),
+  ]);
+  const toolName: Record<string, string> = {};
+  for (const t of tools.data ?? []) { toolName[t.id] = t.name; add(`Tool: ${t.name ?? t.slug ?? t.id}`, t); }
+  for (const p of projects.data ?? []) add(`Project: ${p.title ?? p.name ?? p.id}`, p);
+  for (const v of versions.data ?? []) add(`Tool: ${toolName[v.tool_id] ?? 'version'} (${v.version_name ?? v.name ?? v.version ?? 'version'})`, v);
+  for (const m of team.data ?? []) add(`Team: ${m.name ?? m.id}`, m);
+  for (const r of settings.data ?? []) add(`Setting: ${r.key}`, r.value);
+  // KV store (home page content, use cases, etc.), skipping visitor sessions.
+  for (let from = 0; ; from += 1000) {
+    const { data } = await supabase.from(KV_TABLE).select('key, value')
+      .not('key', 'like', 'session:%').range(from, from + 999);
+    for (const r of data ?? []) add(r.key, r.value);
+    if ((data ?? []).length < 1000) break;
+  }
+  return sources;
+}
+const usedIn = (name: string, sources: { label: string; text: string }[]) =>
+  [...new Set(sources.filter(s => s.text.includes(name)).map(s => s.label))];
+
+const safeMediaName = (n: string) => !!n && !n.includes('..') && !n.startsWith('/') && n.length < 300;
+
+app.get('/make-server-e07959ec/admin/media', requireAuth, async (c) => {
+  try {
+    const [files, sources, videos, brand, guides] = await Promise.all([
+      listBucketFiles(BUCKET_NAME),
+      mediaUsageSources(),
+      listBucketFiles(VIDEO_BUCKET_NAME).catch(() => []),
+      listBucketFiles(BRAND_BUCKET_NAME).catch(() => []),
+      listBucketFiles(GUIDE_BUCKET_NAME).catch(() => []),
+    ]);
+    const sum = (l: StoredFile[]) => l.reduce((a, f) => a + f.size, 0);
+    return c.json({
+      success: true,
+      data: {
+        files: files.map(f => ({
+          ...f,
+          url: supabase.storage.from(BUCKET_NAME).getPublicUrl(f.name).data.publicUrl,
+          usedIn: usedIn(f.name, sources),
+        })),
+        buckets: [
+          { id: 'images', label: 'Images', count: files.length, bytes: sum(files) },
+          { id: 'videos', label: 'Uploaded videos', count: videos.length, bytes: sum(videos) },
+          { id: 'brand', label: 'Logo & favicon', count: brand.length, bytes: sum(brand) },
+          { id: 'guides', label: 'Guides', count: guides.length, bytes: sum(guides) },
+        ],
+      },
+    });
+  } catch (err) {
+    console.log('[media] list error:', err);
+    return c.json({ success: false, error: String((err as any)?.message ?? err) }, 500);
+  }
+});
+
+// DELETE /admin/media?name=<file>[&force=1] — refuses a file that is still used unless forced.
+app.delete('/make-server-e07959ec/admin/media', requireAuth, async (c) => {
+  try {
+    const name = c.req.query('name') || '';
+    if (!safeMediaName(name)) return c.json({ success: false, error: 'Bad file name' }, 400);
+    if (c.req.query('force') !== '1') {
+      const where = usedIn(name, await mediaUsageSources());
+      if (where.length) return c.json({ success: false, error: 'This image is still used', usedIn: where }, 409);
+    }
+    const { error } = await supabase.storage.from(BUCKET_NAME).remove([name]);
+    if (error) throw error;
+    return c.json({ success: true });
+  } catch (err) {
+    console.log('[media] delete error:', err);
+    return c.json({ success: false, error: String((err as any)?.message ?? err) }, 500);
+  }
+});
+
+// POST /admin/media/replace (form: name, file) — overwrites a file in place, so
+// every page using it gets the new image without changing any links.
+app.post('/make-server-e07959ec/admin/media/replace', requireAuth, async (c) => {
+  try {
+    const form = await c.req.formData();
+    const name = String(form.get('name') || '');
+    const file = form.get('file') as File | null;
+    if (!safeMediaName(name)) return c.json({ success: false, error: 'Bad file name' }, 400);
+    if (!file) return c.json({ success: false, error: 'No file provided' }, 400);
+    if (!['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(file.type)) {
+      return c.json({ success: false, error: 'Images only (PNG, JPEG, GIF, WEBP)' }, 400);
+    }
+    if (file.size > 10 * 1024 * 1024) return c.json({ success: false, error: 'File size exceeds 10MB limit' }, 400);
+    const { error } = await supabase.storage.from(BUCKET_NAME).upload(name, new Uint8Array(await file.arrayBuffer()), {
+      contentType: file.type,
+      cacheControl: '3600', // short: the URL stays the same, the content changed
+      upsert: true,
+    });
+    if (error) throw error;
+    return c.json({ success: true, data: { name, size: file.size, type: file.type } });
+  } catch (err) {
+    console.log('[media] replace error:', err);
+    return c.json({ success: false, error: String((err as any)?.message ?? err) }, 500);
   }
 });
 

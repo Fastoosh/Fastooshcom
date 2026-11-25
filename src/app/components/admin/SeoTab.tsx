@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { compressImage } from '../../utils/compressImage';
 import { GlassCard } from '../shared/GlassCard';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -326,7 +327,8 @@ export function SeoTab() {
     try {
       const token = localStorage.getItem('admin_token');
       const formData = new FormData();
-      formData.append('file', file);
+      // JPEG, not WebP: some social sites don't show WebP link previews.
+      formData.append('file', (await compressImage(file, { maxSize: 1200, format: 'jpeg' })).file);
       const res = await fetch(`${API_BASE}/upload-image`, {
         method: 'POST',
         headers: {
