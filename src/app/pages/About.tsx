@@ -10,6 +10,7 @@ import { useTranslation } from "react-i18next";
 import { fetchTranslations, deepMergeTranslations } from "../utils/translations";
 import { api } from "../utils/api";
 import type { StudioProfile } from "../components/admin/StudioProfileEditor";
+import { splitBold, usePageOverrides } from "../utils/pageContent";
 
 // (projectId / publicAnonKey no longer needed — team is fetched via api.getTeam())
 
@@ -28,6 +29,10 @@ type ClientLogo = { name: string; imageUrl?: string };
 
 export function About() {
   const { t, i18n } = useTranslation();
+  // Text edited in Admin → Page Text → About (falls back to the built-in text).
+  const { pt } = usePageOverrides('about');
+  const at = (key: string): string => pt(key) ?? t(`about.${key}`);
+  const story2Edit: string | undefined = pt('story2');
   const [team,         setTeam]         = useState<TeamMember[]>([]);
   const [loading,      setLoading]      = useState(true);
   const [clientLogos,  setClientLogos]  = useState<ClientLogo[]>([]);
@@ -74,11 +79,14 @@ export function About() {
   };
 
   // Values with translated text, icons stay in code — memoised per language (Option 4)
+  const valuesEdit = pt('values') as Array<{ title: string; body: string }> | undefined;
   const values = useMemo(() =>
-    (t('about.values', { returnObjects: true }) as Array<{ title: string; description: string }>)
-      .map((v, i) => ({ ...v, icon: VALUE_ICONS[i] })),
+    (valuesEdit
+      ? valuesEdit.map(v => ({ title: v.title, description: v.body }))
+      : (t('about.values', { returnObjects: true }) as Array<{ title: string; description: string }>))
+      .map((v, i) => ({ ...v, icon: VALUE_ICONS[i % VALUE_ICONS.length] })),
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  [i18n.language]);
+  [i18n.language, JSON.stringify(valuesEdit)]);
 
   return (
     <div className="min-h-screen py-24 px-6">
@@ -99,14 +107,14 @@ export function About() {
           className="text-center mb-24"
         >
           <h1 className="text-5xl md:text-6xl tracking-tight mb-6">
-            {t('about.titleLine1')}
+            {at('titleLine1')}
             <br />
             <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
-              {t('about.titleLine2')}
+              {at('titleLine2')}
             </span>
           </h1>
           <p className="text-xl text-white/60 max-w-2xl mx-auto">
-            {t('about.subtitle')}
+            {at('subtitle')}
           </p>
         </motion.div>
 
@@ -119,7 +127,12 @@ export function About() {
         >
           <GlassCard className="p-12">
             <div className="max-w-3xl mx-auto space-y-6 text-white/70 text-lg leading-relaxed">
-              <p>{t('about.story1')}</p>
+              <p>{at('story1')}</p>
+              {story2Edit ? (
+                <p>{splitBold(story2Edit).map((part, i) => part.bold
+                  ? <span key={i} className="text-white">{part.text}</span>
+                  : <span key={i}>{part.text}</span>)}</p>
+              ) : (
               <p>
                 {t('about.story2Pre')}
                 <span className="text-white">{t('about.story2Bold1')}</span>
@@ -129,8 +142,9 @@ export function About() {
                 <span className="text-white">{t('about.story2Bold3')}</span>
                 {t('about.story2Post')}
               </p>
-              <p>{t('about.story3')}</p>
-              <p className="text-white">{t('about.story4')}</p>
+              )}
+              <p>{at('story3')}</p>
+              <p className="text-white">{at('story4')}</p>
             </div>
           </GlassCard>
         </motion.div>
@@ -142,7 +156,7 @@ export function About() {
           viewport={{ once: true }}
           className="mb-24"
         >
-          <h2 className="text-3xl text-center mb-12">{t('about.valuesHeading')}</h2>
+          <h2 className="text-3xl text-center mb-12">{at('valuesHeading')}</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {values.map((value, index) => (
               <motion.div
@@ -172,7 +186,7 @@ export function About() {
             viewport={{ once: true }}
             className="mb-24"
           >
-            <h2 className="text-3xl text-center mb-12">{t('about.teamHeading')}</h2>
+            <h2 className="text-3xl text-center mb-12">{at('teamHeading')}</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               {team.map((member, index) => (
                 <motion.div
@@ -238,7 +252,7 @@ export function About() {
           viewport={{ once: true }}
           className="mb-24"
         >
-          <h2 className="text-3xl text-center mb-12">{t('about.clientsHeading')}</h2>
+          <h2 className="text-3xl text-center mb-12">{at('clientsHeading')}</h2>
           <GlassCard className="overflow-hidden p-0">
             <style>{`
               @keyframes fastoosh-marquee {
@@ -381,8 +395,8 @@ export function About() {
           className="text-center"
         >
           <GlassCard className="p-12 w-full">
-            <h3 className="text-3xl mb-4">{t('about.ctaHeading')}</h3>
-            <p className="text-white/60 mb-8 max-w-2xl mx-auto">{t('about.ctaSubtitle')}</p>
+            <h3 className="text-3xl mb-4">{at('ctaHeading')}</h3>
+            <p className="text-white/60 mb-8 max-w-2xl mx-auto">{at('ctaSubtitle')}</p>
             <NeonButton href="/work-with-us">{t('common.workWithUs')}</NeonButton>
             <div className="flex flex-wrap justify-center gap-6 mt-8 text-sm text-white/50">
               <span>{t('common.remoteWorldwide')}</span>

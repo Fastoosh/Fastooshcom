@@ -1,23 +1,24 @@
-// Admin → Translations → Work With Us. French / Arabic text of /work-with-us,
-// shown beside the English. Saves only the selected language.
+// Admin → Translations → Page Text. French / Arabic text of the editable pages
+// (Work With Us, About, Projects, Tools), shown beside the English. Saves only
+// the selected language of the selected page.
 import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Loader2, RefreshCw, Save, Sparkles } from 'lucide-react';
 import { GlassCard } from '../shared/GlassCard';
 import {
-  WWU_API_BASE, WwuFieldEditor, clone, loadWwuContent, saveWwuLang, wwuHeaders, wwuIsEdited, wwuValueOf,
-} from './WorkWithUsTab';
+  PAGE_API_BASE, PageFieldEditor, PagePicker, clone, loadPageContent, pageHeaders, pageIsEdited, pageValueOf, savePageLang,
+} from './PageTextTab';
 import {
-  WWU_FIELDS, WWU_GROUPS, flattenForTranslation, unflattenTranslation,
-  type WwuField, type WwuLang, type WwuStep, type WwuValue,
-} from '../../utils/workWithUsContent';
+  PAGES, pageFields, flattenForTranslation, unflattenTranslation,
+  type PageConfig, type PageField, type PageId, type PageLang, type PageStep, type PageValue,
+} from '../../utils/pageContent';
 
 const LANG_NAME: Record<string, string> = { fr: 'French', ar: 'Arabic' };
 
-function EnglishPreview({ field: f, value }: { field: WwuField; value: WwuValue }) {
+function EnglishPreview({ field: f, value }: { field: PageField; value: PageValue }) {
   if (f.kind === 'steps') {
     return (
       <ol className="space-y-1.5 list-decimal list-inside">
-        {(value as WwuStep[]).map((s, i) => <li key={i}><span className="text-white/80">{s.title}</span> — {s.body}</li>)}
+        {(value as PageStep[]).map((s, i) => <li key={i}><span className="text-white/80">{s.title}</span> — {s.body}</li>)}
       </ol>
     );
   }
@@ -25,43 +26,56 @@ function EnglishPreview({ field: f, value }: { field: WwuField; value: WwuValue 
   return <p className="whitespace-pre-line">{String(value)}</p>;
 }
 
-export function WorkWithUsTranslations({ lang }: { lang: WwuLang }) {
-  const [enVals, setEnVals] = useState<Record<string, WwuValue>>({});
-  const [vals, setVals] = useState<Record<string, WwuValue>>({});
+export function PageTextTranslations({ lang, initialPage = 'workWithUs' }: { lang: PageLang; initialPage?: PageId }) {
+  const [pageId, setPageId] = useState<PageId>(initialPage);
+  return (
+    <div className="space-y-4">
+      <GlassCard className="p-4 sm:p-6">
+        <PagePicker value={pageId} onChange={setPageId} />
+      </GlassCard>
+      <PageTranslationsEditor key={`${pageId}-${lang}`} page={PAGES[pageId]} lang={lang} />
+    </div>
+  );
+}
+
+function PageTranslationsEditor({ page, lang }: { page: PageConfig; lang: PageLang }) {
+  const [enVals, setEnVals] = useState<Record<string, PageValue>>({});
+  const [vals, setVals] = useState<Record<string, PageValue>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [translating, setTranslating] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const name = LANG_NAME[lang] || lang;
+  const fields = pageFields(page);
 
   useEffect(() => {
-    setLoading(true); setDirty(false); setMessage(null);
-    loadWwuContent()
+    loadPageContent(page)
       .then(o => { setEnVals(o.en || {}); setVals(clone(o[lang] || {})); })
       .catch(() => setMessage({ ok: false, text: 'Could not load the saved text.' }))
       .finally(() => setLoading(false));
-  }, [lang]);
+  }, [page, lang]);
 
   // English was changed but this language still has its built-in text.
   const needsUpdate = useMemo(
-    () => new Set(WWU_FIELDS.filter(f => wwuIsEdited(enVals, 'en', f.key) && !wwuIsEdited(vals, lang, f.key)).map(f => f.key)),
-    [enVals, vals, lang],
+    () => new Set(fields.filter(f => pageIsEdited(page, enVals, 'en', f.key) && !pageIsEdited(page, vals, lang, f.key)).map(f => f.key)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [enVals, vals, lang, page],
   );
 
-  const setValue = (key: string, v: WwuValue) => { setVals(d => ({ ...d, [key]: v })); setDirty(true); setMessage(null); };
+  const setValue = (key: string, v: PageValue) => { setVals(d => ({ ...d, [key]: v })); setDirty(true); setMessage(null); };
   const resetField = (key: string) => { setVals(d => { const n = { ...d }; delete n[key]; return n; }); setDirty(true); setMessage(null); };
 
   const translate = async (onlyNeeded: boolean) => {
-    const keys = onlyNeeded ? WWU_FIELDS.filter(f => needsUpdate.has(f.key)) : WWU_FIELDS;
+    const keys = onlyNeeded ? fields.filter(f => needsUpdate.has(f.key)) : fields;
     if (!keys.length) { setMessage({ ok: true, text: `Nothing to update — ${name} is in sync with English.` }); return; }
-    if (!onlyNeeded && !confirm(`Replace all ${name} text with an AI translation of the English? You can review it before saving.`)) return;
+    if (!onlyNeeded && !confirm(`Replace all ${name} text of the ${page.label} page with an AI translation of the English? You can review it before saving.`)) return;
     setTranslating(true); setMessage(null);
     try {
-      const source: Record<string, WwuValue> = {};
-      for (const f of keys) source[f.key] = wwuValueOf(enVals, 'en', f.key);
-      const res = await fetch(`${WWU_API_BASE}/admin/translate`, {
-        method: 'POST', headers: wwuHeaders(),
+      const source: Record<string, PageValue> = {};
+      for (const f of keys) source[f.key] = pageValueOf(page, enVals, 'en', f.key);
+      const res = await fetch(`${PAGE_API_BASE}/admin/translate`, {
+        method: 'POST', headers: pageHeaders(),
         body: JSON.stringify({ lang, langName: name, fields: flattenForTranslation(source) }),
       });
       const json = await res.json();
@@ -79,7 +93,7 @@ export function WorkWithUsTranslations({ lang }: { lang: WwuLang }) {
   const save = async () => {
     setSaving(true); setMessage(null);
     try {
-      const next = await saveWwuLang(lang, vals);
+      const next = await savePageLang(page, lang, vals);
       setVals(clone(next[lang] || {}));
       setEnVals(next.en || {});
       setDirty(false);
@@ -109,7 +123,7 @@ export function WorkWithUsTranslations({ lang }: { lang: WwuLang }) {
               </span>
             ) : (
               <span className="inline-flex items-center gap-2 text-emerald-300">
-                <CheckCircle2 className="w-4 h-4" /> {name} is in sync with English
+                <CheckCircle2 className="w-4 h-4" /> {page.label}: {name} is in sync with English
               </span>
             )}
           </div>
@@ -127,10 +141,10 @@ export function WorkWithUsTranslations({ lang }: { lang: WwuLang }) {
           </button>
         </div>
         {message && <p className={`mt-3 text-sm ${message.ok ? 'text-emerald-300' : 'text-red-300'}`}>{message.text}</p>}
-        <p className="mt-2 text-xs text-white/40">English is edited in Admin → Work With Us. Fields you leave unchanged keep the built-in {name} text.</p>
+        <p className="mt-2 text-xs text-white/40">English is edited in Admin → Page Text. Fields you leave unchanged keep the built-in {name} text.</p>
       </GlassCard>
 
-      {WWU_GROUPS.map(group => (
+      {page.groups.map(group => (
         <GlassCard key={group.title} className="p-4 sm:p-6 space-y-5">
           <h3 className="text-lg font-semibold text-white">{group.title}</h3>
           {group.fields.map(f => (
@@ -139,10 +153,10 @@ export function WorkWithUsTranslations({ lang }: { lang: WwuLang }) {
                 <p className="text-[10px] uppercase tracking-wider text-white/30 mb-1.5">
                   English{needsUpdate.has(f.key) && <span className="ml-2 text-amber-300 normal-case tracking-normal">changed — update the translation</span>}
                 </p>
-                <EnglishPreview field={f} value={wwuValueOf(enVals, 'en', f.key)} />
+                <EnglishPreview field={f} value={pageValueOf(page, enVals, 'en', f.key)} />
               </div>
-              <WwuFieldEditor field={f} rtl={lang === 'ar'}
-                value={wwuValueOf(vals, lang, f.key)} edited={wwuIsEdited(vals, lang, f.key)}
+              <PageFieldEditor field={f} rtl={lang === 'ar'}
+                value={pageValueOf(page, vals, lang, f.key)} edited={pageIsEdited(page, vals, lang, f.key)}
                 onChange={v => setValue(f.key, v)} onReset={() => resetField(f.key)} />
             </div>
           ))}

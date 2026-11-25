@@ -4,6 +4,7 @@ import { Link } from "react-router";
 import { GlassCard } from "../components/shared/GlassCard";
 import { NeonButton } from "../components/shared/NeonButton";
 import { SeoHead } from "../components/shared/SeoHead";
+import { usePageOverrides } from "../utils/pageContent";
 import { useTranslation } from "react-i18next";
 import { fetchTranslations, deepMergeTranslations } from "../utils/translations";
 import { api } from "../utils/api";
@@ -70,6 +71,8 @@ const fallbackProjects = [
 
 export function Projects() {
   const { t, i18n } = useTranslation();
+  // Text edited in Admin → Page Text → Projects page.
+  const { pt } = usePageOverrides('projects');
   const [activeCategory, setActiveCategory] = useState("all");
   const [projects, setProjects] = useState<typeof fallbackProjects>([]);
   const [loading, setLoading] = useState(true);
@@ -140,11 +143,11 @@ export function Projects() {
           className="text-center mb-16"
         >
           <h1 className="text-5xl md:text-6xl tracking-tight mb-6">
-            {t('projects.titlePart1')}
-            <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent"> {t('projects.titlePart2')}</span>
+            {pt('titlePart1') ?? t('projects.titlePart1')}
+            <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent"> {pt('titlePart2') ?? t('projects.titlePart2')}</span>
           </h1>
           <p className="text-xl text-white/60 max-w-2xl mx-auto">
-            {t('projects.subtitle')}
+            {pt('subtitle') ?? t('projects.subtitle')}
           </p>
         </motion.div>
 
@@ -158,7 +161,7 @@ export function Projects() {
         >
           {["all", ...Array.from(new Set(projects.map((p) => p.category).filter(Boolean)))].map((category) => {
             const isActive = category === activeCategory;
-            const label = category === "all" ? t('projects.allFilter') : categoryTranslations[category] || category;
+            const label = category === "all" ? pt('allFilter') ?? t('projects.allFilter') : categoryTranslations[category] || category;
             return (
               <button
                 key={category}
@@ -229,8 +232,8 @@ export function Projects() {
           className="text-center mt-24"
         >
           <GlassCard className="p-12 w-full">
-            <h3 className="text-2xl mb-4">{t('projects.ctaHeading')}</h3>
-            <p className="text-white/60 mb-6">{t('projects.ctaSubtitle')}</p>
+            <h3 className="text-2xl mb-4">{pt('ctaHeading') ?? t('projects.ctaHeading')}</h3>
+            <p className="text-white/60 mb-6">{pt('ctaSubtitle') ?? t('projects.ctaSubtitle')}</p>
             <NeonButton href="/work-with-us">{t('common.workWithUs')}</NeonButton>
           </GlassCard>
         </motion.div>

@@ -6,6 +6,7 @@ import { NeonButton } from "../components/shared/NeonButton";
 import { SeoHead } from "../components/shared/SeoHead";
 import { CustomToolRequestModal } from "../components/shared/CustomToolRequestModal";
 import { Zap, Star, Crown } from "lucide-react";
+import { usePageOverrides } from "../utils/pageContent";
 import { useTranslation } from "react-i18next";
 import { fetchTranslations, deepMergeTranslations } from "../utils/translations";
 import { api } from "../utils/api";
@@ -94,6 +95,8 @@ const getBadgeStyle = (category: string, statuses: { label: string; color: strin
 
 export function Tools() {
   const { t, i18n } = useTranslation();
+  // Text edited in Admin → Page Text → Tools page.
+  const { pt } = usePageOverrides('tools');
   const navigate = useNavigate();
   const [tools, setTools] = useState(fallbackTools);
   const [loading, setLoading] = useState(true);
@@ -195,14 +198,14 @@ export function Tools() {
         >
           <div className="inline-flex items-center gap-2 rtl:flex-row-reverse px-4 py-2 rounded-full backdrop-blur-xl bg-white/5 border border-white/20 mb-6">
             <Zap className="w-4 h-4 text-purple-400" />
-            <span className="text-sm text-white/90">{t('tools.labBadge')}</span>
+            <span className="text-sm text-white/90">{pt('labBadge') ?? t('tools.labBadge')}</span>
           </div>
           <h1 className="text-5xl md:text-6xl tracking-tight mb-6">
-            {t('tools.titlePart1')}
-            <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent"> {t('tools.titlePart2')}</span>
+            {pt('titlePart1') ?? t('tools.titlePart1')}
+            <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent"> {pt('titlePart2') ?? t('tools.titlePart2')}</span>
           </h1>
           <p className="text-xl text-white/60 max-w-2xl mx-auto">
-            {t('tools.subtitle')}
+            {pt('subtitle') ?? t('tools.subtitle')}
           </p>
         </motion.div>
 
@@ -294,7 +297,7 @@ export function Tools() {
                     </div>
                     <p className="text-white/60 mb-6 flex-grow text-sm leading-relaxed">{tool.description}</p>
                     <NeonButton className="w-full justify-center">
-                      {t('tools.getIt')}
+                      {pt('getIt') ?? t('tools.getIt')}
                     </NeonButton>
                   </div>
                 </GlassCard>
@@ -311,16 +314,16 @@ export function Tools() {
           className="text-center"
         >
           <GlassCard className="p-12 w-full">
-            <h3 className="text-2xl mb-4">{t('tools.customCtaHeading')}</h3>
+            <h3 className="text-2xl mb-4">{pt('customCtaHeading') ?? t('tools.customCtaHeading')}</h3>
             <p className="text-white/60 mb-6">
-              {t('tools.customCtaSubtitle')}
+              {pt('customCtaSubtitle') ?? t('tools.customCtaSubtitle')}
             </p>
             <button
               onClick={() => setShowCustomModal(true)}
               className="inline-flex items-center gap-2 px-8 py-3.5 rounded-xl font-semibold text-sm text-white transition-all hover:opacity-90 hover:scale-[1.02] active:scale-[0.98]"
               style={{ background: "linear-gradient(135deg, #7c3aed, #4f46e5)" }}
             >
-              {t('tools.customCtaBtn')}
+              {pt('customCtaBtn') ?? t('tools.customCtaBtn')}
             </button>
           </GlassCard>
         </motion.div>

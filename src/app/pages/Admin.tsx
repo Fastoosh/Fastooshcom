@@ -13,7 +13,7 @@ import { AdminSelect } from '../components/admin/AdminSelect';
 import { Plus, Pencil, Trash2, Save, X, LogOut, Upload, Sparkles, Menu, Search } from 'lucide-react';
 import { ActivityTab } from '../components/admin/ActivityTab';
 import { UseCasesTab } from '../components/admin/UseCasesTab';
-import { WorkWithUsTab } from '../components/admin/WorkWithUsTab';
+import { PageTextTab } from '../components/admin/PageTextTab';
 import { RepublishButton } from '../components/admin/RepublishButton';
 import { StudioProfileEditor, type StudioProfile } from '../components/admin/StudioProfileEditor';
 import { AdminSearch, type AdminSearchResult } from '../components/admin/AdminSearch';
@@ -169,7 +169,7 @@ const ADMIN_NAV: { label: string; items: { value: string; label: string; danger?
     { value: 'tools',     label: 'Tools' },
     { value: 'team',      label: 'Team' },
     { value: 'home',      label: 'Home' },
-    { value: 'workwithus', label: 'Work With Us' },
+    { value: 'workwithus', label: 'Page Text' },
     { value: 'reviews',   label: 'Reviews' },
     { value: 'usecases',  label: '🧩 Use cases' },
   ]},
@@ -829,8 +829,9 @@ export function Admin() {
       // useCases / toolExtras are owned by Admin → Use cases and saved there.
       // This form holds the copy loaded when the admin opened, so sending it
       // would overwrite newer edits made in the Use cases tab.
-      // Same for workWithUsContent (Admin → Work With Us).
-      const { useCases: _useCases, toolExtras: _toolExtras, workWithUsContent: _wwu, ...rest } = settings as any;
+      // Same for the page text (Admin → Page Text).
+      const { useCases: _useCases, toolExtras: _toolExtras, workWithUsContent: _wwu, aboutContent: _about,
+        projectsPageContent: _projectsPage, toolsPageContent: _toolsPage, ...rest } = settings as any;
 
       const response = await fetch(url, {
         method,
@@ -1125,8 +1126,8 @@ export function Admin() {
 
           {/* GUIDE TAB */}
           <TabsContent value="workwithus">
-            <WorkWithUsTab onOpenTranslations={() => {
-              try { sessionStorage.setItem('translations_open', 'workWithUs'); } catch { /* ignore */ }
+            <PageTextTab onOpenTranslations={page => {
+              try { sessionStorage.setItem('translations_open', `pages:${page}`); } catch { /* ignore */ }
               setActiveTab('translations');
             }} />
           </TabsContent>

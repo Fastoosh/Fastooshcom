@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { WorkWithUsTranslations } from './WorkWithUsTranslations';
+import { PageTextTranslations } from './PageTextTranslations';
+import { PAGES, type PageId } from '../../utils/pageContent';
 import { GlassCard } from '../shared/GlassCard';
 import { Button } from '../ui/button';
 import {
@@ -13,7 +14,7 @@ import { bustTranslationCache } from '../../utils/translations';
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-e07959ec`;
 
 type Lang = 'fr' | 'ar';
-type ContentType = 'home' | 'projects' | 'tools' | 'team' | 'categories' | 'legal' | 'workWithUs';
+type ContentType = 'home' | 'projects' | 'tools' | 'team' | 'categories' | 'legal' | 'pages';
 
 const LANG_CONFIG: Record<Lang, { label: string; name: string; flag: string }> = {
   fr: { label: 'FR', name: 'French',  flag: '🇫🇷' },
@@ -27,7 +28,7 @@ const CONTENT_TYPES: { key: ContentType; label: string }[] = [
   { key: 'team',       label: 'Team'         },
   { key: 'categories', label: 'Categories'   },
   { key: 'legal',      label: '⚖️ Legal Pages' },
-  { key: 'workWithUs', label: '🤝 Work With Us' },
+  { key: 'pages',      label: '📄 Page Text' },
 ];
 
 // ─── Legal page config ─────────────────────────────────────────────────────
@@ -552,15 +553,17 @@ function flattenStoredCategories(stored: Record<string, any>): Record<string, st
 // ─── Main component ────────────────────────────────────────────────────────
 export function TranslationTab() {
   const [lang,        setLang]        = useState<Lang>('fr');
-  // Admin → Work With Us links here with this hint so the right section opens.
-  const [contentType, setContentType] = useState<ContentType>(() => {
+  // Admin → Page Text links here with a hint ("pages:<page id>") so the
+  // right section and page open.
+  const [openHint] = useState(() => {
     try {
-      const hint = sessionStorage.getItem('translations_open');
+      const hint = sessionStorage.getItem('translations_open') || '';
       sessionStorage.removeItem('translations_open');
-      if (hint === 'workWithUs') return 'workWithUs';
-    } catch { /* ignore */ }
-    return 'home';
+      return hint;
+    } catch { return ''; }
   });
+  const hintPage = openHint.startsWith('pages:') ? openHint.slice(6) as PageId : null;
+  const [contentType, setContentType] = useState<ContentType>(() => (hintPage ? 'pages' : 'home'));
   const [sourceData,  setSourceData]  = useState<any>(null);
   const [flatTrans,   setFlatTrans]   = useState<Record<string, string>>({});
   const [loading,     setLoading]     = useState(false);
@@ -587,7 +590,7 @@ export function TranslationTab() {
     setLoading(true);
     setSourceData(null);   // ← reset stale data immediately so useMemo doesn't mix content types
     setStatus({ type: null, msg: '' });
-    if (contentType === 'workWithUs') { setLoading(false); return; } // has its own editor
+    if (contentType === 'pages') { setLoading(false); return; } // has its own editor
     try {
       // 1. Fetch English source
       let srcRes: Response;
@@ -959,7 +962,7 @@ export function TranslationTab() {
         </div>
 
         {/* Coverage + actions row */}
-        {contentType !== 'workWithUs' && (
+        {contentType !== 'pages' && (
         <div className="flex flex-wrap items-center gap-4">
           {/* Coverage bar */}
           <div className="flex-1 min-w-40">
@@ -1040,8 +1043,8 @@ export function TranslationTab() {
           <Loader2 className="w-6 h-6 animate-spin mx-auto mb-3 text-purple-400" />
           Loading content...
         </GlassCard>
-      ) : contentType === 'workWithUs' ? (
-        <WorkWithUsTranslations lang={lang} />
+      ) : contentType === 'pages' ? (
+        <PageTextTranslations lang={lang} initialPage={hintPage && PAGES[hintPage] ? hintPage : 'workWithUs'} />
       ) : contentType === 'legal' ? (
 
         /* ── LEGAL PAGES bespoke HTML editor ─────────────────────────────── */

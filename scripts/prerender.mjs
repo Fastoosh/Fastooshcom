@@ -291,13 +291,31 @@ async function main() {
   const services   = (profile.services || []).filter(Boolean);
   const industries = (profile.industries || []).filter(Boolean);
   const studioFaq  = (profile.faq || []).filter(f => f?.q?.trim() && f?.a?.trim());
-  let aboutCopy = {};
-  try { aboutCopy = JSON.parse(readFileSync(join(ROOT, 'src/locales/en.json'), 'utf8')).about || {}; } catch { /* optional */ }
+  // Built-in English page text, with the admin's edits (Admin → Page Text) on top.
+  let enLocale = {};
+  try { enLocale = JSON.parse(readFileSync(join(ROOT, 'src/locales/en.json'), 'utf8')); } catch { /* optional */ }
+  const pageText = (section, settingKey) => {
+    const out = { ...(enLocale[section] || {}) };
+    const edits = settings?.[settingKey]?.en;
+    if (edits && typeof edits === 'object') {
+      for (const [k, v] of Object.entries(edits)) {
+        if ((typeof v === 'string' && v.trim()) || (Array.isArray(v) && v.length)) out[k] = v;
+      }
+    }
+    return out;
+  };
+  const aboutCopy = pageText('about', 'aboutContent');
+  const projectsCopy = pageText('projects', 'projectsPageContent');
+  const toolsCopy = pageText('tools', 'toolsPageContent');
   const aboutStory = [
     aboutCopy.story1,
-    [aboutCopy.story2Pre, aboutCopy.story2Bold1, aboutCopy.story2Mid1, aboutCopy.story2Bold2, aboutCopy.story2Mid2, aboutCopy.story2Bold3, aboutCopy.story2Post].filter(Boolean).join(''),
+    typeof aboutCopy.story2 === 'string'
+      ? aboutCopy.story2.replace(/**/g, '')
+      : [aboutCopy.story2Pre, aboutCopy.story2Bold1, aboutCopy.story2Mid1, aboutCopy.story2Bold2, aboutCopy.story2Mid2, aboutCopy.story2Bold3, aboutCopy.story2Post].filter(Boolean).join(''),
     aboutCopy.story3, aboutCopy.story4,
   ].filter(Boolean);
+  const aboutValues = (Array.isArray(aboutCopy.values) ? aboutCopy.values : [])
+    .map(v => ({ title: v?.title, text: v?.description ?? v?.body })).filter(v => v.title);
   const ONE_LINER = profile.oneLiner?.trim()
     || 'Fastoosh is a motion design studio and maker of After Effects automation tools that help designers, studios, motion designers and videographers automate repetitive work.';
   const [locCity, ...locRest] = String(profile.location || '').split(',').map(s => s.trim()).filter(Boolean);
@@ -371,6 +389,7 @@ async function main() {
       mainEntity: { '@type': 'ItemList', itemListElement: projects.map((p, i) => ({ '@type': 'ListItem', position: i + 1, url: url(`/projects/${p.slug}`), name: p.title })) },
     }, crumbs([['Home', '/'], ['Projects', '/projects']])],
     body: `<h1 style="color:#fff;font-size:30px">Projects</h1>
+      ${projectsCopy.subtitle ? para(projectsCopy.subtitle) : ''}
       ${list(projects.map(p => `<a href="/projects/${esc(p.slug)}" style="color:#c4b5fd">${esc(p.title)}</a>${[p.client, p.category, p.year].filter(Boolean).length ? ` — ${esc([p.client, p.category, p.year].filter(Boolean).join(' · '))}` : ''}<br/>${esc(clip(p.description, 220))}`))}`,
   }, sitemap: { priority: '0.8' } });
 
@@ -439,6 +458,7 @@ async function main() {
     }, crumbs([['Home', '/'], ['Tools', '/tools']])],
     body: `<h1 style="color:#fff;font-size:30px">Tools for motion designers</h1>
       <p>Fastoosh builds tools for designers, studios, motion designers and videographers that automate repetitive After Effects work — versioning, name titles, localization, packaging and more.</p>
+      ${toolsCopy.subtitle ? para(toolsCopy.subtitle) : ''}
       ${list(tools.map(t => `<a href="/tools/${esc(t.slug)}" style="color:#c4b5fd">${esc(t.name)}</a>${t.tagline ? ` — ${esc(t.tagline)}` : ''}<br/>${esc(clip(toolDesc(t), 240))}`))}
       ${useCases.length ? h2('Automation guides') + list(useCases.map(u => `<a href="/use-cases/${esc(u.slug)}" style="color:#c4b5fd">${esc(u.title)}</a>`)) : ''}`,
   }, sitemap: { priority: '0.8' } });
@@ -569,6 +589,7 @@ async function main() {
     body: `<h1 style="color:#fff;font-size:30px">About Fastoosh</h1>
       ${para(ONE_LINER)}
       ${aboutStory.map(para).join('')}
+      ${aboutValues.length ? h2(aboutCopy.valuesHeading || 'What drives us') + list(aboutValues.map(v => `<strong>${esc(v.title)}</strong>${v.text ? ` — ${esc(v.text)}` : ''}`)) : ''}
       ${[['Based in', profile.location], ['Founded', profile.founded], ['Clients', profile.areaServed], ['Languages', profile.languages]].some(([, x]) => x)
         ? h2('Studio facts') + list([['Based in', profile.location], ['Founded', profile.founded], ['Clients', profile.areaServed], ['Languages', profile.languages]].filter(([, x]) => x).map(([k, x]) => `${esc(k)}: ${esc(x)}`)) : ''}
       ${services.length ? h2('Services') + list(services.map(esc)) : ''}
