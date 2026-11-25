@@ -1,4 +1,4 @@
-// Admin → Media: every uploaded image with its size and where it is used.
+// Admin → Media: every uploaded image and video with its size and where it is used.
 // Upload (compressed), copy link, compress or replace in place (same link, so
 // pages keep working), and delete — unused images first.
 // Server: GET/DELETE /admin/media, POST /admin/media/replace.
@@ -21,6 +21,7 @@ interface MediaFile {
   type: string;
   createdAt: string | null;
   usedIn: string[];
+  bucket?: 'images' | 'videos';
 }
 interface BucketInfo { id: string; label: string; count: number; bytes: number }
 
@@ -35,7 +36,9 @@ function compressOptionsFor(f: MediaFile) {
   if (f.usedIn.length > 0 && f.usedIn.every(u => u.startsWith('Team:'))) return { maxSize: 800 };
   return {};
 }
-const canCompress = (f: MediaFile) => !/gif|svg/i.test(f.type) && f.size > LARGE;
+const isVideo = (f: MediaFile) => f.bucket === 'videos';
+const canCompress = (f: MediaFile) => !isVideo(f) && !/gif|svg/i.test(f.type) && f.size > LARGE;
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 const niceDate = (iso: string | null) => iso ? new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '';
 
@@ -44,7 +47,7 @@ export function MediaTab() {
   const [buckets, setBuckets]   = useState<BucketInfo[]>([]);
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState('');
-  const [filter, setFilter]     = useState<'all' | 'unused' | 'large'>('all');
+  const [filter, setFilter]     = useState<'all' | 'images' | 'videos' | 'unused' | 'large'>('all');
   const [sort, setSort]         = useState<'newest' | 'biggest'>('newest');
   const [query, setQuery]       = useState('');
   const [busy, setBusy]         = useState<Record<string, string>>({});   // name → what is happening
@@ -155,7 +158,7 @@ export function MediaTab() {
 
   // ── Delete ─────────────────────────────────────────────────────────────────
   async function deleteOne(f: MediaFile, force: boolean) {
-    const r = await fetch(`${API_BASE}/admin/media?name=${encodeURIComponent(f.name)}${force ? '&force=1' : ''}`, { method: 'DELETE', headers: headers() });
+    const r = await fetch(`${API_BASE}/admin/media?name=${encodeURIComponent(f.name)}${isVideo(f) ? '&bucket=videos' : ''}${force ? '&force=1' : ''}`, { method: 'DELETE', headers: headers() });
     const j = await r.json();
     if (r.status === 409) return j.usedIn as string[];
     if (!j.success) throw new Error(j.error || 'Delete failed');
@@ -165,7 +168,7 @@ export function MediaTab() {
 
   async function handleDelete(f: MediaFile) {
     const msg = f.usedIn.length
-      ? `This image is used in:\n• ${f.usedIn.join('\n• ')}\n\nDeleting it will leave a broken image there. Delete anyway?`
+      ? `This ${isVideo(f) ? 'video' : 'image'} is used in:\n• ${f.usedIn.join('\n• ')}\n\nDeleting it will leave a broken ${isVideo(f) ? 'video' : 'image'} there. Delete anyway?`
       : `Delete ${f.name}? This can't be undone.`;
     if (!confirm(msg)) return;
     setFileBusy(f.name, 'Deleting…');
@@ -179,7 +182,7 @@ export function MediaTab() {
   async function handleDeleteUnused() {
     const unused = files.filter(f => f.usedIn.length === 0);
     const bytes = unused.reduce((a, f) => a + f.size, 0);
-    if (!unused.length || !confirm(`Delete ${unused.length} unused image${unused.length === 1 ? '' : 's'} (${formatBytes(bytes)})? Nothing on the site uses them. This can't be undone.`)) return;
+    if (!unused.length || !confirm(`Delete ${plural(unused.length, 'unused file')} (${formatBytes(bytes)})? Nothing on the site uses them. This can't be undone.`)) return;
     setBulk({ label: 'Deleting', done: 0, total: unused.length });
     let skipped = 0;
     for (const f of unused) {
@@ -188,7 +191,7 @@ export function MediaTab() {
       setBulk(b => b && { ...b, done: b.done + 1 });
     }
     setBulk(null);
-    flash(`Deleted ${unused.length - skipped} image${unused.length - skipped === 1 ? '' : 's'}${skipped ? `, kept ${skipped} that turned out to be in use` : ''}.`);
+    flash(`Deleted ${plural(unused.length - skipped, 'file')}${skipped ? `, kept ${skipped} that turned out to be in use` : ''}.`);
     load();
   }
 
@@ -201,7 +204,9 @@ export function MediaTab() {
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     return files
-      .filter(f => filter === 'all' || (filter === 'unused' ? f.usedIn.length === 0 : canCompress(f)))
+      .filter(f => filter === 'all'
+        || (filter === 'images' && !isVideo(f)) || (filter === 'videos' && isVideo(f))
+        || (filter === 'unused' && f.usedIn.length === 0) || (filter === 'large' && canCompress(f)))
       .filter(f => !q || f.name.toLowerCase().includes(q) || f.usedIn.some(u => u.toLowerCase().includes(q)))
       .sort((a, b) => sort === 'biggest' ? b.size - a.size : String(b.createdAt).localeCompare(String(a.createdAt)));
   }, [files, filter, sort, query]);
@@ -209,6 +214,7 @@ export function MediaTab() {
   const unusedCount = files.filter(f => f.usedIn.length === 0).length;
   const unusedBytes = files.filter(f => f.usedIn.length === 0).reduce((a, f) => a + f.size, 0);
   const largeCount  = files.filter(canCompress).length;
+  const videoCount  = files.filter(isVideo).length;
   const totalBytes  = buckets.reduce((a, b) => a + b.bytes, 0);
   const pct         = Math.min(100, (totalBytes / FREE_PLAN_BYTES) * 100);
 
@@ -228,7 +234,7 @@ export function MediaTab() {
             </div>
             <div>
               <h2 className="text-white font-semibold">Media</h2>
-              <p className="text-white/40 text-xs">Every uploaded image, how big it is and where it's used. New uploads are compressed automatically.</p>
+              <p className="text-white/40 text-xs">Every uploaded image and video, how big it is and where it's used. New image uploads are compressed automatically.</p>
             </div>
           </div>
           <div className="flex gap-2">
@@ -271,7 +277,7 @@ export function MediaTab() {
           {unusedCount > 0 && (
             <GlassCard className="p-4 flex items-center justify-between gap-3">
               <div className="text-sm">
-                <p className="text-white/80 font-medium">{unusedCount} unused image{unusedCount === 1 ? '' : 's'}</p>
+                <p className="text-white/80 font-medium">{plural(unusedCount, 'unused file')}</p>
                 <p className="text-white/40 text-xs">{formatBytes(unusedBytes)} that nothing on the site shows</p>
               </div>
               <button onClick={handleDeleteUnused} disabled={!!bulk}
@@ -308,7 +314,7 @@ export function MediaTab() {
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-2">
-        {([['all', `All (${files.length})`], ['unused', `Unused (${unusedCount})`], ['large', `Large (${largeCount})`]] as const).map(([v, label]) => (
+        {([['all', `All (${files.length})`], ['images', `Images (${files.length - videoCount})`], ['videos', `Videos (${videoCount})`], ['unused', `Unused (${unusedCount})`], ['large', `Large images (${largeCount})`]] as const).map(([v, label]) => (
           <button key={v} onClick={() => setFilter(v)}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${filter === v ? 'bg-purple-600 border-purple-500 text-white' : 'bg-white/4 border-white/10 text-white/50 hover:text-white/80'}`}>
             {label}
@@ -330,15 +336,19 @@ export function MediaTab() {
       {loading && files.length === 0 ? (
         <div className="flex justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-white/30" /></div>
       ) : visible.length === 0 ? (
-        <p className="text-white/30 text-sm text-center py-12">{files.length ? 'No images match.' : 'No images uploaded yet.'}</p>
+        <p className="text-white/30 text-sm text-center py-12">{files.length ? 'Nothing matches.' : 'Nothing uploaded yet.'}</p>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {visible.map(f => {
             const doing = busy[f.name];
             return (
               <GlassCard key={f.name} className="overflow-hidden flex flex-col">
-                <a href={shown(f)} target="_blank" rel="noopener noreferrer" className="relative block aspect-video bg-black/40 group">
-                  <img src={shown(f)} alt="" loading="lazy" decoding="async" className="w-full h-full object-contain" />
+                <a href={shown(f)} target="_blank" rel="noopener noreferrer" onClick={e => { if (isVideo(f)) e.preventDefault(); }}
+                  className="relative block aspect-video bg-black/40 group">
+                  {isVideo(f)
+                    // preload="metadata": only the first frame and length are downloaded until play is pressed
+                    ? <video src={`${f.url}#t=0.5`} preload="metadata" controls muted playsInline className="w-full h-full object-contain" />
+                    : <img src={shown(f)} alt="" loading="lazy" decoding="async" className="w-full h-full object-contain" />}
                   <span className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity bg-black/60 rounded p-1">
                     <ExternalLink className="w-3 h-3 text-white" />
                   </span>
@@ -373,10 +383,10 @@ export function MediaTab() {
                         <Minimize2 className="w-3 h-3" /> Compress
                       </button>
                     )}
-                    <button onClick={() => pickReplacement(f)} disabled={!!doing} title="Replace with another image (same link, updates everywhere it's used)"
+                    {!isVideo(f) && <button onClick={() => pickReplacement(f)} disabled={!!doing} title="Replace with another image (same link, updates everywhere it's used)"
                       className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/60 hover:text-white disabled:opacity-50">
                       <Replace className="w-3.5 h-3.5" />
-                    </button>
+                    </button>}
                     <button onClick={() => handleDelete(f)} disabled={!!doing} title="Delete"
                       className="p-1.5 rounded-lg bg-white/5 hover:bg-red-500/20 text-white/60 hover:text-red-300 disabled:opacity-50">
                       <Trash2 className="w-3.5 h-3.5" />

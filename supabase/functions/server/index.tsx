@@ -301,7 +301,7 @@ const AUDIT_LABELS: Array<[RegExp, string, string?]> = [
   [/^(PUT|DELETE) \/admin\/(messages|tool-requests)\/.+$/, 'Updated messages'],
   [/^DELETE \/admin\/tool-requests\/.+$/,       'Deleted tool request'],
   [/^(POST|PATCH|DELETE) \/utm-saved.*$/,       'Changed UTM links'],
-  [/^DELETE \/admin\/media$/,                   'Deleted an image'],
+  [/^DELETE \/admin\/media$/,                   'Deleted a media file'],
   [/^POST \/admin\/media\/replace$/,            'Replaced an image'],
   [/^POST \/admin\/bunny\/.+$/,                 'Bunny video action'],
   [/^POST \/signup$/,                           'Created admin account'],
@@ -2387,9 +2387,12 @@ app.get('/make-server-e07959ec/admin/media', requireAuth, async (c) => {
     return c.json({
       success: true,
       data: {
-        files: files.map(f => ({
+        files: [
+          ...files.map(f => ({ ...f, bucket: 'images' })),
+          ...videos.map(f => ({ ...f, bucket: 'videos' })),
+        ].map(f => ({
           ...f,
-          url: supabase.storage.from(BUCKET_NAME).getPublicUrl(f.name).data.publicUrl,
+          url: supabase.storage.from(f.bucket === 'videos' ? VIDEO_BUCKET_NAME : BUCKET_NAME).getPublicUrl(f.name).data.publicUrl,
           usedIn: usedIn(f.name, sources),
         })),
         buckets: [
@@ -2406,16 +2409,17 @@ app.get('/make-server-e07959ec/admin/media', requireAuth, async (c) => {
   }
 });
 
-// DELETE /admin/media?name=<file>[&force=1] — refuses a file that is still used unless forced.
+// DELETE /admin/media?name=<file>[&bucket=videos][&force=1] — refuses a file that is still used unless forced.
 app.delete('/make-server-e07959ec/admin/media', requireAuth, async (c) => {
   try {
     const name = c.req.query('name') || '';
     if (!safeMediaName(name)) return c.json({ success: false, error: 'Bad file name' }, 400);
     if (c.req.query('force') !== '1') {
       const where = usedIn(name, await mediaUsageSources());
-      if (where.length) return c.json({ success: false, error: 'This image is still used', usedIn: where }, 409);
+      if (where.length) return c.json({ success: false, error: 'This file is still used', usedIn: where }, 409);
     }
-    const { error } = await supabase.storage.from(BUCKET_NAME).remove([name]);
+    const bucket = c.req.query('bucket') === 'videos' ? VIDEO_BUCKET_NAME : BUCKET_NAME;
+    const { error } = await supabase.storage.from(bucket).remove([name]);
     if (error) throw error;
     return c.json({ success: true });
   } catch (err) {
