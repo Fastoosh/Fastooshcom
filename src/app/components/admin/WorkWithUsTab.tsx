@@ -1,21 +1,24 @@
-// Admin → Work With Us. Edit the text of /work-with-us in English, French and
-// Arabic. Saved as the site setting `workWithUsContent` (POST /settings);
-// only fields that differ from the built-in text are stored.
-import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, ExternalLink, Languages, Loader2, Plus, RotateCcw, Save, Trash2 } from 'lucide-react';
+// Admin → Work With Us. Edit the English text of /work-with-us, with ✨ AI
+// help on every field. French and Arabic are edited in Admin → Translations →
+// Work With Us. Saved as the site setting `workWithUsContent`
+// ({ en, fr, ar }); only fields that differ from the built-in text are stored,
+// and each screen saves only its own language.
+import { useEffect, useState } from 'react';
+import { ExternalLink, Languages, Loader2, Plus, RotateCcw, Save, Sparkles, Trash2 } from 'lucide-react';
 import { GlassCard } from '../shared/GlassCard';
 import { Input } from '../ui/input';
+import { AIImproveModal } from './AIImproveModal';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import en from '../../../locales/en.json';
 import fr from '../../../locales/fr.json';
 import ar from '../../../locales/ar.json';
 import {
-  WWU_FIELDS, WWU_GROUPS, flattenForTranslation, unflattenTranslation,
+  WWU_FIELDS, WWU_GROUPS,
   type WwuField, type WwuLang, type WwuOverrides, type WwuStep, type WwuValue,
 } from '../../utils/workWithUsContent';
 
-const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-e07959ec`;
-const headers = () => ({
+export const WWU_API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-e07959ec`;
+export const wwuHeaders = () => ({
   Authorization: `Bearer ${publicAnonKey}`,
   'X-Admin-Token': localStorage.getItem('admin_token') || '',
   'Content-Type': 'application/json',
@@ -23,134 +26,136 @@ const headers = () => ({
 const field = 'bg-black/50 border-white/20 text-white';
 const area = 'w-full rounded-md bg-black/50 border border-white/20 text-white text-sm px-3 py-2 focus:outline-none focus:ring-1 focus:ring-purple-500';
 
-const LANGS: { code: WwuLang; label: string; name: string }[] = [
-  { code: 'en', label: 'English', name: 'English' },
-  { code: 'fr', label: 'Français', name: 'French' },
-  { code: 'ar', label: 'العربية', name: 'Arabic' },
-];
-const DEFAULTS: Record<WwuLang, Record<string, WwuValue>> = {
+export const WWU_DEFAULTS: Record<WwuLang, Record<string, WwuValue>> = {
   en: ((en as any).workWithUs || {}),
   fr: ((fr as any).workWithUs || {}),
   ar: ((ar as any).workWithUs || {}),
 };
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
-const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
+export const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
 
-/** Keeps only the fields that differ from the built-in text. */
-function cleanOverrides(draft: WwuOverrides): WwuOverrides {
-  const out: WwuOverrides = {};
-  for (const { code } of LANGS) {
-    const vals = draft[code] || {};
-    const kept: Record<string, WwuValue> = {};
-    for (const f of WWU_FIELDS) {
-      let v = vals[f.key];
-      if (v === undefined) continue;
-      if (f.kind === 'lines' && Array.isArray(v)) v = (v as string[]).map(x => x.trim()).filter(Boolean);
-      if (f.kind === 'steps' && Array.isArray(v)) v = (v as WwuStep[]).filter(s => s.title?.trim() || s.body?.trim());
-      if (typeof v === 'string' && !v.trim()) continue;
-      if (Array.isArray(v) && !v.length) continue;
-      if (!same(v, DEFAULTS[code][f.key])) kept[f.key] = v;
-    }
-    if (Object.keys(kept).length) out[code] = kept;
+/** The value shown for a field: the saved edit, else the built-in text. */
+export const wwuValueOf = (vals: Record<string, WwuValue> | undefined, code: WwuLang, key: string): WwuValue =>
+  vals?.[key] !== undefined ? vals[key] : clone(WWU_DEFAULTS[code][key] ?? '');
+
+export const wwuIsEdited = (vals: Record<string, WwuValue> | undefined, code: WwuLang, key: string) =>
+  vals?.[key] !== undefined && !same(vals[key], WWU_DEFAULTS[code][key]);
+
+/** One language's values, keeping only fields that differ from the built-in text. */
+export function cleanLang(code: WwuLang, vals: Record<string, WwuValue> = {}): Record<string, WwuValue> {
+  const kept: Record<string, WwuValue> = {};
+  for (const f of WWU_FIELDS) {
+    let v = vals[f.key];
+    if (v === undefined) continue;
+    if (f.kind === 'lines' && Array.isArray(v)) v = (v as string[]).map(x => x.trim()).filter(Boolean);
+    if (f.kind === 'steps' && Array.isArray(v)) v = (v as WwuStep[]).filter(s => s.title?.trim() || s.body?.trim());
+    if (typeof v === 'string' && !v.trim()) continue;
+    if (Array.isArray(v) && !v.length) continue;
+    if (!same(v, WWU_DEFAULTS[code][f.key])) kept[f.key] = v;
   }
-  return out;
+  return kept;
 }
 
-export function WorkWithUsTab() {
-  const [lang, setLang] = useState<WwuLang>('en');
-  const [draft, setDraft] = useState<WwuOverrides>({});
+export async function loadWwuContent(): Promise<WwuOverrides> {
+  const s = await fetch(`${WWU_API_BASE}/settings`, { headers: wwuHeaders() }).then(r => r.json());
+  const o = s?.data?.workWithUsContent;
+  return o && typeof o === 'object' ? o : {};
+}
+
+/** Saves one language only: re-reads the latest saved text so the other
+ *  languages (edited on another screen) are never overwritten. */
+export async function saveWwuLang(code: WwuLang, vals: Record<string, WwuValue>): Promise<WwuOverrides> {
+  const latest = await loadWwuContent();
+  const kept = cleanLang(code, vals);
+  const next: WwuOverrides = { ...latest };
+  if (Object.keys(kept).length) next[code] = kept; else delete next[code];
+  const res = await fetch(`${WWU_API_BASE}/settings`, { method: 'POST', headers: wwuHeaders(), body: JSON.stringify({ workWithUsContent: next }) });
+  const json = await res.json();
+  if (!json.success) throw new Error(json.error || 'Save failed');
+  try { localStorage.setItem('wwu_content_cache', JSON.stringify(next)); } catch { /* ignore */ }
+  return next;
+}
+
+// ── AI help ───────────────────────────────────────────────────────────────────
+// The server's improve-field endpoint knows a fixed set of field styles; each
+// page field borrows the closest one, and the hidden context tells the AI
+// which page and field it is writing for.
+const AI_FIELD_KEY: Record<string, string> = {
+  titleLine1: 'heroLine1', titleLine2: 'heroLine2', subtitle: 'heroSubtitle',
+  bookCall: 'sectionHeading', sendBrief: 'sectionHeading', whyChooseTitle: 'sectionHeading',
+  prescreenTitle: 'sectionHeading', formTitle: 'sectionHeading',
+  tagRecommended: 'processStepTitle', tagAsync: 'processStepTitle',
+  bookCallDesc: 'sectionSubtitle', sendBriefDesc: 'sectionSubtitle', prescreenSubtitle: 'sectionSubtitle',
+  formSubtitle: 'sectionSubtitle', successMsg: 'sectionSubtitle',
+  freeNoCommitment: 'turnaroundNote',
+};
+const aiFieldKey = (f: WwuField) =>
+  f.kind === 'steps' ? 'howItWorks' : f.kind === 'lines' ? 'deliverables' : (AI_FIELD_KEY[f.key] || 'sectionSubtitle');
+
+const toAiText = (f: WwuField, v: WwuValue): string =>
+  f.kind === 'steps' ? (v as WwuStep[]).map((s, i) => `Step ${i + 1}: ${s.title} | ${s.body}`).join('\n')
+  : f.kind === 'lines' ? (v as string[]).join('\n')
+  : String(v ?? '');
+
+const fromAiText = (f: WwuField, text: string): WwuValue | null => {
+  const rows = text.split('\n').map(l => l.trim()).filter(Boolean);
+  if (f.kind === 'lines') return rows.map(l => l.replace(/^([-*•]|\d+[.)])\s+/, '')).filter(Boolean);
+  if (f.kind === 'steps') {
+    const steps = rows.map(l => l.replace(/^([-*•]|\d+[.)])\s+/, '').replace(/^step\s*\d+\s*[:.\-–—]\s*/i, ''))
+      .map(l => { const i = l.indexOf('|'); return i < 0 ? null : { title: l.slice(0, i).trim(), body: l.slice(i + 1).trim() }; })
+      .filter(Boolean) as WwuStep[];
+    return steps.length ? steps : null;
+  }
+  return text.trim();
+};
+
+const aiContext = (f: WwuField, v: WwuValue) => {
+  const n = Array.isArray(v) ? v.length : 0;
+  const extra =
+    f.kind === 'steps' ? ` Return exactly ${n || 4} items, one per line, each as "Title | Description".`
+    : f.kind === 'lines' ? ` Return ${n || 4} short items, one per line, no numbering.`
+    : '';
+  return `This text is for Fastoosh's "Work With Us" page (where brands and studios hire Fastoosh for motion design / video work or a discovery call), not the home page. Field: "${f.label}".${extra}`;
+};
+
+// ── Editor ────────────────────────────────────────────────────────────────────
+export function WorkWithUsTab({ onOpenTranslations }: { onOpenTranslations?: () => void }) {
+  const [vals, setVals] = useState<Record<string, WwuValue>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [translating, setTranslating] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [ai, setAi] = useState<WwuField | null>(null);
 
   useEffect(() => {
-    fetch(`${API_BASE}/settings`, { headers: headers() })
-      .then(r => r.json())
-      .then(s => {
-        const o = s?.data?.workWithUsContent;
-        setDraft(o && typeof o === 'object' ? clone(o) : {});
-      })
+    loadWwuContent()
+      .then(o => setVals(clone(o.en || {})))
       .catch(() => setMessage({ ok: false, text: 'Could not load the saved text.' }))
       .finally(() => setLoading(false));
   }, []);
 
-  const valueOf = (code: WwuLang, key: string): WwuValue => {
-    const v = draft[code]?.[key];
-    return v !== undefined ? v : clone(DEFAULTS[code][key] ?? '');
-  };
-  const isEdited = (code: WwuLang, key: string) =>
-    draft[code]?.[key] !== undefined && !same(draft[code]?.[key], DEFAULTS[code][key]);
-
-  const setValue = (key: string, v: WwuValue) => {
-    setDraft(d => ({ ...d, [lang]: { ...(d[lang] || {}), [key]: v } }));
-    setDirty(true); setMessage(null);
-  };
-  const resetField = (key: string) => {
-    setDraft(d => {
-      const vals = { ...(d[lang] || {}) };
-      delete vals[key];
-      return { ...d, [lang]: vals };
-    });
-    setDirty(true); setMessage(null);
-  };
-
-  // English fields changed but not (yet) in this language → it still shows old text.
-  const outOfSync = useMemo(() => {
-    if (lang === 'en') return [];
-    return WWU_FIELDS.filter(f => isEdited('en', f.key) && !isEdited(lang, f.key)).map(f => f.label);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draft, lang]);
-  const editedCount = WWU_FIELDS.filter(f => isEdited(lang, f.key)).length;
+  const setValue = (key: string, v: WwuValue) => { setVals(d => ({ ...d, [key]: v })); setDirty(true); setMessage(null); };
+  const resetField = (key: string) => { setVals(d => { const n = { ...d }; delete n[key]; return n; }); setDirty(true); setMessage(null); };
 
   const save = async () => {
     setSaving(true); setMessage(null);
     try {
-      const clean = cleanOverrides(draft);
-      const res = await fetch(`${API_BASE}/settings`, { method: 'POST', headers: headers(), body: JSON.stringify({ workWithUsContent: clean }) });
-      const json = await res.json();
-      if (!json.success) throw new Error(json.error || 'Save failed');
-      setDraft(clone(clean));
+      const next = await saveWwuLang('en', vals);
+      setVals(clone(next.en || {}));
       setDirty(false);
-      try { localStorage.setItem('wwu_content_cache', JSON.stringify(clean)); } catch { /* ignore */ }
-      setMessage({ ok: true, text: 'Saved — live on the page now. Click Republish so Google & AI see it too.' });
+      setMessage({ ok: true, text: 'Saved — live on the page now. Update French & Arabic in Translations, then Republish so Google & AI see it.' });
     } catch (err: any) {
       setMessage({ ok: false, text: err?.message || String(err) });
     }
     setSaving(false);
   };
 
-  const translateFromEnglish = async () => {
-    if (lang === 'en') return;
-    const target = LANGS.find(l => l.code === lang)!;
-    if (!confirm(`Replace the ${target.name} text with an AI translation of the current English text? You can review it before saving.`)) return;
-    setTranslating(true); setMessage(null);
-    try {
-      const source: Record<string, WwuValue> = {};
-      for (const f of WWU_FIELDS) source[f.key] = valueOf('en', f.key);
-      const res = await fetch(`${API_BASE}/admin/translate`, {
-        method: 'POST', headers: headers(),
-        body: JSON.stringify({ lang, langName: target.name, fields: flattenForTranslation(source) }),
-      });
-      const json = await res.json();
-      if (!json.success) throw new Error(json.error || 'Translation failed');
-      const translated = unflattenTranslation(source, json.data || {});
-      setDraft(d => ({ ...d, [lang]: { ...(d[lang] || {}), ...translated } }));
-      setDirty(true);
-      setMessage({ ok: true, text: `Translated to ${target.name}. Review it, then click Save.` });
-    } catch (err: any) {
-      setMessage({ ok: false, text: err?.message || String(err) });
-    }
-    setTranslating(false);
-  };
-
   if (loading) {
     return <GlassCard className="p-6 text-white/50 text-sm flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Loading…</GlassCard>;
   }
 
-  const rtl = lang === 'ar';
+  const editedCount = WWU_FIELDS.filter(f => wwuIsEdited(vals, 'en', f.key)).length;
 
   return (
     <div className="space-y-4">
@@ -159,8 +164,8 @@ export function WorkWithUsTab() {
           <div>
             <h2 className="text-2xl font-bold text-white">Work With Us page</h2>
             <p className="text-white/50 text-sm mt-1">
-              Edit the text of <a href="/work-with-us" target="_blank" rel="noreferrer" className="text-purple-300 hover:underline inline-flex items-center gap-1">/work-with-us <ExternalLink className="w-3 h-3" /></a>.
-              Empty or unchanged fields keep the built-in text.
+              The English text of <a href="/work-with-us" target="_blank" rel="noreferrer" className="text-purple-300 hover:underline inline-flex items-center gap-1">/work-with-us <ExternalLink className="w-3 h-3" /></a>.
+              Use <Sparkles className="w-3 h-3 inline text-purple-300" /> on any field to write it with AI. Unchanged fields keep the built-in text.
             </p>
           </div>
           <button type="button" onClick={save} disabled={saving || !dirty}
@@ -168,57 +173,49 @@ export function WorkWithUsTab() {
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} {saving ? 'Saving…' : dirty ? 'Save' : 'Saved'}
           </button>
         </div>
-
-        <div className="flex flex-wrap items-center gap-2 mt-4">
-          {LANGS.map(l => {
-            const n = WWU_FIELDS.filter(f => isEdited(l.code, f.key)).length;
-            return (
-              <button key={l.code} type="button" onClick={() => setLang(l.code)}
-                className={`px-3 py-1.5 rounded-lg text-sm border ${lang === l.code ? 'bg-purple-500/25 border-purple-400/50 text-white' : 'bg-white/5 border-white/10 text-white/60 hover:text-white'}`}>
-                {l.label}{n ? <span className="ml-1.5 text-[10px] text-purple-200">{n} edited</span> : null}
-              </button>
-            );
-          })}
-          {lang !== 'en' && (
-            <button type="button" onClick={translateFromEnglish} disabled={translating}
-              className="ml-auto flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-white/5 border border-white/10 text-white/70 hover:text-white disabled:opacity-50">
-              {translating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Languages className="w-4 h-4" />}
-              {translating ? 'Translating…' : 'Translate from English ✨'}
-            </button>
-          )}
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-white/45">
+          <span>{editedCount ? `${editedCount} field${editedCount === 1 ? '' : 's'} edited` : 'Showing the built-in text'}</span>
+          <span>·</span>
+          <button type="button" onClick={onOpenTranslations} className="inline-flex items-center gap-1 text-purple-300 hover:text-purple-200">
+            <Languages className="w-3.5 h-3.5" /> French & Arabic: Translations → Work With Us
+          </button>
         </div>
-
-        {outOfSync.length > 0 && (
-          <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
-            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-            <span>English was changed but this language still shows its old text for: {outOfSync.join(', ')}. Use “Translate from English” or edit them here.</span>
-          </div>
-        )}
-        {message && (
-          <p className={`mt-3 text-sm ${message.ok ? 'text-emerald-300' : 'text-red-300'}`}>{message.text}</p>
-        )}
-        {lang !== 'en' && editedCount === 0 && !outOfSync.length && (
-          <p className="mt-3 text-xs text-white/40">Showing the built-in {LANGS.find(l => l.code === lang)!.name} text.</p>
-        )}
+        {message && <p className={`mt-3 text-sm ${message.ok ? 'text-emerald-300' : 'text-red-300'}`}>{message.text}</p>}
       </GlassCard>
 
       {WWU_GROUPS.map(group => (
         <GlassCard key={group.title} className="p-4 sm:p-6 space-y-4">
           <h3 className="text-lg font-semibold text-white">{group.title}</h3>
           {group.fields.map(f => (
-            <FieldEditor key={`${lang}-${f.key}`} field={f} rtl={rtl}
-              value={valueOf(lang, f.key)} edited={isEdited(lang, f.key)}
-              onChange={v => setValue(f.key, v)} onReset={() => resetField(f.key)} />
+            <WwuFieldEditor key={f.key} field={f}
+              value={wwuValueOf(vals, 'en', f.key)} edited={wwuIsEdited(vals, 'en', f.key)}
+              onChange={v => setValue(f.key, v)} onReset={() => resetField(f.key)} onAi={() => setAi(f)} />
           ))}
         </GlassCard>
       ))}
+
+      {ai && (
+        <AIImproveModal
+          fieldLabel={ai.label}
+          fieldKey={aiFieldKey(ai)}
+          currentValue={toAiText(ai, wwuValueOf(vals, 'en', ai.key))}
+          context={{ entityType: 'home' }}
+          extraInstruction={aiContext(ai, wwuValueOf(vals, 'en', ai.key))}
+          onApply={text => {
+            const v = fromAiText(ai, text);
+            if (v === null) setMessage({ ok: false, text: 'Could not read the AI result for that list. Try again.' });
+            else setValue(ai.key, v);
+          }}
+          onClose={() => setAi(null)}
+        />
+      )}
     </div>
   );
 }
 
-function FieldEditor({ field: f, value, edited, rtl, onChange, onReset }: {
-  field: WwuField; value: WwuValue; edited: boolean; rtl: boolean;
-  onChange: (v: WwuValue) => void; onReset: () => void;
+export function WwuFieldEditor({ field: f, value, edited, rtl = false, onChange, onReset, onAi }: {
+  field: WwuField; value: WwuValue; edited: boolean; rtl?: boolean;
+  onChange: (v: WwuValue) => void; onReset: () => void; onAi?: () => void;
 }) {
   const dir = rtl ? 'rtl' : 'ltr';
   return (
@@ -228,11 +225,19 @@ function FieldEditor({ field: f, value, edited, rtl, onChange, onReset }: {
           {f.label}
           {edited && <span className="ml-2 text-[10px] uppercase tracking-wider text-purple-300">edited</span>}
         </label>
-        {edited && (
-          <button type="button" onClick={onReset} className="text-xs text-white/40 hover:text-white flex items-center gap-1">
-            <RotateCcw className="w-3 h-3" /> Reset
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          {edited && (
+            <button type="button" onClick={onReset} className="text-xs text-white/40 hover:text-white flex items-center gap-1">
+              <RotateCcw className="w-3 h-3" /> Reset
+            </button>
+          )}
+          {onAi && (
+            <button type="button" onClick={onAi} title="Write with AI"
+              className="text-xs text-purple-300 hover:text-purple-200 flex items-center gap-1">
+              <Sparkles className="w-3.5 h-3.5" /> AI
+            </button>
+          )}
+        </div>
       </div>
 
       {f.kind === 'text' && (

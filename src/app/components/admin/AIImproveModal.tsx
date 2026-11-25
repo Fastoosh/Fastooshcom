@@ -23,6 +23,8 @@ export interface AIImproveModalProps {
   context: AIImproveContext;
   onApply: (value: string) => void;
   onClose: () => void;
+  /** Extra context sent with every request (not shown to the admin). */
+  extraInstruction?: string;
 }
 
 export function AIImproveModal({
@@ -32,6 +34,7 @@ export function AIImproveModal({
   context,
   onApply,
   onClose,
+  extraInstruction,
 }: AIImproveModalProps) {
   const [instruction, setInstruction] = useState('');
   const [suggestion, setSuggestion] = useState('');
@@ -55,7 +58,7 @@ export function AIImproveModal({
           fieldKey,
           currentValue,
           context,
-          instruction: instruction.trim(),
+          instruction: [extraInstruction, instruction.trim()].filter(Boolean).join(' '),
           isAlternative,
         }),
       });

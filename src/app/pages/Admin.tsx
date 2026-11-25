@@ -1124,7 +1124,10 @@ export function Admin() {
 
           {/* GUIDE TAB */}
           <TabsContent value="workwithus">
-            <WorkWithUsTab />
+            <WorkWithUsTab onOpenTranslations={() => {
+              try { sessionStorage.setItem('translations_open', 'workWithUs'); } catch { /* ignore */ }
+              setActiveTab('translations');
+            }} />
           </TabsContent>
 
           <TabsContent value="usecases">
