@@ -6068,6 +6068,39 @@ app.get('/make-server-e07959ec/admin/behavior/heatmap', requireAuth, async (c) =
 // ========== ADMIN MESSAGES ENDPOINTS ==========
 
 // GET /admin/messages — all stored contact + support messages
+// ── Short links (fastoosh.com/go/<code>, Admin → Short links) ──────────────────
+// The links live in the site setting `shortLinks`; the redirect itself is a
+// Vercel function (api/go.js) that calls this to count a click.
+app.post('/make-server-e07959ec/short-links/hit', async (c) => {
+  try {
+    const { code } = await c.req.json().catch(() => ({}));
+    const clean = String(code || '').toLowerCase().trim();
+    if (!/^[a-z0-9][a-z0-9-]{0,59}$/.test(clean)) return c.json({ success: false, error: 'bad code' }, 400);
+    const { data: row } = await supabase.from('site_settings').select('value').eq('key', 'shortLinks').maybeSingle();
+    const links = Array.isArray(row?.value) ? row!.value : [];
+    if (!links.some((l: any) => String(l?.code || '').toLowerCase() === clean)) return c.json({ success: false, error: 'unknown code' }, 404);
+    const key = `shortlink:hits:${clean}`;
+    const prev = (await kv.get(key)) || {};
+    const now = new Date().toISOString();
+    await kv.set(key, { code: clean, count: (Number(prev.count) || 0) + 1, firstAt: prev.firstAt || now, lastAt: now });
+    return c.json({ success: true });
+  } catch (err) {
+    console.log('[short-links/hit] Error:', err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+app.get('/make-server-e07959ec/admin/short-links/hits', requireAuth, async (c) => {
+  try {
+    const rows: any[] = await kvGetAllByPrefix('shortlink:hits:');
+    const data: Record<string, { count: number; lastAt?: string }> = {};
+    for (const r of rows) if (r?.code) data[r.code] = { count: Number(r.count) || 0, lastAt: r.lastAt };
+    return c.json({ success: true, data });
+  } catch (err) {
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
 app.get('/make-server-e07959ec/admin/messages', requireAuth, async (c) => {
   try {
     const all: any[] = await kvGetAllByPrefix('msg:');

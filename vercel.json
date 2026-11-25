@@ -2,6 +2,10 @@
   "cleanUrls": true,
   "rewrites": [
     {
+      "source": "/go/:code",
+      "destination": "/api/go?code=:code"
+    },
+    {
       "source": "/(.*)",
       "destination": "/app"
     }

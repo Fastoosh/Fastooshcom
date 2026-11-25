@@ -138,6 +138,7 @@ export const ADMIN_NAV: { label: string; items: { value: string; label: string; 
     { value: 'broadcast', label: '📣 Broadcast' },
     { value: 'messages',  label: '🔧 Tool Requests' },
     { value: 'traffic',   label: '🌐 Traffic' },
+    { value: 'shortlinks', label: '🔗 Short links' },
   ]},
   { label: 'Site', items: [
     { value: 'seo',          label: 'SEO' },

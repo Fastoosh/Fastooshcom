@@ -7,6 +7,7 @@ import { Button } from '../components/ui/button';
 import { X, LogOut, Menu, Search } from 'lucide-react';
 import { ActivityTab } from '../components/admin/ActivityTab';
 import { UseCasesTab } from '../components/admin/UseCasesTab';
+import { ShortLinksTab } from '../components/admin/ShortLinksTab';
 import { PageTextTab } from '../components/admin/PageTextTab';
 import { RepublishButton } from '../components/admin/RepublishButton';
 import { AdminSearch, type AdminSearchResult } from '../components/admin/AdminSearch';
@@ -639,7 +640,7 @@ export function Admin() {
       // This form holds the copy loaded when the admin opened, so sending it
       // would overwrite newer edits made in the Use cases tab.
       // Same for the page text (Admin → Page Text).
-      const { useCases: _useCases, toolExtras: _toolExtras, workWithUsContent: _wwu, aboutContent: _about,
+      const { useCases: _useCases, toolExtras: _toolExtras, workWithUsContent: _wwu, aboutContent: _about, shortLinks: _shortLinks,
         projectsPageContent: _projectsPage, toolsPageContent: _toolsPage, ...rest } = settings as any;
 
       const response = await fetch(url, {
@@ -939,6 +940,10 @@ export function Admin() {
               try { sessionStorage.setItem('translations_open', `pages:${page}`); } catch { /* ignore */ }
               setActiveTab('translations');
             }} />
+          </TabsContent>
+
+          <TabsContent value="shortlinks">
+            <ShortLinksTab />
           </TabsContent>
 
           <TabsContent value="usecases">
