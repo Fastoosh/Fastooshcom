@@ -84,7 +84,8 @@ export function SeoPreviews({ path, draft }: { path: string; draft: Draft }) {
       )}
 
       <p className="text-[11px] text-white/35 mt-3">
-        {!live.ok ? `Could not read the live page (${live.error}).`
+        {!live ? ''
+          : !live.ok ? `Could not read the live page (${live.error}).`
           : !live.published ? 'This page is not in the published site yet — crawlers currently see a blank page. Republish to fix.'
           : edited ? 'Shows your edits. Save, then Republish so crawlers see them.'
           : `What crawlers see now at ${SITE_ORIGIN}${path}.`}
