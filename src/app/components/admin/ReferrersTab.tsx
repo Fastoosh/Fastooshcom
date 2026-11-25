@@ -13,6 +13,10 @@ import {
   Files, Tag, X, Pencil, Activity,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import {
+  loadShortHits, loadShortLinks, saveShortLinks, sameUrl, slugifyCode, isValidCode, suggestCode,
+  type ShortHits, type ShortLink,
+} from '../../utils/shortLinks';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import type { IconDefinition } from '@fortawesome/fontawesome-svg-core';
@@ -251,6 +255,59 @@ function UTMBuilder() {
   const [editTags,      setEditTags]      = useState<string[]>([]);
   const [editTagInput,  setEditTagInput]  = useState('');
   const [patching,      setPatching]      = useState(false);
+  // short links (fastoosh.com/go/<code>) — see utils/shortLinks
+  const [shortLinks,    setShortLinks]    = useState<ShortLink[]>([]);
+  const [shortHits,     setShortHits]     = useState<ShortHits | null>(null);
+  const [site,          setSite]          = useState('https://www.fastoosh.com');
+  const [saveShortCode, setSaveShortCode] = useState('');
+  const [shorteningId,  setShorteningId]  = useState<string | null>(null);
+  const [shortenCode,   setShortenCode]   = useState('');
+  const [shortBusy,     setShortBusy]     = useState(false);
+  const [shortErr,      setShortErr]      = useState('');
+  const [copiedShort,   setCopiedShort]   = useState<string | null>(null);
+
+  function fetchShort() {
+    loadShortLinks().then(r => { setShortLinks(r.links); setSite(r.site); }).catch(() => {});
+    loadShortHits().then(setShortHits);
+  }
+  // The short link made for a saved UTM link (or an older one with the same URL).
+  const shortFor = (link: SavedUTM) =>
+    shortLinks.find(x => x.utmId === link.id) ?? shortLinks.find(x => !x.utmId && sameUrl(x.url, link.url));
+  const shortUrl = (code: string) => `${site}/go/${code}`;
+  const shortDisplay = (code: string) => shortUrl(code).replace(/^https?:\/\/(www\.)?/, '');
+
+  async function createShort(link: { id: string; url: string; label: string }, rawCode: string): Promise<boolean> {
+    const code = slugifyCode(rawCode);
+    if (!isValidCode(code)) { setShortErr('Short code: use letters, numbers and dashes.'); return false; }
+    setShortBusy(true); setShortErr('');
+    try {
+      const next = await saveShortLinks(list => {
+        if (list.some(x => x.code === code)) throw new Error(`/go/${code} is already used — pick another code.`);
+        return [{ code, url: link.url, utmId: link.id, label: link.label, createdAt: new Date().toISOString() }, ...list];
+      });
+      setShortLinks(next);
+      return true;
+    } catch (e: any) {
+      setShortErr(e?.message || String(e));
+      return false;
+    } finally {
+      setShortBusy(false);
+    }
+  }
+  async function deleteShort(code: string) {
+    try { setShortLinks(await saveShortLinks(list => list.filter(x => x.code !== code))); }
+    catch (e: any) { setShortErr(e?.message || String(e)); }
+  }
+  function copyShort(code: string) {
+    copyToClipboard(shortUrl(code));
+    setCopiedShort(code);
+    setTimeout(() => setCopiedShort(null), 2000);
+  }
+  function startShorten(link: SavedUTM) {
+    setShorteningId(link.id);
+    setShortErr('');
+    setShortenCode(suggestCode([link.campaign, link.source], shortLinks));
+  }
 
   // Fetch tools list on mount
   useEffect(() => {
@@ -273,7 +330,7 @@ function UTMBuilder() {
       .catch(() => {})
       .finally(() => setLoadingSaved(false));
   }
-  useEffect(() => { fetchSaved(); fetchStats(); }, []);
+  useEffect(() => { fetchSaved(); fetchStats(); fetchShort(); }, []);
 
   // Auto-generate label from current form state
   function autoLabel() {
@@ -289,6 +346,8 @@ function UTMBuilder() {
     setSaveLabel(autoLabel());
     setSaveTags([]);
     setTagInput('');
+    setSaveShortCode(suggestCode([campaign, source], shortLinks));
+    setShortErr('');
     setShowSaveInput(true);
     setSavedOk(false);
   }
@@ -310,6 +369,10 @@ function UTMBuilder() {
       const j = await res.json();
       if (j.success) {
         setSavedLinks(prev => [j.data, ...prev]);
+        // Optional short link for it (fastoosh.com/go/<code>).
+        if (saveShortCode.trim() && !(await createShort({ id: j.data.id, url: j.data.url, label: j.data.label }, saveShortCode))) {
+          return; // keep the panel open so the error is visible; the UTM link itself is saved
+        }
         setSavedOk(true);
         setTimeout(() => { setSavedOk(false); setShowSaveInput(false); }, 1500);
       }
@@ -321,10 +384,13 @@ function UTMBuilder() {
   }
 
   async function handleDelete(id: string) {
+    const short = shortLinks.find(x => x.utmId === id);
+    if (short && !confirm(`This link has the short link /go/${short.code}. Delete both? Anyone using the short link will land on the home page.`)) return;
     setDeletingId(id);
     try {
       await fetch(`${API_BASE}/utm-saved/${id}`, { method: 'DELETE', headers: getAuthHeaders() });
       setSavedLinks(prev => prev.filter(l => l.id !== id));
+      if (short) await deleteShort(short.code);
     } catch (err) {
       console.error('[utm-saved] delete error:', err);
     } finally {
@@ -378,6 +444,8 @@ function UTMBuilder() {
     setActivePlat(link.platform);
     setSaveTags([...(link.tags ?? [])]);
     setSaveLabel(`Copy of ${link.label}`);
+    setSaveShortCode(suggestCode([link.campaign, link.source], shortLinks));
+    setShortErr('');
     setSavedOk(false);
     setShowSaveInput(true);
   }
@@ -826,6 +894,20 @@ function UTMBuilder() {
                       </button>
                     </div>
 
+                    {/* Optional short link */}
+                    <div className="flex items-center gap-1.5 bg-white/4 border border-white/10 rounded-lg px-2 py-1.5 focus-within:border-purple-500/40 transition-all">
+                      <Link2 className="w-3 h-3 text-purple-300 flex-shrink-0" />
+                      <span className="text-white/35 text-[11px] whitespace-nowrap">{site.replace(/^https?:\/\/(www\.)?/, '')}/go/</span>
+                      <input
+                        type="text"
+                        value={saveShortCode}
+                        onChange={e => { setSaveShortCode(e.target.value.toLowerCase()); setShortErr(''); }}
+                        placeholder="short code (leave empty for none)"
+                        className="flex-1 min-w-[80px] bg-transparent text-[11px] text-white placeholder:text-white/20 focus:outline-none"
+                      />
+                    </div>
+                    {shortErr && <p className="text-red-300 text-[11px]">{shortErr}</p>}
+
                     {/* Tag chips input */}
                     <div className="flex flex-wrap items-center gap-1.5 min-h-[32px] bg-white/4 border border-white/10
                       rounded-lg px-2 py-1.5 cursor-text focus-within:border-purple-500/40 transition-all"
@@ -1010,6 +1092,51 @@ function UTMBuilder() {
                                 )}
                               </div>
                               <p className="text-white/25 text-[10px] font-mono truncate mt-0.5">{link.url}</p>
+                              {/* Short link */}
+                              {(() => {
+                                const short = shortFor(link);
+                                if (short) {
+                                  const clicks = shortHits?.[short.code]?.count ?? 0;
+                                  return (
+                                    <div className="flex items-center gap-1.5 mt-1 text-[11px] min-w-0">
+                                      <Link2 className="w-3 h-3 text-purple-300 flex-shrink-0" />
+                                      <span className="text-purple-200 font-medium truncate">{shortDisplay(short.code)}</span>
+                                      <button onClick={() => copyShort(short.code)} title="Copy short link"
+                                        className="text-white/40 hover:text-white flex-shrink-0">
+                                        {copiedShort === short.code ? <CheckCheck className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                                      </button>
+                                      <span className="text-white/35 whitespace-nowrap"
+                                        title={shortHits?.[short.code]?.lastAt ? `Last click ${new Date(shortHits[short.code].lastAt!).toLocaleString()}` : ''}>
+                                        · {shortHits ? `${clicks} click${clicks === 1 ? '' : 's'}` : 'clicks after server update'}
+                                      </span>
+                                    </div>
+                                  );
+                                }
+                                if (shorteningId !== link.id) return null;
+                                const go = async () => { if (await createShort(link, shortenCode)) setShorteningId(null); };
+                                return (
+                                  <div className="mt-1.5 space-y-1">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-white/35 text-[11px] whitespace-nowrap">/go/</span>
+                                      <input
+                                        autoFocus
+                                        value={shortenCode}
+                                        onChange={e => { setShortenCode(e.target.value.toLowerCase()); setShortErr(''); }}
+                                        onKeyDown={e => { if (e.key === 'Enter') go(); if (e.key === 'Escape') setShorteningId(null); }}
+                                        className="flex-1 min-w-0 bg-white/5 border border-white/10 rounded px-2 py-1 text-[11px] text-white focus:outline-none focus:border-purple-500/50"
+                                      />
+                                      <button onClick={go} disabled={shortBusy}
+                                        className="px-2 py-1 rounded bg-purple-600 hover:bg-purple-500 text-white text-[11px] font-semibold disabled:opacity-50">
+                                        {shortBusy ? '…' : 'Create'}
+                                      </button>
+                                      <button onClick={() => setShorteningId(null)} title="Cancel" className="text-white/40 hover:text-white">
+                                        <X className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                    {shortErr && <p className="text-red-300 text-[11px]">{shortErr}</p>}
+                                  </div>
+                                );
+                              })()}
                               {/* Tag chips */}
                               {tags.length > 0 && (
                                 <div className="flex flex-wrap gap-1 mt-1.5">
@@ -1063,6 +1190,17 @@ function UTMBuilder() {
                               >
                                 <RotateCcw className="w-3 h-3" />
                               </button>
+                              {/* Short link */}
+                              {!shortFor(link) && (
+                                <button
+                                  onClick={() => startShorten(link)}
+                                  title="Create a short link (fastoosh.com/go/…)"
+                                  className="w-7 h-7 flex items-center justify-center rounded-lg bg-white/5 hover:bg-purple-500/20
+                                    hover:text-purple-300 text-white/40 transition-all"
+                                >
+                                  <Link2 className="w-3 h-3" />
+                                </button>
+                              )}
                               {/* Copy URL */}
                               <button
                                 onClick={() => handleCopySaved(link.url, link.id)}
@@ -1175,6 +1313,29 @@ function UTMBuilder() {
                 )}
               </div>
             )}
+            {(() => {
+              const other = shortLinks.filter(x => !savedLinks.some(l => shortFor(l)?.code === x.code));
+              if (!other.length) return null;
+              return (
+                <div className="mt-4 pt-3 border-t border-white/8 space-y-1.5">
+                  <p className="text-white/40 text-[10px] font-semibold uppercase tracking-widest">Other short links</p>
+                  {other.map(x => (
+                    <div key={x.code} className="flex items-center gap-2 text-[11px]">
+                      <Link2 className="w-3 h-3 text-purple-300 flex-shrink-0" />
+                      <span className="text-purple-200 font-medium">/go/{x.code}</span>
+                      <span className="text-white/30 truncate flex-1 font-mono" title={x.url}>→ {x.url}</span>
+                      <span className="text-white/35 whitespace-nowrap">{shortHits ? `${shortHits[x.code]?.count ?? 0} clicks` : ''}</span>
+                      <button onClick={() => copyShort(x.code)} title="Copy short link" className="text-white/40 hover:text-white">
+                        {copiedShort === x.code ? <CheckCheck className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                      </button>
+                      <button onClick={() => { if (confirm(`Delete /go/${x.code}?`)) deleteShort(x.code); }} title="Delete" className="text-white/40 hover:text-red-300">
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
           </GlassCard>
         </div>
       </div>

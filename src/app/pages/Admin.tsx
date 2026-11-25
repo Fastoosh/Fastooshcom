@@ -7,7 +7,6 @@ import { Button } from '../components/ui/button';
 import { X, LogOut, Menu, Search } from 'lucide-react';
 import { ActivityTab } from '../components/admin/ActivityTab';
 import { UseCasesTab } from '../components/admin/UseCasesTab';
-import { ShortLinksTab } from '../components/admin/ShortLinksTab';
 import { PageTextTab } from '../components/admin/PageTextTab';
 import { RepublishButton } from '../components/admin/RepublishButton';
 import { AdminSearch, type AdminSearchResult } from '../components/admin/AdminSearch';
@@ -940,10 +939,6 @@ export function Admin() {
               try { sessionStorage.setItem('translations_open', `pages:${page}`); } catch { /* ignore */ }
               setActiveTab('translations');
             }} />
-          </TabsContent>
-
-          <TabsContent value="shortlinks">
-            <ShortLinksTab />
           </TabsContent>
 
           <TabsContent value="usecases">

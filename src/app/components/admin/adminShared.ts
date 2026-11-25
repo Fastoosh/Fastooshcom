@@ -137,8 +137,7 @@ export const ADMIN_NAV: { label: string; items: { value: string; label: string; 
     { value: 'licenses',  label: '🔑 Licenses' },
     { value: 'broadcast', label: '📣 Broadcast' },
     { value: 'messages',  label: '🔧 Tool Requests' },
-    { value: 'traffic',   label: '🌐 Traffic' },
-    { value: 'shortlinks', label: '🔗 Short links' },
+    { value: 'traffic',   label: '🌐 Traffic & links' },
   ]},
   { label: 'Site', items: [
     { value: 'seo',          label: 'SEO' },
