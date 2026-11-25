@@ -568,6 +568,12 @@ export function TranslationTab() {
   const [isSaving,    setIsSaving]    = useState(false);
   const [status,      setStatus]      = useState<{ type: 'success' | 'error' | 'loading' | null; msg: string }>({ type: null, msg: '' });
   const [collapsed,   setCollapsed]   = useState<Record<string, boolean>>({});
+  const [paidTier,    setPaidTier]    = useState(false);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/settings`, { headers: { Authorization: `Bearer ${publicAnonKey}`, 'X-Admin-Token': localStorage.getItem('admin_token') || '' } })
+      .then(r => r.json()).then(s => setPaidTier(s?.data?.geminiPaidTier === true)).catch(() => {});
+  }, []);
 
   const token = localStorage.getItem('admin_token') || '';
   const authHeaders = {
@@ -731,7 +737,10 @@ export function TranslationTab() {
       const entries = Object.entries(toTranslate);
       const MAX_FIELDS = 12;
       const MAX_CHARS  = 3500;
-      const DELAY_MS   = 4000; // Gemini free tier: 15 requests / minute
+      // Free key: one request at a time, 4 s apart (15 requests / minute).
+      // Paid key (Admin → Settings → Key plan): 4 at once, no waiting.
+      const DELAY_MS    = paidTier ? 0 : 4000;
+      const CONCURRENCY = paidTier ? 4 : 1;
       const batches: Array<Array<[string, string]>> = [];
       let cur: Array<[string, string]> = [];
       let curChars = 0;
@@ -749,7 +758,7 @@ export function TranslationTab() {
       const isQuota = (msg = '') => /429|quota|rate limit|RESOURCE_EXHAUSTED/i.test(msg);
 
       const callTranslate = async (batch: Array<[string, string]>) => {
-        if (requests++ > 0) await new Promise(r => setTimeout(r, DELAY_MS));
+        if (requests++ > 0 && DELAY_MS) await new Promise(r => setTimeout(r, DELAY_MS));
         const ctrl = new AbortController();
         const t = setTimeout(() => ctrl.abort(), 70_000);
         try {
@@ -787,12 +796,22 @@ export function TranslationTab() {
         setStatus({ type: 'loading', msg: `🔄 Translating… ${doneCount}/${entries.length} fields done` });
       };
 
-      setStatus({ type: 'loading', msg: `🔄 Translating… 0/${entries.length} fields (${batches.length} batches)` });
+      setStatus({ type: 'loading', msg: `🔄 Translating… 0/${entries.length} fields (${batches.length} batches${paidTier ? ', paid key — fast mode' : ''})` });
       try {
-        for (const b of batches) await runBatch(b);
+        let next = 0;
+        let quotaErr: any = null;
+        const worker = async () => {
+          while (!quotaErr && next < batches.length) {
+            const b = batches[next++];
+            try { await runBatch(b); } catch (e) { quotaErr = e; }
+          }
+        };
+        await Promise.all(Array.from({ length: Math.min(CONCURRENCY, batches.length) }, worker));
+        if (quotaErr) throw quotaErr;
       } catch (err: any) {
         throw new Error(
           `⚠️ Gemini quota reached after ${doneCount}/${entries.length} fields.\n` +
+          (paidTier ? `If your key is actually on the free plan, set Admin → Settings → Key plan to Free.\n` : '') +
           `The translated fields are kept — click "Save Translations" now, wait a minute, then click "Translate Missing" to continue.` +
           (/day|daily/i.test(err.message) ? `\nIf it is the daily limit, it resets at midnight Pacific Time.` : ''),
         );

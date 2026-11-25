@@ -156,6 +156,7 @@ interface Settings {
   };
   geminiApiKey?: string;
   geminiModel?: string;
+  geminiPaidTier?: boolean;
 }
 
 
@@ -1583,6 +1584,7 @@ export function Admin() {
                     {settings.geminiApiKey ? `${settings.geminiApiKey.slice(0, 8)}${'•'.repeat(20)}` : 'Not set'}
                   </p>
                   <p className="text-gray-600 text-xs mt-0.5">Used for all AI content generation features. Click "Edit Settings" to update.</p>
+                  <p className="text-gray-500 text-xs mt-1">Plan: <span className={settings.geminiPaidTier ? 'text-purple-300' : 'text-gray-400'}>{settings.geminiPaidTier ? 'Paid (fast bulk translation)' : 'Free'}</span></p>
                 </div>
 
                 <div className="p-4 bg-white/5 rounded-lg border border-white/10">
@@ -4068,6 +4070,23 @@ function SettingsForm({
                 </p>
               )}
               <p className="text-gray-500 text-xs mt-1">Overrides the GEMINI_API_KEY environment variable. Switch keys when you hit quota limits.</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Key plan</label>
+              <div className="inline-flex rounded-lg border border-white/15 bg-black/40 p-1">
+                {([[false, 'Free'], [true, 'Paid']] as const).map(([paid, label]) => (
+                  <button key={label} type="button"
+                    onClick={() => setFormData({ ...formData, geminiPaidTier: paid })}
+                    className={`px-4 py-1.5 rounded-md text-sm transition-colors ${!!formData.geminiPaidTier === paid ? 'bg-purple-600 text-white' : 'text-white/50 hover:text-white'}`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-gray-500 text-xs mt-1">
+                {formData.geminiPaidTier
+                  ? 'Paid: bulk translations run several requests at once, with no waiting — much faster.'
+                  : 'Free: bulk translations wait between requests to stay under Google’s 15 requests / minute limit.'}
+              </p>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">
