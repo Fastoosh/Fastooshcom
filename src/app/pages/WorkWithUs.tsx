@@ -11,6 +11,7 @@ import {
   ChevronLeft, Loader2, Shield, Globe, Zap, MessageSquare,
 } from "lucide-react";
 import { projectId, publicAnonKey } from "/utils/supabase/info";
+import { baseLang, hasValue, readCachedOverrides, writeCachedOverrides, type WwuOverrides } from "../utils/workWithUsContent";
 
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-e07959ec`;
 
@@ -21,21 +22,30 @@ export function WorkWithUs() {
   const { t, i18n } = useTranslation();
   const { isRTL } = useLanguage();
 
+  // Text edited in Admin → Work With Us (falls back to the built-in text).
+  const [wwuOverrides, setWwuOverrides] = useState<WwuOverrides>(() => readCachedOverrides());
+  const lang = baseLang(i18n.language);
+  const tw = (key: string, opts?: any): any => {
+    const v = wwuOverrides?.[lang]?.[key];
+    if (hasValue(v)) return v;
+    return t(`workWithUs.${key}`, opts);
+  };
+
   // Translated arrays — memoised per language so they only recompute when the
   // language actually changes, not on every unrelated render (Option 4).
   const {
     callSteps, briefSteps, projectTypes,
     budgetRanges, timelines, trustBadges, trustSignalsData,
   } = useMemo(() => ({
-    callSteps:       t('workWithUs.callSteps',    { returnObjects: true }) as Array<{ title: string; body: string }>,
-    briefSteps:      t('workWithUs.briefSteps',   { returnObjects: true }) as Array<{ title: string; body: string }>,
-    projectTypes:    t('workWithUs.projectTypes', { returnObjects: true }) as string[],
-    budgetRanges:    t('workWithUs.budgetRanges', { returnObjects: true }) as string[],
-    timelines:       t('workWithUs.timelines',    { returnObjects: true }) as string[],
-    trustBadges:     t('workWithUs.trustBadges',  { returnObjects: true }) as string[],
-    trustSignalsData:t('workWithUs.trustSignals', { returnObjects: true }) as Array<{ title: string; body: string }>,
+    callSteps:       tw('callSteps',    { returnObjects: true }) as Array<{ title: string; body: string }>,
+    briefSteps:      tw('briefSteps',   { returnObjects: true }) as Array<{ title: string; body: string }>,
+    projectTypes:    tw('projectTypes', { returnObjects: true }) as string[],
+    budgetRanges:    tw('budgetRanges', { returnObjects: true }) as string[],
+    timelines:       tw('timelines',    { returnObjects: true }) as string[],
+    trustBadges:     tw('trustBadges',  { returnObjects: true }) as string[],
+    trustSignalsData:tw('trustSignals', { returnObjects: true }) as Array<{ title: string; body: string }>,
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [i18n.language]);
+  }), [i18n.language, wwuOverrides]);
 
   // ── Calendly URL from settings ──────────────────────────────────────────
   const [calendlyUrl,     setCalendlyUrl]     = useState<string>("");
@@ -44,7 +54,13 @@ export function WorkWithUs() {
   useEffect(() => {
     fetch(`${API_BASE}/settings`, { headers: { Authorization: `Bearer ${publicAnonKey}` } })
       .then(r => r.json())
-      .then(res => setCalendlyUrl(res.data?.calendlyUrl || ""))
+      .then(res => {
+        setCalendlyUrl(res.data?.calendlyUrl || "");
+        const o = res.data?.workWithUsContent;
+        const next = o && typeof o === "object" ? o : {};
+        setWwuOverrides(next);
+        writeCachedOverrides(next);
+      })
       .catch(err => console.error("Failed to load Calendly URL:", err))
       .finally(() => setCalendlyLoading(false));
   }, []);
@@ -77,7 +93,7 @@ export function WorkWithUs() {
       });
       const result = await res.json();
       if (result.success) {
-        setSubmitStatus({ type: "success", message: result.message || t('workWithUs.successMsg') });
+        setSubmitStatus({ type: "success", message: result.message || tw('successMsg') });
         setFormData({ name: "", email: "", projectType: "", timeline: "", budget: "", message: "" });
       } else {
         setSubmitStatus({ type: "error", message: result.error || "Failed to send. Please try again." });
@@ -122,14 +138,14 @@ export function WorkWithUs() {
         {/* Header */}
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }} className="text-center mb-16">
           <h1 className="text-4xl sm:text-5xl md:text-6xl tracking-tight mb-6">
-            {t('workWithUs.titleLine1')}
+            {tw('titleLine1')}
             <br />
             <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
-              {t('workWithUs.titleLine2')}
+              {tw('titleLine2')}
             </span>
           </h1>
           <p className="text-lg md:text-xl text-white/60 max-w-2xl mx-auto">
-            {t('workWithUs.subtitle')}
+            {tw('subtitle')}
           </p>
         </motion.div>
 
@@ -149,10 +165,10 @@ export function WorkWithUs() {
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-3">
-                        <h2 className="text-2xl">{t('workWithUs.bookCall')}</h2>
-                        <span className="text-xs px-2.5 py-1 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 font-medium">{t('workWithUs.tagRecommended')}</span>
+                        <h2 className="text-2xl">{tw('bookCall')}</h2>
+                        <span className="text-xs px-2.5 py-1 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 font-medium">{tw('tagRecommended')}</span>
                       </div>
-                      <p className="text-white/60 leading-relaxed mb-6">{t('workWithUs.bookCallDesc')}</p>
+                      <p className="text-white/60 leading-relaxed mb-6">{tw('bookCallDesc')}</p>
                       <ul className="space-y-2">
                         {callSteps.slice(0, 3).map((s, i) => (
                           <li key={i} className="flex items-center gap-2 text-sm text-white/70">
@@ -163,7 +179,7 @@ export function WorkWithUs() {
                       </ul>
                     </div>
                     <div className="flex items-center gap-2 rtl:flex-row-reverse text-purple-400 font-medium text-sm group-hover:gap-3 transition-all duration-200">
-                      {t('workWithUs.bookCall')} <ArrowRight className="w-4 h-4 rtl:rotate-180" />
+                      {tw('bookCall')} <ArrowRight className="w-4 h-4 rtl:rotate-180" />
                     </div>
                   </div>
                 </GlassCard>
@@ -178,10 +194,10 @@ export function WorkWithUs() {
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-3">
-                        <h2 className="text-2xl">{t('workWithUs.sendBrief')}</h2>
-                        <span className="text-xs px-2.5 py-1 rounded-full bg-white/5 text-white/50 border border-white/10 font-medium">{t('workWithUs.tagAsync')}</span>
+                        <h2 className="text-2xl">{tw('sendBrief')}</h2>
+                        <span className="text-xs px-2.5 py-1 rounded-full bg-white/5 text-white/50 border border-white/10 font-medium">{tw('tagAsync')}</span>
                       </div>
-                      <p className="text-white/60 leading-relaxed mb-6">{t('workWithUs.sendBriefDesc')}</p>
+                      <p className="text-white/60 leading-relaxed mb-6">{tw('sendBriefDesc')}</p>
                       <ul className="space-y-2">
                         {briefSteps.slice(0, 3).map((s, i) => (
                           <li key={i} className="flex items-center gap-2 text-sm text-white/70">
@@ -192,7 +208,7 @@ export function WorkWithUs() {
                       </ul>
                     </div>
                     <div className="flex items-center gap-2 rtl:flex-row-reverse text-blue-400 font-medium text-sm group-hover:gap-3 transition-all duration-200">
-                      {t('workWithUs.sendBrief')} <ArrowRight className="w-4 h-4 rtl:rotate-180" />
+                      {tw('sendBrief')} <ArrowRight className="w-4 h-4 rtl:rotate-180" />
                     </div>
                   </div>
                 </GlassCard>
@@ -212,14 +228,14 @@ export function WorkWithUs() {
               <div className="space-y-8">
                 <button onClick={resetPath} className="flex items-center gap-2 rtl:flex-row-reverse text-white/50 hover:text-white transition-colors text-sm">
                   <ChevronLeft className="w-4 h-4 rtl:rotate-180" />
-                  {t('workWithUs.backToOptions')}
+                  {tw('backToOptions')}
                 </button>
 
                 <div className="flex items-center gap-3 rtl:flex-row-reverse">
                   <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${path === "call" ? "bg-purple-500/20 border border-purple-500/30" : "bg-blue-500/20 border border-blue-500/30"}`}>
                     {path === "call" ? <Calendar className="w-5 h-5 text-purple-400" /> : <FileText className="w-5 h-5 text-blue-400" />}
                   </div>
-                  <h2 className="text-2xl">{path === "call" ? t('workWithUs.bookCall') : t('workWithUs.sendBrief')}</h2>
+                  <h2 className="text-2xl">{path === "call" ? tw('bookCall') : tw('sendBrief')}</h2>
                 </div>
 
                 <div className="space-y-4">
@@ -241,7 +257,7 @@ export function WorkWithUs() {
                 </div>
 
                 <GlassCard className="p-6 bg-white/[0.02]">
-                  <h3 className="text-lg mb-5">{t('workWithUs.whyChooseTitle')}</h3>
+                  <h3 className="text-lg mb-5">{tw('whyChooseTitle')}</h3>
                   <div className="space-y-4">
                     {trustSignals.map(({ icon: Icon, color, title, body }) => (
                       <div key={title} className="flex items-start gap-3">
@@ -258,7 +274,7 @@ export function WorkWithUs() {
                 <div className="flex items-center gap-3 rtl:flex-row-reverse text-white/50">
                   <Mail className="w-4 h-4" />
                   <div>
-                    <div className="text-xs mb-0.5">{t('workWithUs.orEmailDirectly')}</div>
+                    <div className="text-xs mb-0.5">{tw('orEmailDirectly')}</div>
                     <a href="mailto:youssef@fastoosh.com" className="text-white/80 hover:text-purple-400 transition-colors text-sm">
                       youssef@fastoosh.com
                     </a>
@@ -276,36 +292,36 @@ export function WorkWithUs() {
                       <GlassCard neonBorder className="p-8">
                         <div className="flex items-center gap-3 mb-2">
                           <Clock className="w-5 h-5 text-purple-400" />
-                          <h3 className="text-xl">{t('workWithUs.prescreenTitle')}</h3>
+                          <h3 className="text-xl">{tw('prescreenTitle')}</h3>
                         </div>
-                        <p className="text-white/50 text-sm mb-8">{t('workWithUs.prescreenSubtitle')}</p>
+                        <p className="text-white/50 text-sm mb-8">{tw('prescreenSubtitle')}</p>
                         <form onSubmit={handlePrescreenSubmit} className="space-y-5">
                           <div>
-                            <label className="block text-sm mb-2">{t('workWithUs.yourName')} <span className="text-red-400">*</span></label>
+                            <label className="block text-sm mb-2">{tw('yourName')} <span className="text-red-400">*</span></label>
                             <input type="text" name="name" required value={prescreen.name} onChange={handlePrescreenChange} placeholder="Alex Johnson" className={inputCls} />
                           </div>
                           <div>
-                            <label className="block text-sm mb-2">{t('workWithUs.yourEmail')} <span className="text-red-400">*</span></label>
+                            <label className="block text-sm mb-2">{tw('yourEmail')} <span className="text-red-400">*</span></label>
                             <input type="email" name="email" required value={prescreen.email} onChange={handlePrescreenChange} placeholder="alex@company.com" className={inputCls} />
                           </div>
                           <div>
-                            <label className="block text-sm mb-2">{t('workWithUs.projectType')}</label>
+                            <label className="block text-sm mb-2">{tw('projectType')}</label>
                             <select name="projectType" value={prescreen.projectType} onChange={handlePrescreenChange} className={inputCls}>
-                              <option value="" className="bg-gray-900">{t('workWithUs.selectProjectType')}</option>
+                              <option value="" className="bg-gray-900">{tw('selectProjectType')}</option>
                               {projectTypes.map(pt => <option key={pt} value={pt} className="bg-gray-900">{pt}</option>)}
                             </select>
                           </div>
                           <div>
-                            <label className="block text-sm mb-2">{t('workWithUs.budget')}</label>
+                            <label className="block text-sm mb-2">{tw('budget')}</label>
                             <select name="budget" value={prescreen.budget} onChange={handlePrescreenChange} className={inputCls}>
-                              <option value="" className="bg-gray-900">{t('workWithUs.selectBudget')}</option>
+                              <option value="" className="bg-gray-900">{tw('selectBudget')}</option>
                               {budgetRanges.map(r => <option key={r} value={r} className="bg-gray-900">{r}</option>)}
                             </select>
                           </div>
                           <NeonButton type="submit" className="w-full justify-center">
                             Continue to calendar <ArrowRight className="w-4 h-4 ml-1 rtl:ml-0 rtl:mr-1 rtl:rotate-180" />
                           </NeonButton>
-                          <p className="text-center text-xs text-white/35">{t('workWithUs.freeNoCommitment')}</p>
+                          <p className="text-center text-xs text-white/35">{tw('freeNoCommitment')}</p>
                         </form>
                       </GlassCard>
                     </motion.div>
@@ -319,7 +335,7 @@ export function WorkWithUs() {
                           <div className="flex items-center gap-3 rtl:flex-row-reverse">
                             <Calendar className="w-5 h-5 text-purple-400" />
                             <div>
-                              <div className="text-sm font-medium">{t('workWithUs.pickTimeSlot')}</div>
+                              <div className="text-sm font-medium">{tw('pickTimeSlot')}</div>
                               {prescreen.name && <div className="text-xs text-white/40">Booked for {prescreen.name}</div>}
                             </div>
                           </div>
@@ -352,53 +368,53 @@ export function WorkWithUs() {
                       <GlassCard neonBorder className="p-8 sticky top-24" style={{ "--tw-border-opacity": "1" } as React.CSSProperties}>
                         <div className="flex items-center gap-3 mb-2">
                           <FileText className="w-5 h-5 text-blue-400" />
-                          <h3 className="text-xl">{t('workWithUs.formTitle')}</h3>
+                          <h3 className="text-xl">{tw('formTitle')}</h3>
                         </div>
-                        <p className="text-white/50 text-sm mb-8">{t('workWithUs.formSubtitle')}</p>
+                        <p className="text-white/50 text-sm mb-8">{tw('formSubtitle')}</p>
 
                         {submitStatus.type === "success" ? (
                           <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="text-center py-12">
                             <CheckCircle2 className="w-16 h-16 text-green-400 mx-auto mb-4" />
-                            <h3 className="text-xl mb-2">{t('workWithUs.successMsg')}</h3>
+                            <h3 className="text-xl mb-2">{tw('successMsg')}</h3>
                             <p className="text-white/50 text-sm">We'll be in touch within 24–48 hours.</p>
                           </motion.div>
                         ) : (
                           <form onSubmit={handleFormSubmit} className="space-y-5">
                             <div>
-                              <label className="block text-sm mb-2">{t('workWithUs.yourName')} <span className="text-red-400">*</span></label>
+                              <label className="block text-sm mb-2">{tw('yourName')} <span className="text-red-400">*</span></label>
                               <input type="text" name="name" required value={formData.name} onChange={handleFormChange} placeholder="Your name" className={inputCls} />
                             </div>
                             <div>
-                              <label className="block text-sm mb-2">{t('workWithUs.yourEmail')} <span className="text-red-400">*</span></label>
+                              <label className="block text-sm mb-2">{tw('yourEmail')} <span className="text-red-400">*</span></label>
                               <input type="email" name="email" required value={formData.email} onChange={handleFormChange} placeholder="your@email.com" className={inputCls} />
                             </div>
                             <div>
-                              <label className="block text-sm mb-2">{t('workWithUs.projectType')}</label>
+                              <label className="block text-sm mb-2">{tw('projectType')}</label>
                               <select name="projectType" value={formData.projectType} onChange={handleFormChange} className={inputCls}>
-                                <option value="" className="bg-gray-900">{t('workWithUs.selectProjectType')}</option>
+                                <option value="" className="bg-gray-900">{tw('selectProjectType')}</option>
                                 {projectTypes.map(pt => <option key={pt} value={pt} className="bg-gray-900">{pt}</option>)}
                               </select>
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                               <div>
-                                <label className="block text-sm mb-2">{t('workWithUs.timeline')}</label>
+                                <label className="block text-sm mb-2">{tw('timeline')}</label>
                                 <select name="timeline" value={formData.timeline} onChange={handleFormChange} className={inputCls}>
-                                  <option value="" className="bg-gray-900">{t('workWithUs.selectTimeline')}</option>
+                                  <option value="" className="bg-gray-900">{tw('selectTimeline')}</option>
                                   {timelines.map(tl => <option key={tl} value={tl} className="bg-gray-900">{tl}</option>)}
                                 </select>
                               </div>
                               <div>
-                                <label className="block text-sm mb-2">{t('workWithUs.budget')}</label>
+                                <label className="block text-sm mb-2">{tw('budget')}</label>
                                 <select name="budget" value={formData.budget} onChange={handleFormChange} className={inputCls}>
-                                  <option value="" className="bg-gray-900">{t('workWithUs.selectBudget')}</option>
+                                  <option value="" className="bg-gray-900">{tw('selectBudget')}</option>
                                   {budgetRanges.map(r => <option key={r} value={r} className="bg-gray-900">{r}</option>)}
                                 </select>
                               </div>
                             </div>
                             <div>
-                              <label className="block text-sm mb-2">{t('workWithUs.projectDescription')}</label>
+                              <label className="block text-sm mb-2">{tw('projectDescription')}</label>
                               <textarea name="message" rows={5} value={formData.message} onChange={handleFormChange}
-                                placeholder={t('workWithUs.projectDescPlaceholder')}
+                                placeholder={tw('projectDescPlaceholder')}
                                 className={`${inputCls} resize-none`} />
                             </div>
 
@@ -408,8 +424,8 @@ export function WorkWithUs() {
 
                             <NeonButton type="submit" disabled={isSubmitting} className="w-full justify-center">
                               {isSubmitting
-                                ? <><Loader2 className="w-4 h-4 mr-2 rtl:mr-0 rtl:ml-2 animate-spin" />{t('workWithUs.sending')}</>
-                                : <>{t('workWithUs.sendBriefBtn')} <ArrowRight className="w-4 h-4 ml-1 rtl:ml-0 rtl:mr-1 rtl:rotate-180" /></>}
+                                ? <><Loader2 className="w-4 h-4 mr-2 rtl:mr-0 rtl:ml-2 animate-spin" />{tw('sending')}</>
+                                : <>{tw('sendBriefBtn')} <ArrowRight className="w-4 h-4 ml-1 rtl:ml-0 rtl:mr-1 rtl:rotate-180" /></>}
                             </NeonButton>
 
                             <div className="flex flex-wrap justify-center gap-4 text-xs text-white/30 pt-2">

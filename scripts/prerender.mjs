@@ -581,6 +581,13 @@ async function main() {
   // Same text the page shows (src/locales/en.json → workWithUs).
   let wwu = {};
   try { wwu = JSON.parse(readFileSync(join(ROOT, 'src/locales/en.json'), 'utf8')).workWithUs || {}; } catch { /* optional */ }
+  // Text edited in Admin → Work With Us wins over the built-in text.
+  const wwuEdits = settings?.workWithUsContent?.en;
+  if (wwuEdits && typeof wwuEdits === 'object') {
+    for (const [k, v] of Object.entries(wwuEdits)) {
+      if ((typeof v === 'string' && v.trim()) || (Array.isArray(v) && v.length)) wwu[k] = v;
+    }
+  }
   const stepList = (steps) => Array.isArray(steps) && steps.length
     ? `<ol>${steps.map(s => `<li><strong>${esc(s.title)}</strong> — ${esc(s.body)}</li>`).join('')}</ol>` : '';
   const wwuIntro = wwu.subtitle ? para(wwu.subtitle) : '';

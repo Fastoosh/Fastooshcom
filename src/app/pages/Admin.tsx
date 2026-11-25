@@ -13,6 +13,7 @@ import { AdminSelect } from '../components/admin/AdminSelect';
 import { Plus, Pencil, Trash2, Save, X, LogOut, Upload, Sparkles, Menu, Search } from 'lucide-react';
 import { ActivityTab } from '../components/admin/ActivityTab';
 import { UseCasesTab } from '../components/admin/UseCasesTab';
+import { WorkWithUsTab } from '../components/admin/WorkWithUsTab';
 import { RepublishButton } from '../components/admin/RepublishButton';
 import { StudioProfileEditor, type StudioProfile } from '../components/admin/StudioProfileEditor';
 import { AdminSearch, type AdminSearchResult } from '../components/admin/AdminSearch';
@@ -167,6 +168,7 @@ const ADMIN_NAV: { label: string; items: { value: string; label: string; danger?
     { value: 'tools',     label: 'Tools' },
     { value: 'team',      label: 'Team' },
     { value: 'home',      label: 'Home' },
+    { value: 'workwithus', label: 'Work With Us' },
     { value: 'reviews',   label: 'Reviews' },
     { value: 'usecases',  label: '🧩 Use cases' },
   ]},
@@ -826,7 +828,8 @@ export function Admin() {
       // useCases / toolExtras are owned by Admin → Use cases and saved there.
       // This form holds the copy loaded when the admin opened, so sending it
       // would overwrite newer edits made in the Use cases tab.
-      const { useCases: _useCases, toolExtras: _toolExtras, ...rest } = settings as any;
+      // Same for workWithUsContent (Admin → Work With Us).
+      const { useCases: _useCases, toolExtras: _toolExtras, workWithUsContent: _wwu, ...rest } = settings as any;
 
       const response = await fetch(url, {
         method,
@@ -1120,6 +1123,10 @@ export function Admin() {
           </TabsContent>
 
           {/* GUIDE TAB */}
+          <TabsContent value="workwithus">
+            <WorkWithUsTab />
+          </TabsContent>
+
           <TabsContent value="usecases">
             <UseCasesTab />
           </TabsContent>
