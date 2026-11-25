@@ -820,11 +820,16 @@ export function Admin() {
       const isEditing = settings.id;
       const url = isEditing ? `${API_BASE}/settings/${settings.id}` : `${API_BASE}/settings`;
       const method = isEditing ? 'PUT' : 'POST';
-      
+
+      // useCases / toolExtras are owned by Admin → Use cases and saved there.
+      // This form holds the copy loaded when the admin opened, so sending it
+      // would overwrite newer edits made in the Use cases tab.
+      const { useCases: _useCases, toolExtras: _toolExtras, ...rest } = settings as any;
+
       const response = await fetch(url, {
         method,
         headers: await getAuthHeaders(),
-        body: JSON.stringify(settings),
+        body: JSON.stringify(rest),
       });
 
       const result = await response.json();
