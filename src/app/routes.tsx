@@ -1,67 +1,54 @@
 import { createBrowserRouter } from "react-router";
 import { Layout } from "./components/layout/Layout";
 import { Home } from "./pages/Home";
-import { Projects } from "./pages/Projects";
-import { Tools } from "./pages/Tools";
-import { About } from "./pages/About";
-import { WorkWithUs } from "./pages/WorkWithUs";
-import { ProjectDetail } from "./pages/ProjectDetail";
-import { ToolDetail } from "./pages/ToolDetail";
-import { Admin } from "./pages/Admin";
-import { AdminLogin } from "./pages/AdminLogin";
-import { DataInit } from "./pages/DataInit";
-import { Setup } from "./pages/Setup";
-import { NotFound } from "./pages/NotFound";
-import { Account } from "./pages/Account";
-import { AuthCallback } from "./pages/AuthCallback";
-import { ResetPassword } from "./pages/ResetPassword";
-import { DownloadRedirect } from "./pages/DownloadRedirect";
-import { ToolGuide } from "./pages/ToolGuide";
-import { Terms } from "./pages/Terms";
-import { Privacy } from "./pages/Privacy";
-import { Refunds } from "./pages/Refunds";
-import { Disclaimer } from "./pages/Disclaimer";
-import { UseCases } from "./pages/UseCases";
-import { UseCase } from "./pages/UseCase";
+
+// Every page except Home loads on demand, so a visitor only downloads the
+// code of the pages they open (the admin alone is several hundred KB).
+// React Router keeps the current page on screen until the next one is ready.
+const page = <K extends string>(load: () => Promise<Record<K, React.ComponentType>>, name: K) =>
+  () => load().then(m => ({ Component: m[name] }));
+
+const Blank = () => <div className="min-h-screen" />;
 
 export const router = createBrowserRouter([
   // Auth routes — dedicated pages, no navbar
-  { path: "/auth/callback",       Component: AuthCallback      },
-  { path: "/auth/reset-password", Component: ResetPassword     },
+  { path: "/auth/callback",       lazy: page(() => import("./pages/AuthCallback"), "AuthCallback"),         HydrateFallback: Blank },
+  { path: "/auth/reset-password", lazy: page(() => import("./pages/ResetPassword"), "ResetPassword"),       HydrateFallback: Blank },
   // Download verification redirect — no navbar
-  { path: "/dl/:token",           Component: DownloadRedirect  },
+  { path: "/dl/:token",           lazy: page(() => import("./pages/DownloadRedirect"), "DownloadRedirect"), HydrateFallback: Blank },
   // Admin pages (no layout)
-  { path: "/admin/login", Component: AdminLogin },
-  { path: "/admin",       Component: Admin      },
+  { path: "/admin/login", lazy: page(() => import("./pages/AdminLogin"), "AdminLogin"), HydrateFallback: Blank },
+  { path: "/admin",       lazy: page(() => import("./pages/Admin"), "Admin"),           HydrateFallback: Blank },
   // Data init (no layout)
-  { path: "/init",  Component: DataInit },
+  { path: "/init",  lazy: page(() => import("./pages/DataInit"), "DataInit"), HydrateFallback: Blank },
   // Deployment setup wizard (no layout — locks itself once admin exists)
-  { path: "/setup", Component: Setup   },
+  { path: "/setup", lazy: page(() => import("./pages/Setup"), "Setup"),       HydrateFallback: Blank },
   // All main pages with navigation layout
   {
     path: "/",
     Component: Layout,
+    HydrateFallback: Blank,
     children: [
-      { index: true,               Component: Home          },
-      { path: "projects",          Component: Projects      },
-      { path: "projects/:slug",    Component: ProjectDetail },
-      { path: "tools",             Component: Tools         },
-      { path: "tools/:slug",       Component: ToolDetail    },
-      { path: "tools/:slug/guide", Component: ToolGuide     },
-      { path: "use-cases",         Component: UseCases      },
-      { path: "use-cases/:slug",   Component: UseCase       },
-      { path: "about",             Component: About         },
-      { path: "work-with-us",      Component: WorkWithUs    },
+      { index: true,               Component: Home },
+      { path: "projects",          lazy: page(() => import("./pages/Projects"), "Projects") },
+      { path: "projects/:slug",    lazy: page(() => import("./pages/ProjectDetail"), "ProjectDetail") },
+      { path: "tools",             lazy: page(() => import("./pages/Tools"), "Tools") },
+      { path: "tools/:slug",       lazy: page(() => import("./pages/ToolDetail"), "ToolDetail") },
+      { path: "tools/:slug/guide", lazy: page(() => import("./pages/ToolGuide"), "ToolGuide") },
+      { path: "use-cases",         lazy: page(() => import("./pages/UseCases"), "UseCases") },
+      { path: "use-cases/:slug",   lazy: page(() => import("./pages/UseCase"), "UseCase") },
+      { path: "about",             lazy: page(() => import("./pages/About"), "About") },
+      { path: "work-with-us",      lazy: page(() => import("./pages/WorkWithUs"), "WorkWithUs") },
       // /account renders the layout, /account/:tab selects which section is
       // shown (licenses | downloads | profile). Bare /account redirects to
       // the licenses tab from inside the component.
-      { path: "account",           Component: Account       },
-      { path: "account/:tab",      Component: Account       },
-      { path: "terms",             Component: Terms         },
-      { path: "privacy",           Component: Privacy       },
-      { path: "refunds",           Component: Refunds       },
-      { path: "disclaimer",        Component: Disclaimer    },
-      { path: "*",                 Component: NotFound      },
+      { path: "account",           lazy: page(() => import("./pages/Account"), "Account") },
+      { path: "account/:tab",      lazy: page(() => import("./pages/Account"), "Account") },
+      { path: "terms",             lazy: page(() => import("./pages/Terms"), "Terms") },
+      { path: "privacy",           lazy: page(() => import("./pages/Privacy"), "Privacy") },
+      { path: "refunds",           lazy: page(() => import("./pages/Refunds"), "Refunds") },
+      { path: "disclaimer",        lazy: page(() => import("./pages/Disclaimer"), "Disclaimer") },
+      { path: "*",                 lazy: page(() => import("./pages/NotFound"), "NotFound") },
     ],
   },
 ]);
