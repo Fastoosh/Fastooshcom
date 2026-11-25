@@ -578,6 +578,19 @@ async function main() {
   }, sitemap: { priority: '0.6' } });
 
   // ── Work with us ──
+  // Same text the page shows (src/locales/en.json → workWithUs).
+  let wwu = {};
+  try { wwu = JSON.parse(readFileSync(join(ROOT, 'src/locales/en.json'), 'utf8')).workWithUs || {}; } catch { /* optional */ }
+  const stepList = (steps) => Array.isArray(steps) && steps.length
+    ? `<ol>${steps.map(s => `<li><strong>${esc(s.title)}</strong> — ${esc(s.body)}</li>`).join('')}</ol>` : '';
+  const wwuIntro = wwu.subtitle ? para(wwu.subtitle) : '';
+  const wwuOptions = (wwu.bookCall && wwu.sendBrief)
+    ? h2(wwu.bookCall) + para(wwu.bookCallDesc) + stepList(wwu.callSteps)
+      + h2(wwu.sendBrief) + para(wwu.sendBriefDesc) + stepList(wwu.briefSteps) : '';
+  const wwuWhy = Array.isArray(wwu.trustSignals) && wwu.trustSignals.length
+    ? h2(wwu.whyChooseTitle || 'Why teams choose Fastoosh') + list(wwu.trustSignals.map(s => `<strong>${esc(s.title)}</strong> — ${esc(s.body)}`)) : '';
+  const wwuTypes = Array.isArray(wwu.projectTypes) && wwu.projectTypes.length
+    ? h2('Projects we take on') + list(wwu.projectTypes.map(esc)) : '';
   pages.push({ route: '/work-with-us', key: 'work-with-us', page: {
     title: 'Work With Fastoosh — Start a Motion Design Project',
     description: 'Tell us about your video or motion design project. Fastoosh replies within 24–48 hours with next steps, timeline and budget.',
@@ -585,6 +598,7 @@ async function main() {
     jsonLd: [{ '@context': 'https://schema.org', '@type': 'ContactPage', url: url('/work-with-us'), about: { '@id': `${SITE}/#organization` } }, crumbs([['Home', '/'], ['Work with us', '/work-with-us']])],
     body: `<h1 style="color:#fff;font-size:30px">Work with Fastoosh</h1>
       <p>Tell us about your project: what you need, your timeline and budget. We reply within 24–48 hours.</p>
+      ${wwuIntro}${wwuOptions}${wwuWhy}${wwuTypes}
       ${(home?.deliverables || []).length ? h2(home?.deliverablesTitle || 'What you get') + list(home.deliverables.map(esc)) : ''}
       ${(home?.turnaroundRows || []).length ? h2('Typical turnaround') + list(home.turnaroundRows.map(r => `${esc(r.label)} — ${esc(r.time)}`)) : ''}`,
   }, sitemap: { priority: '0.7' } });
