@@ -723,75 +723,86 @@ export function TranslationTab() {
     setStatus({ type: null, msg: '' });
     
     try {
-      // Split into batches to avoid JSON parsing errors with large payloads
+      // Batches are sized by text length, not just field count: long project
+      // fields (goal / approach / outcome) made 40-field batches take longer
+      // than the server's 55 s limit. A batch that still times out is split
+      // in half and retried; each finished batch is applied right away so
+      // nothing is lost if a later one fails.
       const entries = Object.entries(toTranslate);
-      const BATCH_SIZE = 40; // Smaller batches to reduce API load
-      const DELAY_MS = 5000; // 5 second delay between batches to respect rate limits (15 RPM = 1 per 4 seconds)
-      const batches: Record<string, string>[] = [];
-      
-      for (let i = 0; i < entries.length; i += BATCH_SIZE) {
-        const batch = Object.fromEntries(entries.slice(i, i + BATCH_SIZE));
-        batches.push(batch);
+      const MAX_FIELDS = 12;
+      const MAX_CHARS  = 3500;
+      const DELAY_MS   = 4000; // Gemini free tier: 15 requests / minute
+      const batches: Array<Array<[string, string]>> = [];
+      let cur: Array<[string, string]> = [];
+      let curChars = 0;
+      for (const e of entries) {
+        if (cur.length && (cur.length >= MAX_FIELDS || curChars + e[1].length > MAX_CHARS)) {
+          batches.push(cur); cur = []; curChars = 0;
+        }
+        cur.push(e); curChars += e[1].length;
       }
-      
-      console.log(`[Translation] Splitting ${entries.length} fields into ${batches.length} batches (${DELAY_MS/1000}s delay between batches)`);
-      
-      let allTranslated: Record<string, string> = {};
-      let completedBatches = 0;
-      
-      // Process batches sequentially with delays to respect rate limits
-      for (let i = 0; i < batches.length; i++) {
-        const batch = batches[i];
-        
-        // Add delay before each batch (except the first one)
-        if (i > 0) {
-          setStatus({ 
-            type: null, 
-            msg: `⏳ Waiting ${DELAY_MS/1000}s to respect API rate limits... (${completedBatches}/${batches.length} batches done)` 
+      if (cur.length) batches.push(cur);
+
+      let doneCount = 0;
+      let requests = 0;
+      const failed: string[] = [];
+      const isQuota = (msg = '') => /429|quota|rate limit|RESOURCE_EXHAUSTED/i.test(msg);
+
+      const callTranslate = async (batch: Array<[string, string]>) => {
+        if (requests++ > 0) await new Promise(r => setTimeout(r, DELAY_MS));
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 70_000);
+        try {
+          const res = await fetch(`${API_BASE}/admin/translate`, {
+            method: 'POST', headers: authHeaders, signal: ctrl.signal,
+            body: JSON.stringify({ lang, langName: LANG_CONFIG[lang].name, fields: Object.fromEntries(batch) }),
           });
-          await new Promise(resolve => setTimeout(resolve, DELAY_MS));
-        }
-        
-        setStatus({ 
-          type: null, 
-          msg: `🔄 Translating batch ${i + 1}/${batches.length}... (${Object.keys(allTranslated).length}/${entries.length} fields done)` 
-        });
-        
-        const res = await fetch(`${API_BASE}/admin/translate`, {
-          method: 'POST',
-          headers: authHeaders,
-          body: JSON.stringify({ lang, langName: LANG_CONFIG[lang].name, fields: batch }),
-        });
-        const json = await res.json();
-        
-        if (!json.success) {
-          // Check for quota errors
-          if (json.error?.includes('429') || json.error?.includes('quota') || json.error?.includes('rate limit')) {
-            const errorMsg = `⚠️ API Quota Exceeded (batch ${i + 1}/${batches.length})\n\n` +
-              `You've hit Gemini's free tier limit (15 requests/minute or 1,500/day).\n\n` +
-              `✅ ${completedBatches} batches completed (${Object.keys(allTranslated).length} fields translated)\n` +
-              `❌ ${batches.length - completedBatches} batches remaining\n\n` +
-              `Solutions:\n` +
-              `1. Wait a few minutes and click "Save Translations" to keep your progress, then try again\n` +
-              `2. If daily limit: Wait until midnight Pacific Time\n` +
-              `3. Upgrade to paid tier at https://aistudio.google.com/ (~$0.10/1M tokens)`;
-            
-            // Save what we have so far
-            if (Object.keys(allTranslated).length > 0) {
-              setFlatTrans(prev => ({ ...prev, ...allTranslated }));
-            }
-            
-            throw new Error(errorMsg);
+          const json = await res.json().catch(() => ({ success: false, error: `HTTP ${res.status}` }));
+          if (!json.success) throw new Error(json.error || 'Translation failed');
+          return json.data as Record<string, string>;
+        } catch (e: any) {
+          throw new Error(e?.name === 'AbortError' ? 'Request timeout' : (e?.message || String(e)));
+        } finally { clearTimeout(t); }
+      };
+
+      // Translate a batch; on timeout / bad response split it and retry.
+      const runBatch = async (batch: Array<[string, string]>): Promise<void> => {
+        try {
+          const data = await callTranslate(batch);
+          const got: Record<string, string> = {};
+          for (const [k] of batch) if (typeof data?.[k] === 'string' && data[k].trim()) got[k] = data[k];
+          setFlatTrans(prev => ({ ...prev, ...got }));
+          doneCount += Object.keys(got).length;
+          for (const [k] of batch) if (!got[k]) failed.push(k);
+        } catch (err: any) {
+          if (isQuota(err.message)) throw err;
+          if (batch.length > 1) {
+            const mid = Math.ceil(batch.length / 2);
+            await runBatch(batch.slice(0, mid));
+            await runBatch(batch.slice(mid));
+          } else {
+            failed.push(batch[0][0]);
           }
-          throw new Error(json.error || 'Translation failed');
         }
-        
-        allTranslated = { ...allTranslated, ...json.data };
-        completedBatches++;
+        setStatus({ type: 'loading', msg: `🔄 Translating… ${doneCount}/${entries.length} fields done` });
+      };
+
+      setStatus({ type: 'loading', msg: `🔄 Translating… 0/${entries.length} fields (${batches.length} batches)` });
+      try {
+        for (const b of batches) await runBatch(b);
+      } catch (err: any) {
+        throw new Error(
+          `⚠️ Gemini quota reached after ${doneCount}/${entries.length} fields.\n` +
+          `The translated fields are kept — click "Save Translations" now, wait a minute, then click "Translate Missing" to continue.` +
+          (/day|daily/i.test(err.message) ? `\nIf it is the daily limit, it resets at midnight Pacific Time.` : ''),
+        );
       }
-      
-      setFlatTrans(prev => ({ ...prev, ...allTranslated }));
-      setStatus({ type: 'success', msg: `✓ ${Object.keys(allTranslated).length} fields translated by AI in ${batches.length} batch${batches.length > 1 ? 'es' : ''}.` });
+
+      if (failed.length) {
+        setStatus({ type: 'error', msg: `Translated ${doneCount}/${entries.length} fields. ${failed.length} could not be translated — click "Save Translations", then "Translate Missing" to retry them.` });
+      } else {
+        setStatus({ type: 'success', msg: `✓ ${doneCount} fields translated. Review them, then click "Save Translations".` });
+      }
     } catch (err) {
       console.error('[Translation] Error:', err);
       setStatus({ type: 'error', msg: `${String(err)}` });
