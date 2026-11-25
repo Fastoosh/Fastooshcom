@@ -711,7 +711,7 @@ export function DashboardTab({ onNavigate }: { onNavigate?: (tab: string) => voi
   const [hasNewMsg,   setHasNewMsg]   = useState(false);
   const [chartRange,  setChartRange]  = useState<7 | 14 | 30>(30);
 
-  const pollRef = useRef<ReturnType<typeof setInterval>>();
+  const pollRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
   // ── Loaders ────────────────────────────────────────────────────────────────
 

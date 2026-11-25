@@ -10,6 +10,9 @@ import { fetchTranslations, deepMergeTranslations } from "../utils/translations"
 import { api } from "../utils/api";
 
 // Fallback projects (used if API fails or returns no data)
+// Projects from the API also carry a slug.
+type ListProject = (typeof fallbackProjects)[number] & { slug?: string };
+
 const fallbackProjects = [
   {
     id: "fintech-explainer",
@@ -74,7 +77,7 @@ export function Projects() {
   // Text edited in Admin → Page Text → Projects page.
   const { pt } = usePageOverrides('projects');
   const [activeCategory, setActiveCategory] = useState("all");
-  const [projects, setProjects] = useState<typeof fallbackProjects>([]);
+  const [projects, setProjects] = useState<ListProject[]>([]);
   const [loading, setLoading] = useState(true);
   const [categoryTranslations, setCategoryTranslations] = useState<Record<string, string>>({});
 

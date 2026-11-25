@@ -75,6 +75,7 @@ interface ToolVersion {
 }
 
 interface Tool {
+  toolCategory?: string; // type tag set by the server (from the 🗂️ FAQ entry)
   id: string;
   name: string;
   description: string;

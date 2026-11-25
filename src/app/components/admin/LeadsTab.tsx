@@ -577,7 +577,7 @@ export function LeadsTab() {
                 <div className={`text-xs mt-0.5 transition-colors ${s.active ? 'text-purple-300' : 'text-white/35 group-hover:text-white/55'}`}>
                   {s.label}
                 </div>
-                {s.rate !== undefined && (
+                {'rate' in s && s.rate != null && (
                   <div className="text-[10px] mt-0.5 text-white/35">
                     {s.rate}% conversion
                   </div>

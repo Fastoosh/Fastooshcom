@@ -135,7 +135,7 @@ export function DraggableProjectCard({
         style={{ opacity }}
       >
         <div
-          ref={drag}
+          ref={(node) => { drag(node); }}
           onClick={(e) => e.stopPropagation()}
           className="hidden lg:block cursor-grab active:cursor-grabbing text-white/20 hover:text-white/50 transition-colors flex-shrink-0"
         >
@@ -199,7 +199,7 @@ export function DraggableProjectCard({
       <div className={`flex items-center gap-4 p-4 transition-opacity ${isExpanded ? 'opacity-60' : ''}`}>
         {/* Drag Handle */}
         <div
-          ref={drag}
+          ref={(node) => { drag(node); }}
           className="cursor-grab active:cursor-grabbing text-white/40 hover:text-white/70 transition-colors flex-shrink-0"
         >
           <GripVertical className="w-5 h-5" />

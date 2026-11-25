@@ -15,6 +15,9 @@ import { projectId, publicAnonKey } from '/utils/supabase/info';
 const API_BASE = `https://${projectId}.supabase.co/functions/v1/make-server-e07959ec`;
 
 // Fallback tools (used if API fails or returns no data)
+// Fields the API adds on top of the fallback list.
+type ListTool = (typeof fallbackTools)[number] & { imageUrl?: string; oldPrice?: string; pricingSuffix?: string };
+
 const fallbackTools = [
   {
     id: "ae-automation-toolkit",
@@ -98,7 +101,7 @@ export function Tools() {
   // Text edited in Admin → Page Text → Tools page.
   const { pt } = usePageOverrides('tools');
   const navigate = useNavigate();
-  const [tools, setTools] = useState(fallbackTools);
+  const [tools, setTools] = useState<ListTool[]>(fallbackTools);
   const [loading, setLoading] = useState(true);
   const [showCustomModal, setShowCustomModal] = useState(false);
   const [statuses, setStatuses] = useState<{ label: string; color: string }[]>(DEFAULT_STATUSES);

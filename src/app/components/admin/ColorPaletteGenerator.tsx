@@ -8,6 +8,12 @@ import { SiteStyle } from '../../context/StyleContext';
 
 /* ── Types ─────────────────────────────────────────────── */
 interface GeneratedTheme extends Partial<SiteStyle> {
+  // Palette details (curated list / generator); not part of the saved style.
+  id?: string;
+  name?: string;
+  emoji?: string;
+  description?: string;
+  textSecondary?: string;
   themeName?: string;
   themeDescription?: string;
 }

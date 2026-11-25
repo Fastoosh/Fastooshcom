@@ -32,31 +32,40 @@ export function NeonButton({
 
   const disabledClasses = disabled ? "opacity-50 cursor-not-allowed" : "";
 
-  const Component = href ? Link : motion.button;
-  const props = href 
-    ? { to: href }
-    : { onClick, type, disabled, whileTap: !reduceMotion && !disabled ? { scale: 0.97 } : undefined };
-
-  return (
-    <Component
-      {...props}
-      className={`${baseClasses} ${variantClasses[variant]} ${className} ${disabledClasses}`}
+  const cls = `${baseClasses} ${variantClasses[variant]} ${className} ${disabledClasses}`;
+  const content = (
+    <>
+    <motion.span 
+      className="relative z-10 inline-flex items-center gap-2 rtl:flex-row-reverse"
+      whileHover={!reduceMotion ? { y: -1 } : undefined}
+      transition={{ duration: 0.2 }}
     >
-      <motion.span 
-        className="relative z-10 inline-flex items-center gap-2 rtl:flex-row-reverse"
-        whileHover={!reduceMotion ? { y: -1 } : undefined}
-        transition={{ duration: 0.2 }}
-      >
-        {children}
-      </motion.span>
-      
-      {variant === "primary" && (
-        <motion.div
-          className="absolute inset-0 bg-gradient-to-r from-violet-400 to-purple-400 opacity-0"
-          whileHover={!reduceMotion ? { opacity: 0.3 } : undefined}
-          transition={{ duration: 0.3 }}
-        />
-      )}
-    </Component>
+      {children}
+    </motion.span>
+    
+    {variant === "primary" && (
+      <motion.div
+        className="absolute inset-0 bg-gradient-to-r from-violet-400 to-purple-400 opacity-0"
+        whileHover={!reduceMotion ? { opacity: 0.3 } : undefined}
+        transition={{ duration: 0.3 }}
+      />
+    )}
+    </>
+  );
+
+  // A link when href is set, otherwise a button.
+  if (href) {
+    return <Link to={href} className={cls}>{content}</Link>;
+  }
+  return (
+    <motion.button
+      onClick={onClick}
+      type={type}
+      disabled={disabled}
+      whileTap={!reduceMotion && !disabled ? { scale: 0.97 } : undefined}
+      className={cls}
+    >
+      {content}
+    </motion.button>
   );
 }
